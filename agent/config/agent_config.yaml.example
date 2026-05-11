@@ -1,0 +1,21 @@
+# FIM Agent Configuration Template
+# Copy to agent_config.yaml and fill in values
+# The api_key will be encrypted by gap9_encrypt_api_keys.sh
+
+server:
+  url: https://your-fim-server-hostname
+  api_key: YOUR_AGENT_API_KEY_HERE
+  timeout: 30
+
+agent:
+  hostname: your-agent-hostname
+  scan_interval: 60
+  monitored_paths:
+    - /etc
+    - /bin
+    - /usr/bin
+    - /usr/sbin
+
+logging:
+  level: INFO
+  file: /var/log/fim-agent.log
