@@ -1,0 +1,14 @@
+# Add these imports at the top of app/main.py
+from fastapi.staticfiles import StaticFiles
+import os
+
+# Add this AFTER all app.include_router() calls, but BEFORE if __name__ == "__main__"
+
+# Serve static frontend files (must be last)
+WEB_DIR = "/opt/fim/web"
+if os.path.exists(WEB_DIR):
+    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="static")
+    logger.info(f"✅ Serving frontend from {WEB_DIR}")
+else:
+    logger.warning(f"⚠️  Web directory not found: {WEB_DIR}")
+    logger.warning(f"⚠️  Run: /opt/fim/scripts/build-frontend.sh")
