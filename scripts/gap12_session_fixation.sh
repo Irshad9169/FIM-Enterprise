@@ -21,7 +21,7 @@
 
 set -e
 
-FIM_DIR="/usr/local/opt/fim-old"
+FIM_DIR="/usr/local/opt/fim"
 FIM_APP="$FIM_DIR/app"
 PG_OS_USER="postgres"
 GAP_TAG="gap12"

@@ -1,0 +1,101 @@
+FIM Enterprise Service Documentation
+
+1. Service Inventory
+Service Name	Description	Configuration Path
+postgresql-15	Database Server	/usr/lib/systemd/system/postgresql-15.service
+fim-backend	FastAPI Web Server & API	/etc/systemd/system/fim-backend.service
+fim-agent	File Monitoring Agent	/etc/systemd/system/fim-agent.service
+
+
+2. Detailed Configurations
+A. FIM Backend Service (fim-backend)
+This service runs the FastAPI application using the Uvicorn server. It is configured to wait until the network and database are ready.
+
+Service File: /etc/systemd/system/fim-backend.service
+WorkingDirectory: /opt/fim
+Binary Path: /usr/local/opt/fim/venv/bin/python
+Configuration Content:
+
+[Unit]
+Description=FIM Enterprise Backend
+After=network.target postgresql-15.service
+
+[Service]
+User=root
+WorkingDirectory=/opt/fim
+ExecStart=/usr/local/opt/fim/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+B. FIM Agent Service (fim-agent)
+This service runs the Python agent that scans the filesystem for changes. It uses the same virtual environment as the backend.
+
+Service File: /etc/systemd/system/fim-agent.service
+WorkingDirectory: /opt/fim/agent
+Binary Path: /usr/local/opt/fim/venv/bin/python
+Configuration Content:
+
+
+[Unit]
+Description=FIM Enterprise Agent
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/fim/agent
+ExecStart=/usr/local/opt/fim/venv/bin/python /opt/fim/agent/fim_agent.py --config /opt/fim/agent/config/agent_config.yaml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+C. PostgreSQL 15 Service (postgresql-15)
+Managed by the system, but critical for FIM. Due to the ephemeral nature of the /run directory, a supporting configuration is required to ensure the socket directory exists.
+
+Runtime Config: /etc/tmpfiles.d/postgresql.conf
+Content: d /run/postgresql 0775 postgres postgres -
+
+3. Management Commands
+Use these commands to manage your environment.
+
+Basic Control
+Action	Backend Command	Agent Command
+Start	systemctl start fim-backend	systemctl start fim-agent
+Stop	systemctl stop fim-backend	systemctl stop fim-agent
+Restart	systemctl restart fim-backend	systemctl restart fim-agent
+Status	systemctl status fim-backend	systemctl status fim-agent
+Enable (Boot)	systemctl enable fim-backend	systemctl enable fim-agent
+
+Log Inspection
+To view real-time logs and troubleshoot errors:
+
+Backend Logs: journalctl -u fim-backend -f
+Agent Logs: journalctl -u fim-agent -f
+Database Logs: journalctl -u postgresql-15 -f
+
+4. Path Summary
+Component	Physical Path
+Project Root	/opt/fim
+Python Executable	/usr/local/opt/fim/venv/bin/python
+Backend Code	/opt/fim/app
+Agent Code	/opt/fim/agent/fim_agent.py
+Agent Config	/opt/fim/agent/config/agent_config.yaml
+Frontend Assets	/opt/fim/web
+Database Data	/var/lib/pgsql/15/data
+Application Logs	/opt/fim/logs/uvicorn.log
+
+5. Troubleshooting Steps (Quick Start)
+If the web application is unreachable after a reboot:
+
+Check the Database: systemctl status postgresql-15.
+
+Repair Environment: Run /opt/fim/scripts/system_recover.sh (This fixes the missing postgres user and /run directory).
+Check the Backend: systemctl status fim-backend.
+
+Reload Configs: If you change any .service file, you must run:
+
+systemctl daemon-reload

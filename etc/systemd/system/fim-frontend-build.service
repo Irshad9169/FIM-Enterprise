@@ -1,0 +1,13 @@
+[Unit]
+Description=FIM Frontend Build
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/fim/frontend
+ExecStart=/opt/fim/scripts/build-frontend.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

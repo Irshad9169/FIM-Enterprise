@@ -20,7 +20,7 @@
 
 set -e
 
-FIM_DIR="/usr/local/opt/fim-old"
+FIM_DIR="/usr/local/opt/fim"
 PG_OS_USER="postgres"
 DB_NAME="fim_db"
 DB_USER="fim_app"
@@ -137,7 +137,7 @@ fi
 
 # Step 1: Dump database (compressed format)
 log "Running pg_dump..."
-PGPASSWORD=\$(grep "fim_app:" /usr/local/opt/fim-old/.env 2>/dev/null \
+PGPASSWORD=\$(grep "fim_app:" /usr/local/opt/fim/.env 2>/dev/null \
     | grep -oP '(?<=fim_app:)[^@]+' | head -1 || echo "")
 
 sudo -u postgres pg_dump -d "\${DB_NAME}" -Fc \
@@ -198,7 +198,7 @@ log "Latest: \${GPG_FILE}"
 # Log to security logger if available
 python3 -c "
 import sys
-sys.path.insert(0, '/usr/local/opt/fim-old')
+sys.path.insert(0, '/usr/local/opt/fim')
 try:
     from app.core.security_logger import security_log
     security_log('backup_completed', level='INFO',

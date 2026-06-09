@@ -1,0 +1,30 @@
+# FIM Exclusion Rules
+# Lines starting with # are comments
+# One path per line
+# Supports wildcards (*) and regex patterns
+
+# === Specific Files ===
+/usr/sbin/xtables-monitor
+/etc/screenrc
+/etc/rc.local
+/etc/rc.d/rc1.d/K01untd
+
+# === Directory Patterns ===
+/tmp/*
+/var/log/*
+/proc/*
+/sys/*
+/dev/*
+
+# === File Extensions ===
+*.log
+*.tmp
+*.swp
+*.cache
+
+# === Regex Patterns (prefix with regex:) ===
+regex:^/var/cache/.*
+regex:^/run/.*
+
+# === Add more exclusions below ===
+/etc/rc.d/init.d

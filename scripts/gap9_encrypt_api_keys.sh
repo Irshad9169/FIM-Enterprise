@@ -11,7 +11,7 @@
 
 set -e
 
-FIM_DIR="/usr/local/opt/fim-old"
+FIM_DIR="/usr/local/opt/fim"
 FIM_APP="$FIM_DIR/app"
 KEY_FILE="/etc/fim/agent-encrypt.key"
 ENC_PREFIX="+ENC++"

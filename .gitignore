@@ -47,3 +47,15 @@ certs/
 *.crt
 *.pem
 frontend/.env
+
+# Backup and temp files
+*.bak
+*.bak.*
+*-v1
+*-V1
+*-bkp*
+*.backup
+*.py-v1
+*.py-V1
+*.pyc
+__pycache__/

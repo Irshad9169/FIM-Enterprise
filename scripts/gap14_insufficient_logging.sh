@@ -25,7 +25,7 @@
 
 set -e
 
-FIM_DIR="/usr/local/opt/fim-old"
+FIM_DIR="/usr/local/opt/fim"
 FIM_APP="$FIM_DIR/app"
 GAP_TAG="gap14"
 SECURITY_LOG="/var/log/fim-security.log"
@@ -286,7 +286,7 @@ echo "▶ Step 3: Registering SecurityLoggingMiddleware in main.py..."
 python3 << 'PYEOF'
 import py_compile
 
-path = "/usr/local/opt/fim-old/app/main.py"
+path = "/usr/local/opt/fim/app/main.py"
 with open(path) as f:
     content = f.read()
 
@@ -346,7 +346,7 @@ echo "▶ Step 4: Patching login endpoint to log success/failure..."
 python3 << 'PYEOF'
 import re, py_compile, sys
 
-path = "/usr/local/opt/fim-old/app/api/auth_enhanced.py"
+path = "/usr/local/opt/fim/app/api/auth_enhanced.py"
 with open(path) as f:
     content = f.read()
 
@@ -431,7 +431,7 @@ echo "▶ Step 5: Patching users.py to log password/role changes..."
 python3 << 'PYEOF'
 import re, py_compile, sys
 
-path = "/usr/local/opt/fim-old/app/api/users.py"
+path = "/usr/local/opt/fim/app/api/users.py"
 if not path:
     print("   ⚠️  users.py not found — skipping")
     sys.exit(0)

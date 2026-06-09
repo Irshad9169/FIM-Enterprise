@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, text
-from typing import Optional, List
+from typing import List, Dict, Tuple, Set, Optional, Optional, List
 from datetime import datetime, timedelta
 
 from app.core.database import get_db
@@ -76,7 +76,7 @@ async def acknowledge_alert(
 
 
 from pydantic import BaseModel
-from typing import List as TList
+from typing import List, Dict, Tuple, Set, Optional, List as TList
 
 
 class BulkAlertAction(BaseModel):

@@ -1,0 +1,59 @@
+We had postgres user getting removed after the system rebbot. Please perform the below steps to keep the DB running.
+
+
+Step 1: Fix the postgres User & Group
+Run these commands to force the system to recognize the correct user and group for the database:
+
+# 1. Check what the 'postgres' group GID actually is
+grep postgres /etc/group
+
+# 2. If it is NOT 26, change it to 26 (to match your database files)
+groupmod -g 26 postgres
+
+# 3. Now create the user (this should work now that group 26 is aligned)
+useradd -u 26 -g 26 -d /var/lib/pgsql -s /bin/bash postgres
+
+# 4. Verify - this MUST return UID 26 and GID 26
+id postgres
+
+Step 2: Fix Permissions & Runtime Directory
+Postgres needs its socket directory in /run, which is always deleted on reboot.
+
+
+# 1. Fix ownership of the data files
+chown -R postgres:postgres /var/lib/pgsql/
+
+# 2. Create the missing runtime directory
+mkdir -p /run/postgresql
+chown postgres:postgres /run/postgresql
+chmod 775 /run/postgresql
+
+# 3. Clean up any stale lock files from the crash/reboot
+rm -f /var/lib/pgsql/15/data/postmaster.pid
+
+Step 3: Start Services
+# 1. Start Database
+systemctl start postgresql-15
+
+# 2. Check Database Status (Must be active/running)
+systemctl status postgresql-15
+
+# 3. Start FIM Backend
+pkill -9 -f uvicorn
+cd /opt/fim
+source venv/bin/activate
+nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /opt/fim/logs/uvicorn.log 2>&1 &
+
+Step 4: Prevent this from happening on next reboot
+To ensure the postgres user and /run directory stay fixed after the next reboot, we need to make the configuration permanent.
+
+1. Fix the Runtime Directory permanently:
+echo "d /run/postgresql 0775 postgres postgres -" > /etc/tmpfiles.d/postgresql.conf
+
+2. Ensure the FIM Agent and Backend start on boot:
+If you don't have them in systemd yet, you should. But for now, check if the Agent is running (it likely stopped too):
+
+
+# Start Agent on test06
+cd /opt/fim/agent
+nohup python3 fim_agent.py --config /opt/fim/agent/config/agent_config.yaml > logs/fim_agent.log 2>&1 &

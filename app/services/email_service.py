@@ -11,7 +11,7 @@ Uses /usr/sbin/sendmail (same as RT integration).
 import subprocess
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Dict, Tuple, Set, Optional, List, Optional
 
 logger = logging.getLogger("email_service")
 

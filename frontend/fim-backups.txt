@@ -1,0 +1,27 @@
+/opt/fim/fim-backups
+|-- dumps
+|   |-- fim_db_20251224_164842.dump
+|   |-- fim_db_20251224_165212.dump
+|   |-- fim_db_20251224_165212.sql.gz
+|   |-- fim_db_20251224_165237.dump
+|   |-- fim_db_20251224_165237.sql.gz
+|   |-- fim_db_20251230_134007.dump
+|   |-- fim_db_20251230_134007.sql.gz
+|   |-- fim_db_20251230_173314.dump
+|   |-- fim_db_20251230_173314.sql.gz
+|   |-- fim_db_20251230_173335.dump
+|   `-- fim_db_20251230_173335.sql.gz
+|-- logs
+|   |-- backup_20251224_164721.log
+|   |-- backup_20251224_164842.log
+|   |-- backup_20251224_165212.log
+|   |-- backup_20251224_165237.log
+|   |-- backup_20251230_134007.log
+|   |-- backup_20251230_173314.log
+|   `-- backup_20251230_173335.log
+|-- scripts
+|   |-- backup_fim.sh
+|   `-- restore_fim.sh
+`-- wal
+
+4 directories, 20 files

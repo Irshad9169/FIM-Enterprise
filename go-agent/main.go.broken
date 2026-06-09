@@ -1,0 +1,369 @@
+package main
+
+import (
+    "bytes"
+    "crypto/sha256"
+    "encoding/json"
+    "flag"
+    "fmt"
+    "io"
+    "log"
+    "net/http"
+    "os"
+    "path/filepath"
+    "runtime"
+    "strings"
+    "syscall"
+    "time"
+)
+
+// Config structures
+type ServerConfig struct {
+    URL    string `json:"url"`
+    APIKey string `json:"api_key"`
+}
+
+type MonitoringConfig struct {
+    Paths           []string `json:"paths"`
+    ScanInterval    int      `json:"scan_interval"`
+    ExcludePatterns []string `json:"exclude_patterns"`
+}
+
+type Config struct {
+    Server     ServerConfig     `json:"server"`
+    AgentID    string           `json:"agent_id"`
+    Monitoring MonitoringConfig `json:"monitoring"`
+    LogLevel   string           `json:"log_level"`
+}
+
+// File info structure
+type FileInfo struct {
+    Path         string `json:"path"`
+    Size         int64  `json:"size"`
+    Permissions  string `json:"permissions"`
+    Owner        int    `json:"owner"`
+    Group        int    `json:"group"`
+    ModifiedTime string `json:"modified_time"`
+    Hash         string `json:"hash"`
+}
+
+// Agent registration
+type RegisterRequest struct {
+    Hostname     string `json:"hostname"`
+    IPAddress    string `json:"ip_address,omitempty"`
+    OSType       string `json:"os_type"`
+    OSVersion    string `json:"os_version"`
+    AgentVersion string `json:"agent_version"`
+}
+
+type RegisterResponse struct {
+    Success bool   `json:"success"`
+    AgentID string `json:"agent_id"`
+    Message string `json:"message"`
+}
+
+// Scan submission
+type ScanSubmitRequest struct {
+    AgentID    string                   `json:"agent_id"`
+    Timestamp  string                   `json:"timestamp"`
+// Load configuration (simple for now)
+func loadConfig(path string) (*Config, error) {
+    var config Config
+    
+    // Use hardcoded config for simplicity
+    config.Server.URL = "http://test06.hyd.int.untd.com:8000"
+    config.Monitoring.Paths = []string{"/etc", "/usr/sbin"}
+    config.Monitoring.ScanInterval = 21600
+    config.Monitoring.ExcludePatterns = []string{".swp", ".tmp", "/proc", "/sys", "/dev", "cache"}
+    
+    return &config, nil
+}
+    
+    var config Config
+    
+    // For now, use hardcoded config - we'll improve this
+    config.Server.URL = "http://test06.hyd.int.untd.com:8000"
+    config.Monitoring.Paths = []string{"/etc", "/usr/sbin"}
+    config.Monitoring.ScanInterval = 21600
+    config.Monitoring.ExcludePatterns = []string{".swp", ".tmp", "/proc", "/sys", "/dev", "cache"}
+    
+    return &config, nil
+}
+
+// Save agent ID to config
+func saveAgentID(configPath, agentID string) error {
+    data := fmt.Sprintf("agent_id: %s\n", agentID)
+    return os.WriteFile(configPath, []byte(data), 0644)
+}
+
+// Calculate SHA256 hash
+func calculateHash(filePath string) (string, error) {
+    file, err := os.Open(filePath)
+    if err != nil {
+        return "", err
+    }
+    defer file.Close()
+
+    hash := sha256.New()
+    if _, err := io.Copy(hash, file); err != nil {
+        return "", err
+    }
+
+    return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+// Check if path should be excluded
+func shouldExclude(path string, patterns []string) bool {
+    for _, pattern := range patterns {
+        if strings.Contains(path, pattern) {
+            return true
+        }
+    }
+    return false
+}
+
+// Get file ownership info
+func getFileOwnership(info os.FileInfo) (int, int) {
+    stat, ok := info.Sys().(*syscall.Stat_t)
+    if !ok {
+        return 0, 0
+    }
+    return int(stat.Uid), int(stat.Gid)
+}
+
+// Scan files
+func (a *FIMAgent) scanFiles() ([]FileInfo, error) {
+    var results []FileInfo
+
+    log.Printf("Starting scan of %d paths", len(a.config.Monitoring.Paths))
+
+    for _, basePath := range a.config.Monitoring.Paths {
+        err := filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
+            if err != nil {
+                log.Printf("Warning: Cannot access %s: %v", path, err)
+                return nil
+            }
+
+            if shouldExclude(path, a.config.Monitoring.ExcludePatterns) {
+                if info.IsDir() {
+                    return filepath.SkipDir
+                }
+                return nil
+            }
+
+            if !info.IsDir() {
+                hash, err := calculateHash(path)
+                if err != nil {
+                    log.Printf("Warning: Cannot hash %s: %v", path, err)
+                    return nil
+                }
+
+                owner, group := getFileOwnership(info)
+
+                fileInfo := FileInfo{
+                    Path:         path,
+                    Size:         info.Size(),
+                    Permissions:  fmt.Sprintf("%04o", info.Mode().Perm()),
+                    Owner:        owner,
+                    Group:        group,
+                    ModifiedTime: info.ModTime().Format(time.RFC3339),
+                    Hash:         hash,
+                }
+
+                results = append(results, fileInfo)
+            }
+
+            return nil
+        })
+
+        if err != nil {
+            log.Printf("Error walking path %s: %v", basePath, err)
+        }
+    }
+
+    log.Printf("Scan complete: %d files scanned", len(results))
+    return results, nil
+}
+
+// Register agent
+func (a *FIMAgent) register() (string, error) {
+    hostname, _ := os.Hostname()
+
+    req := RegisterRequest{
+        Hostname:     hostname,
+        OSType:       runtime.GOOS,
+        OSVersion:    runtime.GOARCH,
+        AgentVersion: "1.0.0-go",
+    }
+
+    jsonData, err := json.Marshal(req)
+    if err != nil {
+        return "", err
+    }
+
+    resp, err := a.client.Post(
+        a.config.Server.URL+"/api/v1/agents/",
+        "application/json",
+        bytes.NewBuffer(jsonData),
+    )
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
+
+    var result RegisterResponse
+    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+        return "", err
+    }
+
+    log.Printf("Agent registered: %s", result.AgentID)
+    return result.AgentID, nil
+}
+
+// Submit scan results
+func (a *FIMAgent) submitScan(files []FileInfo) error {
+    filesMaps := make([]map[string]interface{}, len(files))
+    for i, f := range files {
+        filesMaps[i] = map[string]interface{}{
+            "path":          f.Path,
+            "size":          f.Size,
+            "permissions":   f.Permissions,
+            "owner":         f.Owner,
+            "group":         f.Group,
+            "modified_time": f.ModifiedTime,
+            "hash":          f.Hash,
+        }
+    }
+
+    req := ScanSubmitRequest{
+        AgentID:    a.agentID,
+        Timestamp:  time.Now().UTC().Format(time.RFC3339),
+        Files:      filesMaps,
+        TotalFiles: len(files),
+    }
+
+    jsonData, err := json.Marshal(req)
+    if err != nil {
+        return err
+    }
+
+    resp, err := a.client.Post(
+        a.config.Server.URL+"/api/v1/scans/submit",
+        "application/json",
+        bytes.NewBuffer(jsonData),
+    )
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != 200 {
+        body, _ := io.ReadAll(resp.Body)
+        return fmt.Errorf("scan submission failed: %d - %s", resp.StatusCode, string(body))
+    }
+
+    log.Printf("Scan results sent: %d files", len(files))
+    return nil
+}
+
+// Run scan
+func (a *FIMAgent) runScan() error {
+    log.Println("============================================================")
+    log.Println("Starting file integrity scan")
+
+    files, err := a.scanFiles()
+    if err != nil {
+        return err
+    }
+
+    if len(files) > 0 {
+        if err := a.submitScan(files); err != nil {
+            return fmt.Errorf("failed to send scan results: %v", err)
+        }
+    }
+
+    log.Println("Scan complete")
+    log.Println("============================================================")
+    return nil
+}
+
+// Run daemon
+func (a *FIMAgent) runDaemon() {
+    log.Printf("FIM Agent started (PID: %d)", os.Getpid())
+    log.Printf("Server: %s", a.config.Server.URL)
+    log.Printf("Scan interval: %d seconds", a.config.Monitoring.ScanInterval)
+    log.Printf("Monitoring paths: %v", a.config.Monitoring.Paths)
+
+    for {
+        if err := a.runScan(); err != nil {
+            log.Printf("Scan error: %v", err)
+        }
+
+        log.Printf("Sleeping for %d seconds...", a.config.Monitoring.ScanInterval)
+        time.Sleep(time.Duration(a.config.Monitoring.ScanInterval) * time.Second)
+    }
+}
+
+func main() {
+    configPath := flag.String("config", "config/agent_config.yaml", "Config file path")
+    registerFlag := flag.Bool("register", false, "Register agent and exit")
+    scanOnce := flag.Bool("scan-once", false, "Run one scan and exit")
+    flag.Parse()
+
+    log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+    // Load config
+    config, err := loadConfig(*configPath)
+    if err != nil {
+        log.Printf("Warning: Could not load config, using defaults: %v", err)
+        config = &Config{
+            Server: ServerConfig{
+                URL: "http://test06.hyd.int.untd.com:8000",
+            },
+            Monitoring: MonitoringConfig{
+                Paths:        []string{"/etc", "/usr/sbin"},
+                ScanInterval: 21600,
+                ExcludePatterns: []string{".swp", ".tmp", "/proc", "/sys", "/dev", "cache"},
+            },
+        }
+    }
+
+    agent := &FIMAgent{
+        config:  *config,
+        agentID: config.AgentID,
+        client:  &http.Client{Timeout: 30 * time.Second},
+    }
+
+    hostname, _ := os.Hostname()
+    agent.hostname = hostname
+
+    if *registerFlag {
+        agentID, err := agent.register()
+        if err != nil {
+            log.Fatalf("Registration failed: %v", err)
+        }
+        agent.agentID = agentID
+        if err := saveAgentID(*configPath, agentID); err != nil {
+            log.Printf("Warning: Could not save agent ID: %v", err)
+        }
+        return
+    }
+
+    // Ensure agent is registered
+    if agent.agentID == "" {
+        log.Println("Agent not registered, registering now...")
+        agentID, err := agent.register()
+        if err != nil {
+            log.Fatalf("Registration failed: %v", err)
+        }
+        agent.agentID = agentID
+    }
+
+    if *scanOnce {
+        if err := agent.runScan(); err != nil {
+            log.Fatalf("Scan failed: %v", err)
+        }
+    } else {
+        agent.runDaemon()
+    }
+}

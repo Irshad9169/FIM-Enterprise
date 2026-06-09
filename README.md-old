@@ -1,0 +1,195 @@
+# FIM Enterprise — File Integrity Monitoring System
+
+<div align="center">
+
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18+-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+
+**Production-grade file integrity monitoring with real-time dashboards, RT ticket integration, and compliance reporting.**
+
+</div>
+
+---
+
+## 🏗️ Architecture
+
+```
+┌────────────────────┐    ┌───────────────────────────┐    ┌──────────────┐
+│   FIM Agents       │    │     FastAPI Backend        │    │ PostgreSQL   │
+│   (Python 3.x)     │───→│     (Uvicorn + Async)     │───→│ 15 (asyncpg) │
+│   • File scanning   │    │     • JWT + SSO Auth       │    │ • 12 tables  │
+│   • SHA-256 hashing │    │     • Change detection     │    │ • JSONB data │
+│   • Heartbeats     │    │     • Report generation    │    │ • Full audit │
+└────────────────────┘    └───────────────────────────┘    └──────────────┘
+         ↑                          ↓            ↓
+         │                  ┌───────────┐  ┌──────────┐
+    Monitored Servers       │  Nginx    │  │ Sendmail │
+    (/etc, /opt, /var)      │  (Proxy)  │  │ (Email)  │
+                            └───────────┘  └──────────┘
+                                  ↓
+                        ┌───────────────────┐
+                        │  React Frontend   │
+                        │  • Dashboard      │
+                        │  • Charts         │
+                        │  • Report Mgmt    │
+                        └───────────────────┘
+```
+
+## ✨ Features
+
+### Core
+- **Automated Daily Scans** — Agents scan at 02:00 AM, server processes changes against approved baselines
+- **Real-time Dashboard** — Alert trends, severity/status donut charts, scan activity, agent health
+- **Daily Report Workflow** — Generate → Review per agent → Add notes → Publish to RT
+- **RT/CMR Integration** — Auto-post HTML reports as comments to Request Tracker tickets via sendmail
+- **PCI-DSS Compliance Reports** — One-click PDF generation for Requirement 11.5
+
+### Security
+- **JWT Token Hardening** — Includes `iat`, `jti` (replay prevention), `iss` claims. 8-hour expiry
+- **Baseline Integrity Verification** — SHA-256 checksum validated before every comparison
+- **Scan Result HMAC Signing** — Agent signs scan data with HMAC-SHA256, server verifies
+- **API Rate Limiting** — Login: 5/min, scan submit: 30/min, general: 120/min
+- **Session Management** — Track all active sessions, admin can revoke individual or force-logout users
+- **RBAC** — 4 roles: admin, analyst, trainee, auditor with granular permissions
+- **mTLS Infrastructure** — Prepared for mutual TLS authentication (activate when ready)
+- **Server-side Exclusions** — Whitelist rules enforced in ChangeDetector, tamper-proof
+
+### Operations
+- **Baseline Re-approval Workflow** — Re-baseline with justification, old baseline preserved for audit
+- **Baseline Diff Viewer** — Compare old vs new baselines (added/removed/modified files)
+- **Bulk Alert Operations** — Select multiple alerts, batch acknowledge/resolve/false-positive
+- **Report Auto-Generation** — Scheduler creates reports at 09:00 IST daily
+- **Report Archival** — Archive reports older than N days, admin only
+- **Email Notifications** — Auto-notify on report generation, critical alerts, baseline failures
+- **Audit Log Export** — CSV + PDF export with configurable date range
+- **Agent Tags/Groups** — Tag agents by environment (production, staging, web-tier)
+- **Multi-Agent Deployment** — Shell script for remote agent deployment via SSH
+- **Dark/Light Theme** — Toggle in sidebar
+
+## 📁 Directory Structure
+
+```
+/opt/fim/
+├── app/                        # Backend (FastAPI)
+│   ├── api/                    # Route handlers
+│   │   ├── agents.py           # Agent management + tags
+│   │   ├── alerts.py           # Alerts CRUD + bulk operations
+│   │   ├── audit.py            # Audit logs + CSV/PDF export
+│   │   ├── auth_enhanced.py    # Password auth + RBAC
+│   │   ├── auth_sso.py         # SSO callback + session tracking
+│   │   ├── baselines.py        # Approval/re-baseline/diff
+│   │   ├── dashboard.py        # Stats + trends + agent health
+│   │   ├── exclusions.py       # Whitelist rules
+│   │   ├── maintenance.py      # Maintenance windows
+│   │   ├── reports.py          # Daily reports + compliance + archive
+│   │   ├── scans.py            # Scan submission + HMAC verify
+│   │   ├── sessions.py         # Session management
+│   │   └── users.py            # User CRUD
+│   ├── core/                   # Configuration & security
+│   │   ├── config.py           # Pydantic settings (.env)
+│   │   ├── database.py         # Async connection pool
+│   │   └── security.py         # JWT (hardened)
+│   ├── middleware/              # Middleware stack
+│   │   ├── rate_limiter.py     # IP-based rate limiting
+│   │   └── rbac.py             # Permission enforcement
+│   ├── models/                 # ORM models
+│   │   └── models.py           # All SQLAlchemy models
+│   ├── services/               # Business logic
+│   │   ├── change_detector.py  # Baseline comparison engine
+│   │   ├── compliance_report.py # PCI-DSS PDF generator
+│   │   ├── email_service.py    # Sendmail notifications
+│   │   ├── report_export.py    # Text + PDF report export
+│   │   ├── report_scheduler.py # Auto daily report at 09:00
+│   │   ├── session_service.py  # Session DB operations
+│   │   └── ticket_linker.py    # RT ticket integration
+│   └── main.py                 # App + lifespan + routers
+├── agent/                      # FIM Agent
+│   ├── fim_agent.py            # Scan + heartbeat agent
+│   └── config/agent_config.yaml
+├── frontend/                   # React source
+│   └── src/pages/              # All page components
+├── web/                        # Built frontend (nginx serves)
+├── deploy_agent.sh             # Remote agent deployment
+├── email_map.conf              # SSO user → email mapping
+└── .env                        # Environment config
+```
+
+## 🛠️ Tech Stack
+
+| Component | Technology | Version |
+|-----------|-----------|---------|
+| Backend | FastAPI / Uvicorn | 0.104+ |
+| Frontend | React / TypeScript / Vite | 18+ |
+| Database | PostgreSQL (asyncpg) | 15+ |
+| ORM | SQLAlchemy (async) | 2.0+ |
+| Charts | Recharts | 2.x |
+| Auth | python-jose (JWT) + SSO | — |
+| Icons | Lucide React | — |
+| Styling | Tailwind CSS | 3.x |
+| Email | sendmail | — |
+| Proxy | Nginx | — |
+
+## 🚀 Quick Start
+
+```bash
+# 1. Clone
+git clone https://github.com/Irshad9169/NEW-FIM17022026.git
+cd NEW-FIM17022026
+
+# 2. Backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+# 3. Frontend
+cd frontend && npm install && npm run build && cd ..
+
+# 4. Database
+psql -h localhost -U fim_app -d fim_db -f database/schema.sql
+
+# 5. Configure .env (see Installation Guide PDF)
+
+# 6. Start
+systemctl start fim-backend
+```
+
+## 📊 Dashboard Preview
+
+The dashboard displays:
+- **Stat Cards** — Total alerts, open alerts, online agents, pending reports
+- **Alert Trend (30 days)** — Area chart with critical/high/total breakdown
+- **Open Alerts by Severity** — Donut chart (red/orange/yellow/blue)
+- **All Alerts by Status** — Donut chart (open/acknowledged/resolved)
+- **Scan Activity** — Bar chart with scans and changes per day
+- **Agent Health** — Per-agent status cards
+
+## 👥 Roles & Permissions
+
+| Permission | Admin | Analyst | Trainee | Auditor |
+|-----------|:-----:|:-------:|:-------:|:-------:|
+| Generate Reports | ✅ | ✅ | ❌ | ❌ |
+| Review/Submit Reports | ✅ | ✅ | ✅ | ❌ |
+| Publish to RT | ✅ | ✅ | ❌ | ❌ |
+| Trigger Scans | ✅ | ✅ | ❌ | ❌ |
+| Approve Baselines | ✅ | ✅ | ❌ | ❌ |
+| Manage Alerts | ✅ | ✅ | ❌ | ❌ |
+| Acknowledge Alerts | ✅ | ✅ | ✅ | ❌ |
+| Manage Users | ✅ | ❌ | ❌ | ❌ |
+| View Audit Logs | ✅ | ❌ | ❌ | ✅ |
+| Manage Sessions | ✅ | ❌ | ❌ | ❌ |
+
+## 📄 Documentation
+
+- **Installation Guide** — `docs/FIM-Enterprise-Installation-Guide.pdf`
+- **Troubleshooting** — `docs/FIM-Enterprise-Troubleshooting-Guide.pdf`
+- **API Docs** — `http://YOUR_SERVER:8000/api/docs` (Swagger)
+
+## 📝 License
+
+Internal use only 
+
+---
+*Built for enterprise security teams*
+

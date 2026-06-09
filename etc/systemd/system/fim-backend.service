@@ -1,0 +1,14 @@
+[Unit]
+Description=FIM Enterprise Backend
+After=network.target postgresql-15.service
+
+[Service]
+User=root
+WorkingDirectory=/opt/fim
+# Using the correct VENV path and running uvicorn as a module
+ExecStart=/usr/local/opt/fim/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

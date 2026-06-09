@@ -1,0 +1,9 @@
+/opt/fim/agent
+|-- config
+|   `-- agent_config.yaml
+|-- fim_agent.py
+|-- install.sh
+`-- logs
+    `-- fim_agent.log
+
+2 directories, 4 files

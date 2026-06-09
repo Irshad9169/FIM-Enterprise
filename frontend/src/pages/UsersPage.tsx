@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchUsers, deleteUser, createUser, updateUser } from "../api/dashboard";
 import { Trash2, UserPlus, CheckCircle, XCircle, Edit2, Shield, Key } from "lucide-react";
@@ -11,6 +11,10 @@ export default function UsersPage() {
   
   const [newUser, setNewUser] = useState({ username: "", email: "", password: "", role: "viewer" });
   const [editForm, setEditForm] = useState({ role: "", password: "" });
+  const [toast, setToast] = useState<{msg: string; ok: boolean} | null>(null);
+  useEffect(() => {
+    if (toast) { const t = setTimeout(() => setToast(null), 4000); return () => clearTimeout(t); }
+  }, [toast]);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ["users"],
@@ -40,7 +44,11 @@ export default function UsersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteUser,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setToast({ msg: "User deactivated successfully", ok: true });
+    },
+    onError: (e: any) => setToast({ msg: e.message || "Failed to delete user", ok: false }),
   });
 
   const handleEditClick = (user: any) => {
@@ -59,6 +67,14 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg border text-sm shadow-lg ${
+          toast.ok ? "bg-green-900/90 border-green-700 text-green-200" : "bg-red-900/90 border-red-700 text-red-200"
+        }`}>
+          {toast.ok ? "✅" : "❌"} {toast.msg}
+        </div>
+      )}
       <div className="flex justify-between items-center bg-slate-900 p-4 rounded-lg border border-slate-800">
         <div>
           <h1 className="text-xl font-bold text-white">User Management</h1>

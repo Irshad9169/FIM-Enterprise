@@ -1,0 +1,9 @@
+/opt/fim/go-agent
+|-- config
+|   `-- agent_config.yaml
+|-- fim-agent-go
+|-- go.mod
+|-- main.go
+`-- main.go.broken
+
+1 directory, 5 files

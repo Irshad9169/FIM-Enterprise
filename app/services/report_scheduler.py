@@ -28,6 +28,7 @@ import asyncio
 import logging
 import uuid
 import json
+from app.services.anomaly_detector import run_anomaly_detection
 from datetime import datetime, date, timedelta, time, timezone
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,6 +63,21 @@ class ReportScheduler:
         self.minute = int(os.getenv("REPORT_SCHEDULE_MINUTE", str(DEFAULT_SCHEDULE_MINUTE)))
         self._task: asyncio.Task = None
         self._running = False
+
+    async def _run_anomaly_detection(self):
+        """GAP #19: Run anomaly detection hourly."""
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            from app.core.database import db_manager
+            async with db_manager.get_session() as db:
+                anomalies = await run_anomaly_detection(db)
+                if anomalies:
+                    logger.warning(
+                        "GAP#19: %d anomalous agent(s) detected", len(anomalies)
+                    )
+        except Exception as e:
+            logger.error("GAP#19: Scheduled anomaly detection failed: %s", e)
 
     async def start(self):
         """Start the scheduler background task."""

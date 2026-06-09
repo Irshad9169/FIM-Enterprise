@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, text
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Dict, Tuple, Set, Optional, List, Optional, Dict
 import uuid
 import hmac
 import hashlib
@@ -30,10 +30,10 @@ class ScanSubmitRequest(BaseModel):
 async def submit_scan(raw_request: Request, db: AsyncSession = Depends(get_db)):
     # GAP #11: enforce payload size and file count limits
     body_bytes = await raw_request.body()
-    if len(body_bytes) > 10000000:
+    if len(body_bytes) > 50000000:
         raise HTTPException(
             status_code=413,
-            detail="Scan payload too large (max 10 MB)"
+            detail="Scan payload too large (max 50 MB)"
         )
     try:
         scan_data = json.loads(body_bytes)
@@ -123,7 +123,7 @@ async def list_scans(
                 a.hostname as agent_hostname
             FROM fim.scans s
             JOIN fim.agents a ON s.agent_id = a.id
-            WHERE 1=1
+            WHERE a.status != 'inactive'
         """
         
         params = {}

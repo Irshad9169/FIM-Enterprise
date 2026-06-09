@@ -7,7 +7,7 @@
 
 set -e  # Exit on any error
 
-FIM_APP="/usr/local/opt/fim-old/app"
+FIM_APP="/usr/local/opt/fim/app"
 MIDDLEWARE_DIR="$FIM_APP/middleware"
 MAIN_PY="$FIM_APP/main.py"
 

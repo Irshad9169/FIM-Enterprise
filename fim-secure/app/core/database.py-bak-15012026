@@ -1,0 +1,87 @@
+"""
+Database Connection Management - Production Grade
+"""
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
+from app.core.config import settings
+import logging
+from contextlib import asynccontextmanager
+
+logger = logging.getLogger(__name__)
+
+Base = declarative_base()
+
+class DatabaseManager:
+    def __init__(self):
+        self.engine = None
+        self.async_session = None
+
+    async def initialize(self):
+        """Initialize database connection with production settings"""
+        self.engine = create_async_engine(
+            settings.database_url,
+            echo=settings.debug,
+
+            # Production pool settings for 1000+ agents
+            pool_size=50,              # Increased from 10
+            max_overflow=100,          # Increased from 20
+            pool_timeout=30,           # Wait 30s for connection
+            pool_recycle=3600,         # Recycle connections every hour
+            pool_pre_ping=True,        # Check connection health before use
+
+            # Additional safety
+            connect_args={
+                "server_settings": {
+                    "application_name": "fim_server"
+                },
+                "command_timeout": 60,
+            }
+        )
+
+        self.async_session = async_sessionmaker(
+            self.engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autocommit=False,
+            autoflush=False
+        )
+
+        logger.info("Database connection initialized (pool_size=50, max_overflow=100)")
+
+    async def close(self):
+        """Close database connection"""
+        if self.engine:
+            await self.engine.dispose()
+            logger.info("Database connection closed")
+
+    def get_session(self):
+        """Get async session context manager"""
+        return self.async_session()
+
+db_manager = DatabaseManager()
+
+async def get_db():
+    """
+    Dependency for getting database session
+    Production-grade with proper error handling and guaranteed cleanup
+    """
+    session = None
+    try:
+        session = db_manager.get_session()
+        yield session
+        # Don't commit here - let the endpoint decide
+    except Exception as e:
+        logger.error(f"Database session error: {e}")
+        if session:
+            try:
+                await session.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Error during rollback: {rollback_error}")
+        raise
+    finally:
+        # Ensure session is ALWAYS closed
+        if session is not None:
+            try:
+                await session.close()
+            except Exception as close_error:
+                logger.error(f"Error closing session: {close_error}")

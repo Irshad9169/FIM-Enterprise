@@ -32,7 +32,7 @@ async def list_agents(
     current_user: User = Depends(get_current_user)
 ):
     """List all registered agents"""
-    result = await db.execute(select(Agent).order_by(Agent.hostname))
+    result = await db.execute(select(Agent).where(Agent.status != 'inactive').order_by(Agent.hostname))
     agents = result.scalars().all()
     return {"agents": agents}
 

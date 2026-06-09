@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+"""
+FIM Agent - File Integrity Monitoring Client
+"""
+import os
+import sys
+import time
+import json
+import yaml
+import hashlib
+import logging
+import platform
+import socket
+import requests
+import argparse
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Union
+
+def _decrypt_api_key(value: str, key_file: str = "/etc/fim/agent-encrypt.key") -> str:
+    """GAP #9: Decrypt Fernet-encrypted API key if it carries the +ENC++ prefix."""
+    if not value.startswith("+ENC++"):
+        return value  # plaintext — return as-is (backward compatible)
+    try:
+        from cryptography.fernet import Fernet
+        with open(key_file, "rb") as kf:
+            cipher = Fernet(kf.read().strip())
+        return cipher.decrypt(value[len("+ENC++"):].encode()).decode()
+    except Exception as e:
+        raise RuntimeError(f"Failed to decrypt API key: {e}. "
+                           f"Ensure {key_file} exists and is readable.")
+
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('FIMAgent')
+
+class AgentConfig:
+    def __init__(self, config_path: str):
+        self.config_path = config_path
+        self.config = self._load_config()
+
+    def _load_config(self) -> Dict:
+        if not os.path.exists(self.config_path):
+            raise FileNotFoundError(f"Config file not found: {self.config_path}")
+        with open(self.config_path, 'r') as f:
+            return yaml.safe_load(f)
+
+    def get(self, key: str, default=None):
+        return self.config.get(key, default)
+
+    def __getitem__(self, key):
+        return self.config[key]
+
+class FIMClient:
+    def __init__(self, server_url: str, api_key: str):
+        self.server_url = server_url.rstrip('/')
+        self.api_key = api_key
+        self.session = requests.Session()
+        self.session.headers.update({
+            'X-API-Key': api_key,
+            'Content-Type': 'application/json'
+        })
+        self.logger = logging.getLogger('FIMAgent.Client')
+
+    def register_agent(self, hostname: str, ip_address: str) -> Optional[str]:
+        """Register agent with server"""
+        try:
+            data = {
+                'hostname': hostname,
+                'ip_address': ip_address,
+                'os_type': platform.system(),
+                'os_version': platform.release(),
+                'agent_version': '1.0.0'
+            }
+
+            response = self.session.post(
+                f'{self.server_url}/api/v1/agents/register',
+                json=data,
+                timeout=10
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            # Handle both id and agent_id formats
+            agent_id = result.get('agent_id') or result.get('id')
+            self.logger.info(f"Agent registered: {agent_id}")
+            return agent_id
+
+        except Exception as e:
+            self.logger.error(f"Registration failed: {e}")
+            return None
+
+    def send_heartbeat(self, agent_id: str, hostname: str):
+        """Send heartbeat to server"""
+        try:
+            data = {
+                'agent_id': agent_id,
+                'hostname': hostname,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+
+            response = self.session.post(
+                f'{self.server_url}/api/v1/agents/heartbeat',
+                json=data,
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            # Check for on-demand scan
+            try:
+                resp_data = response.json()
+                if isinstance(resp_data, dict) and resp_data.get('scan_required'):
+                    self.logger.info("Received on-demand scan request from server")
+                    return "SCAN_REQUIRED"
+            except Exception as json_err:
+                self.logger.warning(f"Failed to parse heartbeat response: {json_err}")
+
+            self.logger.debug("Heartbeat sent")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Heartbeat failed: {e}")
+            return False
+
+    def send_scan_results(self, agent_id: str, scan_data: List[Dict]):
+        """Send scan results to server"""
+        try:
+            data = {
+                'agent_id': agent_id,
+                'files': scan_data,
+                'timestamp': datetime.utcnow().isoformat(),
+                'total_files': len(scan_data)
+            }
+
+            response = self.session.post(
+                f'{self.server_url}/api/v1/scans/submit',
+                json=data,
+                timeout=30
+            )
+            response.raise_for_status()
+            self.logger.info(f"Scan results sent: {len(scan_data)} files")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to send scan results: {e}")
+            return False
+
+class FileScanner:
+    def __init__(self, paths: List[Union[str, Dict]], hash_algo: str = 'sha256'):
+        # Normalize paths: extract 'path' string if item is a dict
+        self.paths = []
+        for p in paths:
+            if isinstance(p, dict):
+                self.paths.append(p.get('path'))
+            else:
+                self.paths.append(str(p))
+                
+        self.hash_algo = hash_algo
+        self.logger = logging.getLogger('FIMAgent.Scanner')
+
+    def calculate_hash(self, file_path: str) -> str:
+        """Calculate file hash"""
+        try:
+            hash_func = getattr(hashlib, self.hash_algo)()
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hash_func.update(chunk)
+            return hash_func.hexdigest()
+        except Exception as e:
+            self.logger.warning(f"Failed to hash {file_path}: {e}")
+            return ""
+
+    def scan(self) -> List[Dict]:
+        """Scan all monitored paths"""
+        results = []
+        self.logger.info(f"Starting scan of {len(self.paths)} paths")
+
+        for path in self.paths:
+            if not os.path.exists(path):
+                self.logger.warning(f"Path not found: {path}")
+                continue
+
+            if os.path.isfile(path):
+                file_info = self._process_file(path)
+                if file_info:
+                    results.append(file_info)
+            else:
+                for root, _, files in os.walk(path):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        file_info = self._process_file(file_path)
+                        if file_info:
+                            results.append(file_info)
+
+        self.logger.info(f"Scan complete: {len(results)} files scanned")
+        return results
+
+    def _process_file(self, file_path: str) -> Optional[Dict]:
+        try:
+            stat = os.stat(file_path)
+            return {
+                'path': file_path,
+                'hash': self.calculate_hash(file_path),
+                'size': stat.st_size,
+                'mtime': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                'permissions': oct(stat.st_mode)[-3:],
+                'owner': stat.st_uid,
+                'group': stat.st_gid
+            }
+        except Exception as e:
+            self.logger.warning(f"Error processing {file_path}: {e}")
+            return None
+
+class FIMAgent:
+    def __init__(self, config_file: str):
+        self.config_path = config_file
+        self.logger = logging.getLogger('FIMAgent')
+        self.config = AgentConfig(config_file)
+        
+        # Load paths from config
+        self.monitored_paths = self.config['monitoring'].get('paths') or self.config['monitoring'].get('watch_paths')
+        if not self.monitored_paths:
+            raise ValueError("No monitoring paths defined in config")
+
+        self.client = FIMClient(
+            self.config['server']['url'],
+            self._decrypt_api_key(config['server']['api_key'])
+        )
+        
+        self.scanner = FileScanner(
+            self.monitored_paths,
+            self.config['monitoring'].get('hash_algorithm', 'sha256')
+        )
+        
+        self.hostname = socket.gethostname()
+        self.ip_address = socket.gethostbyname(self.hostname)
+        self.agent_id = self.config['agent'].get('id')
+        self.running = True
+
+    def register(self):
+        """Register agent with server"""
+        self.logger.info("Registering agent...")
+        self.agent_id = self.client.register_agent(self.hostname, self.ip_address)
+        
+        if self.agent_id:
+            # Save agent_id to config
+            self.save_agent_id(self.agent_id)
+            return True
+        return False
+
+    def save_agent_id(self, agent_id: str):
+        """Save agent ID to config file"""
+        with open(self.config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        if 'agent' not in config:
+            config['agent'] = {}
+        config['agent']['id'] = agent_id
+        
+        with open(self.config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+        self.logger.info(f"Agent ID saved: {agent_id}")
+
+    def run_scan(self):
+        """Execute file integrity scan"""
+        self.logger.info("Starting file integrity scan")
+        scan_results = self.scanner.scan()
+        if scan_results:
+            self.client.send_scan_results(self.agent_id, scan_results)
+
+    def run_daemon(self):
+        """Main agent loop"""
+        if not self.agent_id:
+            if not self.register():
+                self.logger.error("Failed to register agent. Exiting.")
+                return
+
+        self.logger.info("Starting heartbeat loop")
+        self.logger.info("============================================================")
+        
+        # Initial scan
+        self.run_scan()
+        
+        last_scan = time.time()
+        scan_interval = self.config['monitoring'].get('scan_interval', 3600)
+        heartbeat_interval = self.config['monitoring'].get('heartbeat_interval', 60)
+
+        while self.running:
+            try:
+                # Heartbeat
+                result = self.client.send_heartbeat(self.agent_id, self.hostname)
+                
+                # Check if scan requested
+                if result == "SCAN_REQUIRED":
+                    self.run_scan()
+                    last_scan = time.time()  # Reset scheduled scan timer
+
+                # Scheduled scan
+                if time.time() - last_scan > scan_interval:
+                    self.run_scan()
+                    last_scan = time.time()
+
+                time.sleep(heartbeat_interval)
+
+            except KeyboardInterrupt:
+                self.logger.info("Stopping agent...")
+                self.running = False
+            except Exception as e:
+                self.logger.error(f"Agent loop error: {e}")
+                time.sleep(30)
+
+def main():
+    parser = argparse.ArgumentParser(description='FIM Agent')
+    parser.add_argument('--config', default='config/agent_config.yaml', help='Path to config file')
+    args = parser.parse_args()
+
+    try:
+        agent = FIMAgent(args.config)
+        agent.run_daemon()
+    except Exception as e:
+        logger.error(f"Agent error: {e}")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()

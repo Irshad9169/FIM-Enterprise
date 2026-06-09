@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
-from typing import Optional, List
+from typing import List, Dict, Tuple, Set, Optional, Optional, List
 from datetime import datetime
 import uuid
 
@@ -205,7 +205,7 @@ async def get_agent_exclusions(
             SELECT id, rule_name, rule_type, match_value, reason, scope,
                    is_active, match_count, created_at
             FROM fim.whitelist_rules
-            WHERE scope = 'global' AND is_active = true
+            WHERE scope = 'global' AND is_active = true AND status = 'approved'
             ORDER BY rule_type, match_value
         """)
     )
@@ -658,3 +658,107 @@ async def get_stats(
         }
     
     return stats
+
+
+# ── Exclusion Approval Hardening ─────────────────────────────────
+from datetime import datetime, timezone as _tz
+
+@router.get("/pending")
+async def list_pending_exclusions(
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Admin-only: List all pending whitelist rules awaiting approval."""
+    if getattr(current_user, 'role', None) != 'admin':
+        raise HTTPException(403, "Admin role required")
+    result = await db.execute(text("""
+        SELECT e.id, e.rule_name, e.rule_type, e.match_value, e.reason,
+               e.scope, e.created_at, u.username as created_by_username
+        FROM fim.whitelist_rules e
+        LEFT JOIN fim.users u ON e.created_by = u.id
+        WHERE e.status = 'pending'
+        ORDER BY e.created_at ASC
+    """))
+    rows = result.fetchall()
+    return {"pending": [dict(r._mapping) for r in rows], "count": len(rows)}
+
+
+@router.post("/{exclusion_id}/approve")
+async def approve_exclusion(
+    exclusion_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Admin-only: Approve a pending whitelist rule."""
+    if getattr(current_user, 'role', None) != 'admin':
+        raise HTTPException(403, "Admin role required")
+
+    result = await db.execute(text(
+        "SELECT id, match_value, status FROM fim.whitelist_rules WHERE id = :id"
+    ), {"id": exclusion_id})
+    rule = result.fetchone()
+    if not rule:
+        raise HTTPException(404, "Rule not found")
+    if rule.status != 'pending':
+        raise HTTPException(400, f"Can only approve pending rules (current: {rule.status})")
+
+    await db.execute(text("""
+        UPDATE fim.whitelist_rules
+        SET status = 'approved', approved_by = :admin_id, approved_at = :now
+        WHERE id = :id
+    """), {"admin_id": str(current_user.id), "now": datetime.now(_tz.utc), "id": exclusion_id})
+    await db.commit()
+
+    try:
+        from app.core.security_logger import security_log
+        security_log("exclusion_approved", level="INFO",
+                     exclusion_id=exclusion_id,
+                     match_value=rule.match_value,
+                     approved_by=current_user.username)
+    except Exception:
+        pass
+
+    return {"message": "Rule approved", "id": exclusion_id, "match_value": rule.match_value}
+
+
+@router.post("/{exclusion_id}/reject")
+async def reject_exclusion(
+    exclusion_id: str,
+    reason: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Admin-only: Reject a pending whitelist rule."""
+    if getattr(current_user, 'role', None) != 'admin':
+        raise HTTPException(403, "Admin role required")
+
+    result = await db.execute(text(
+        "SELECT id, match_value, status FROM fim.whitelist_rules WHERE id = :id"
+    ), {"id": exclusion_id})
+    rule = result.fetchone()
+    if not rule:
+        raise HTTPException(404, "Rule not found")
+    if rule.status != 'pending':
+        raise HTTPException(400, f"Can only reject pending rules (current: {rule.status})")
+
+    await db.execute(text("""
+        UPDATE fim.whitelist_rules
+        SET status = 'rejected', rejection_reason = :reason
+        WHERE id = :id
+    """), {"reason": reason or "No reason provided", "id": exclusion_id})
+    await db.commit()
+
+    try:
+        from app.core.security_logger import security_log
+        security_log("exclusion_rejected", level="WARNING",
+                     exclusion_id=exclusion_id,
+                     match_value=rule.match_value,
+                     rejected_by=current_user.username,
+                     reason=reason)
+    except Exception:
+        pass
+
+    return {"message": "Rule rejected", "id": exclusion_id, "reason": reason or "No reason provided"}
+
+# ── End Exclusion Approval Hardening ─────────────────────────────
+

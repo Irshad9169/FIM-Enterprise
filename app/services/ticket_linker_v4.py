@@ -12,7 +12,7 @@ import logging
 import httpx
 import re
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict
+from typing import List, Dict, Tuple, Set, Optional, Optional, List, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 

@@ -13,6 +13,8 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.models import User, Baseline
 from app.services.audit_service import AuditService
+from app.services.baseline_version_control import snapshot_baseline, get_baseline_history, get_snapshot_content, snapshot_all_approved_baselines
+from app.services.diff_signing import sign_diff, verify_diff_signature, create_signed_diff_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -354,3 +356,163 @@ async def delete_baseline(
 
     await db.commit()
     return {"message": "Deleted"}
+
+
+# ── GAP #21: Baseline Version Control Endpoints ──────────────────
+
+@router.get("/{baseline_id}/snapshot")
+async def get_baseline_snapshot_info(
+    baseline_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """GAP #21: Get git snapshot info for a specific baseline."""
+    from sqlalchemy import text
+    result = await db.execute(text("""
+        SELECT b.id, b.git_hash, b.snapshot_path,
+               b.approved_at, b.files_count, b.checksum,
+               a.hostname
+        FROM fim.baselines b
+        JOIN fim.agents a ON b.agent_id = a.id
+        WHERE b.id = :id
+    """), {"id": baseline_id})
+    row = result.fetchone()
+    if not row:
+        raise HTTPException(404, "Baseline not found")
+    return {
+        "baseline_id":   str(row.id),
+        "git_hash":      row.git_hash,
+        "snapshot_path": row.snapshot_path,
+        "approved_at":   str(row.approved_at) if row.approved_at else None,
+        "files_count":   row.files_count,
+        "checksum":      row.checksum,
+        "agent_hostname": row.hostname,
+        "has_snapshot":  row.git_hash is not None,
+    }
+
+
+@router.get("/agent/{hostname}/history")
+async def get_agent_baseline_history(
+    hostname: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """GAP #21: Full version history for an agent's baselines."""
+    history = await get_baseline_history(hostname)
+    return {
+        "agent_hostname": hostname,
+        "history":        history,
+        "total_snapshots": len(history),
+    }
+
+
+@router.get("/snapshot/{git_hash}")
+async def get_snapshot_at_commit(
+    git_hash: str,
+    hostname: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """GAP #21: Retrieve baseline snapshot at a specific git commit."""
+    snapshot = await get_snapshot_content(git_hash, hostname)
+    if not snapshot:
+        raise HTTPException(404, f"Snapshot not found for hash {git_hash}")
+    return snapshot
+
+
+@router.post("/backfill-snapshots")
+async def backfill_baseline_snapshots(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """GAP #21: Admin-only: Create git snapshots for all existing baselines."""
+    if current_user.role != "admin":
+        raise HTTPException(403, "Admin only")
+    count = await snapshot_all_approved_baselines(db)
+    return {"message": f"Backfilled {count} baseline snapshot(s)"}
+
+# ── End GAP #21 ──────────────────────────────────────────────────
+
+
+# ── GAP #23: Baseline Diff Signing Endpoints ─────────────────────
+
+@router.get("/{baseline_id}/diff/verify")
+async def verify_baseline_diff(
+    baseline_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """
+    GAP #23: Verify the cryptographic signature of a baseline diff.
+    Call this before approving any baseline to detect tampering.
+    """
+    from sqlalchemy import text
+    from app.services.diff_signing import verify_diff_signature
+
+    # Get stored diff and signature
+    result = await db.execute(text("""
+        SELECT id, diff_data, diff_signature, diff_generated_at,
+               diff_sig_algorithm
+        FROM fim.baselines
+        WHERE id = :id
+    """), {"id": baseline_id})
+    row = result.fetchone()
+
+    if not row:
+        raise HTTPException(404, "Baseline not found")
+
+    if not row.diff_signature:
+        return {
+            "baseline_id":    baseline_id,
+            "signature_valid": None,
+            "message": "No signature stored — diff was generated before GAP #23 fix",
+            "recommendation": "Re-generate diff to create a signed version",
+        }
+
+    # Verify
+    diff_data = row.diff_data or {}
+    is_valid  = verify_diff_signature(diff_data, row.diff_signature, baseline_id)
+
+    return {
+        "baseline_id":       baseline_id,
+        "signature_valid":   is_valid,
+        "signature":         row.diff_signature[:16] + "...",
+        "algorithm":         row.diff_sig_algorithm or "HMAC-SHA256",
+        "diff_generated_at": str(row.diff_generated_at) if row.diff_generated_at else None,
+        "warning": None if is_valid else (
+            "⚠️ SECURITY ALERT: Diff signature invalid — possible tampering! "
+            "Do NOT approve this baseline."
+        ),
+        "status": "✅ Diff integrity verified" if is_valid else "❌ TAMPERED",
+    }
+
+
+@router.get("/{baseline_id}/diff/signed")
+async def get_signed_diff(
+    baseline_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """
+    GAP #23: Get baseline diff WITH signature verification result.
+    Always use this endpoint for approval workflows.
+    """
+    from sqlalchemy import text
+    from app.services.diff_signing import create_signed_diff_response
+
+    result = await db.execute(text("""
+        SELECT id, diff_data, diff_signature
+        FROM fim.baselines WHERE id = :id
+    """), {"id": baseline_id})
+    row = result.fetchone()
+
+    if not row:
+        raise HTTPException(404, "Baseline not found")
+
+    diff_data = row.diff_data or {}
+    signature = row.diff_signature or ""
+
+    return create_signed_diff_response(diff_data, baseline_id, signature)
+
+# ── End GAP #23 ──────────────────────────────────────────────────
+

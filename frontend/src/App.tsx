@@ -12,6 +12,7 @@ import UsersPage from "./pages/UsersPage";
 import AuditPage from "./pages/AuditPage";
 import SessionsPage from "./pages/SessionsPage";
 import LoginPage from "./pages/LoginPage";
+import MFASettingsPage from "./pages/MFASettingsPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const token = localStorage.getItem("fim_token");
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="users" element={<UsersPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="sessions" element={<SessionsPage />} />
+        <Route path="mfa" element={<MFASettingsPage />} />
       </Route>
     </Routes>
   );

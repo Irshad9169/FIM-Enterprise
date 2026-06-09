@@ -1,0 +1,205 @@
+from fastapi import APIRouter, Depends, HTTPException, Response, Body, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, text, or_
+from datetime import date, datetime, timedelta, time
+from typing import Optional, List, Dict, Any
+import uuid
+import json
+import logging
+
+from app.core.database import get_db
+from app.models import User, AuditLog, DailyReport, ReportChange
+from app.schemas.daily_report import (
+    DailyReportResponse, DailyReportDetail, GenerateReportRequest, 
+    UpdateNotesRequest, UpdateStatusRequest, DailyReportSummary
+)
+from app.core.security import get_current_user
+from app.services.ticket_linker import TicketLinkerService
+from app.core.sso_manager import SSOManager
+
+logger = logging.getLogger("report_api")
+router = APIRouter()
+sso = SSOManager()
+
+def clean_host(host):
+    return str(host or 'unknown').split('.')[0].lower().strip()
+
+async def find_report_obj(db, identifier):
+    identifier = str(identifier).strip()
+    try:
+        if len(identifier) > 30:
+            res = await db.execute(select(DailyReport).where(DailyReport.id == uuid.UUID(identifier)))
+            return res.scalar_one_or_none()
+    except: pass
+    try:
+        res = await db.execute(select(DailyReport).where(func.date(DailyReport.report_date) == func.date(identifier)))
+        return res.scalar_one_or_none()
+    except: pass
+    return None
+
+def safe_json_load(val):
+    """Handles both stringified JSON and pre-parsed dictionaries"""
+    if not val: return {}
+    if isinstance(val, dict): return val
+    try:
+        return json.loads(val)
+    except Exception:
+        return {}
+
+# --- 1. LIST ---
+@router.get("", response_model=List[DailyReportResponse])
+@router.get("/", response_model=List[DailyReportResponse])
+async def list_reports(db: AsyncSession = Depends(get_db), u: User = Depends(get_current_user)):
+    result = await db.execute(select(DailyReport).order_by(DailyReport.report_date.desc()))
+    return [DailyReportResponse(
+        id=r.id, report_date=r.report_date, agents=r.agent_list or [],
+        summary=DailyReportSummary(added_files=r.total_added, removed_files=r.total_removed, changed_files=r.total_changed),
+        status=r.status, total_changes=r.total_changes, created_at=r.created_at,
+        rt_ticket_id=getattr(r, 'rt_ticket_id', None)
+    ) for r in result.scalars().all()]
+
+# --- 2. EXPORT (MUST be above detail route) ---
+@router.get("/{id_or_date}/export")
+async def export_report(id_or_date: str, db: AsyncSession = Depends(get_db), u: User = Depends(get_current_user)):
+    r = await find_report_obj(db, id_or_date)
+    if not r: raise HTTPException(404, "Report not found")
+    res_c = await db.execute(select(ReportChange).where(ReportChange.report_id == r.id))
+    changes = res_c.scalars().all()
+    lines = [f"FIM Report: {r.report_date}", "="*20, ""]
+    for c in changes:
+        lines.append(f"[{c.agent_hostname}] {str(c.change_type).upper()}: {c.file_path}")
+        lines.append(f"  Hash: {c.baseline_hash} -> {c.current_hash}")
+        lines.append("-" * 20)
+    return Response("\n".join(lines), media_type="text/plain")
+
+# --- 3. GENERATE ---
+@router.post("/generate")
+async def generate_daily_report(request: GenerateReportRequest, req_obj: Request, db: AsyncSession = Depends(get_db), u: User = Depends(get_current_user)):
+    try:
+        report_date = request.report_date or datetime.now().date()
+        
+        if request.report_date:
+            start_t = datetime.combine(report_date, time.min)
+            end_t = datetime.combine(report_date, time.max)
+        else:
+            prev_res = await db.execute(select(DailyReport).order_by(DailyReport.created_at.desc()).limit(1))
+            prev = prev_res.scalar_one_or_none()
+            start_t = prev.created_at if prev else (datetime.utcnow() - timedelta(days=1))
+            end_t = datetime.utcnow()
+
+        res_exists = await db.execute(select(DailyReport).where(DailyReport.report_date == report_date))
+        if res_exists.scalar_one_or_none(): raise HTTPException(400, "Report already exists")
+
+        q = text("SELECT a.id, a.file_path, a.alert_type, a.severity, a.previous_state, a.current_state, a.detected_at, ag.hostname FROM fim.alerts a LEFT JOIN fim.agents ag ON a.agent_id = ag.id WHERE a.created_at >= :s AND a.created_at <= :e")
+        res = await db.execute(q, {"s": start_t, "e": end_t})
+        all_alerts = res.fetchall()
+        
+        seen = set(); alerts = []
+        for a in all_alerts:
+            key = f"{a.hostname}:{a.file_path}"
+            if key not in seen:
+                seen.add(key); alerts.append(a)
+
+        report_id = uuid.uuid4(); agent_names = list(set([a.hostname for a in alerts if a.hostname]))
+        
+        # Link to RT
+        token = sso.create_outbound_token(u.username)
+        rt_id = await TicketLinkerService.find_daily_review_ticket(report_date, token)
+
+        report = DailyReport(
+            id=report_id, report_date=report_date, agent_list=agent_names, 
+            total_added=len([a for a in alerts if 'created' in str(a.alert_type).lower()]), 
+            total_removed=len([a for a in alerts if 'deleted' in str(a.alert_type).lower()]), 
+            total_changed=len(alerts)-(len([a for a in alerts if 'created' in str(a.alert_type).lower()])+len([a for a in alerts if 'deleted' in str(a.alert_type).lower()])), 
+            total_changes=len(alerts), total_servers=len(agent_names), 
+            status='pending', generated_by=u.id, rt_ticket_id=rt_id
+        )
+        db.add(report); await db.flush()
+
+        for a in alerts:
+            try:
+                p, c = safe_json_load(a.previous_state), safe_json_load(a.current_state)
+                db.add(ReportChange(
+                    id=uuid.uuid4(), report_id=report_id, alert_id=a.id, agent_hostname=a.hostname or 'unknown', 
+                    file_path=a.file_path or 'unknown', change_type='changed', severity=a.severity or 'medium', 
+                    current_mtime=a.detected_at, baseline_hash=p.get('hash'), current_hash=c.get('hash'), 
+                    baseline_size=p.get('size'), current_size=c.get('size'), 
+                    baseline_mtime=datetime.fromisoformat(str(p['mtime']).replace('Z', '+00:00')) if p.get('mtime') else None
+                ))
+            except: continue
+
+        await TicketLinkerService.correlate_report(report_id, agent_names, u.username, db)
+        db.add(AuditLog(id=uuid.uuid4(), user_id=u.id, username=u.username, action="GENERATE_REPORT", details={"date": str(report_date)}, ip_address=req_obj.client.host))
+        await db.commit()
+        return {"message": "Success", "report_id": str(report_id)}
+    except Exception as e:
+        await db.rollback(); logger.error(f"Generation failed: {e}", exc_info=True); raise HTTPException(500, str(e))
+
+# --- 4. DETAIL ---
+@router.get("/{id_or_date}", response_model=DailyReportDetail)
+async def get_report_details(id_or_date: str, db: AsyncSession = Depends(get_db), u: User = Depends(get_current_user)):
+    r = await find_report_obj(db, id_or_date)
+    if not r: raise HTTPException(404, "Report not found")
+    
+    res_c = await db.execute(select(ReportChange).where(ReportChange.report_id == r.id))
+    changes = res_c.scalars().all()
+    res_t = await db.execute(text("SELECT id, source, external_id, summary, url, agent_hostname, is_linked FROM fim.report_tickets WHERE report_id = :rid"), {"rid": r.id})
+    tickets = [dict(row._mapping) for row in res_t.fetchall()]
+
+    agent_to_group = {clean_host(t['agent_hostname']): f"{t['source'].upper()}-{t['external_id']}" for t in tickets if t['is_linked']}
+    groups = {}
+    found_agents = sorted(list(set([str(c.agent_hostname) for c in changes])))
+    for agent in found_agents:
+        group_key = agent_to_group.get(clean_host(agent), "UNIQUE")
+        if group_key not in groups: groups[group_key] = {"id": group_key, "agents": [], "tickets": [], "details": [], "notes": "", "is_locked": False}
+        groups[group_key]["agents"].append(agent)
+        for t in tickets:
+            if clean_host(t['agent_hostname']) == clean_host(agent):
+                t_obj = dict(t); t_obj['id'] = str(t_obj['id']); t_obj['is_linked'] = bool(t_obj['is_linked'])
+                if t_obj not in groups[group_key]["tickets"]: groups[group_key]["tickets"].append(t_obj)
+        for ac in changes:
+            if str(ac.agent_hostname) == agent:
+                groups[group_key]["details"].append({"file_path": ac.file_path, "agent_hostname": ac.agent_hostname, "baseline_hash": ac.baseline_hash, "current_hash": ac.current_hash, "baseline_size": ac.baseline_size, "current_size": ac.current_size, "baseline_mtime": ac.baseline_mtime.isoformat() if ac.baseline_mtime else None, "current_mtime": ac.current_mtime.isoformat() if ac.current_mtime else None, "analyst_notes": ac.analyst_notes})
+                if ac.analyst_notes: groups[group_key]["notes"] = ac.analyst_notes; groups[group_key]["is_locked"] = True
+    return {"id": r.id, "report_date": r.report_date, "status": r.status, "total_changes": r.total_changes, "rt_ticket_id": r.rt_ticket_id, "created_at": r.created_at, "summary": {"added_files": r.total_added, "removed_files": r.total_removed, "changed_files": r.total_changed}, "groups": list(groups.values())}
+
+# --- 5. PATCHES & DELETE ---
+@router.delete("/{report_id}")
+async def delete_report(report_id: str, db: AsyncSession = Depends(get_db), u: User = Depends(get_current_user)):
+    r = await find_report_obj(db, report_id)
+    if not r: raise HTTPException(404)
+    await db.execute(text("DELETE FROM fim.report_changes WHERE report_id = :id"), {"id": r.id})
+    await db.execute(text("DELETE FROM fim.report_tickets WHERE report_id = :id"), {"id": r.id})
+    await db.execute(text("DELETE FROM fim.reports WHERE id = :id"), {"id": r.id})
+    await db.commit(); return {"message": "Deleted"}
+
+@router.patch("/{report_id}/group-notes")
+async def update_group_notes(report_id: str, agents: List[str] = Body(...), notes: str = Body(...), db: AsyncSession = Depends(get_db), u: User = Depends(get_current_user)):
+    r = await find_report_obj(db, report_id)
+    if not r: raise HTTPException(404)
+    for agent in agents:
+        query = text("UPDATE fim.report_changes SET analyst_notes = :n WHERE report_id = :rid AND agent_hostname LIKE :ah")
+        await db.execute(query, {"n": notes, "rid": r.id, "ah": f"{agent.split('.')[0]}%"})
+    await db.commit(); return {"message": "updated"}
+
+@router.patch("/{report_id}/status")
+async def update_status(report_id: str, req: UpdateStatusRequest, db: AsyncSession = Depends(get_db), u: User = Depends(get_current_user)):
+    r = await find_report_obj(db, report_id)
+    if not r: raise HTTPException(404)
+    old_status = r.status
+    r.status = req.status
+    if req.status == 'reviewed' and old_status != 'reviewed' and r.rt_ticket_id:
+        try:
+            res_c = await db.execute(select(ReportChange).where(ReportChange.report_id == r.id))
+            changes = res_c.scalars().all()
+            content = f"FIM SECURITY REVIEW: {r.report_date}\nReviewer: {u.username}\n\n"
+            for c in changes: content += f"FILE: {c.file_path}\nNOTE: {c.analyst_notes or 'Verified'}\n---\n"
+            await TicketLinkerService.post_review_to_rt(r.rt_ticket_id, content, sso.create_outbound_token(u.username))
+            await TicketLinkerService.resolve_rt_ticket(r.rt_ticket_id, sso.create_outbound_token(u.username))
+        except: pass
+    await db.commit(); return {"message": "Success"}
+
+@router.post("/link-ticket/{ticket_id}")
+async def toggle_ticket_link(ticket_id: str, db: AsyncSession = Depends(get_db), u: User = Depends(get_current_user)):
+    await db.execute(text("UPDATE fim.report_tickets SET is_linked = NOT is_linked WHERE id::text = :tid"), {"tid": ticket_id})
+    await db.commit(); return {"status": "ok"}

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func, case
 from pydantic import BaseModel
-from typing import Optional
+from typing import List, Dict, Tuple, Set, Optional, Optional, List
 import uuid
 from datetime import datetime
 
@@ -25,7 +25,7 @@ class AlertResolveRequest(BaseModel):
     resolution_notes: str
 
 class BulkAcknowledgeRequest(BaseModel):
-    alert_ids: list[str]
+    alert_ids: List[str]
     notes: Optional[str] = None
 
 @router.post("/acknowledge")

@@ -1,0 +1,44 @@
+agent:
+  id: 18873e0c-5636-44cd-a13f-b4f5753e6484
+  name: test06-agent
+agent_id: 18873e0c-5636-44cd-a13f-b4f5753e6484
+logging:
+  backup_count: 5
+  file: /var/log/fim-agent.log
+  level: INFO
+  max_size: 10485760
+monitoring:
+  hash_algorithm: sha256
+  heartbeat_interval: 60
+  paths:
+  - exclude_patterns:
+    - '*.tmp'
+    - '*.swp'
+    - .git/*
+    path: /etc
+    recursive: true
+  - exclude_patterns:
+    - '*.log'
+    - cache/*
+    path: /var/www
+    recursive: true
+  - exclude_patterns:
+    - '*.pyc'
+    - __pycache__/*
+    - fim*       # Exclude FIM app itself
+    - IBM*       # Exclude IBM app
+    - EMPsysedge*
+    path: /opt
+    recursive: true
+  scan_interval: 3600
+performance:
+  batch_size: 1000
+  max_memory: 512
+  max_workers: 4
+server:
+  api_key: api_key: "+ENC++gAAAAABp-tHg--zP1tzP8pQFOWznal-W4ywFDV0i18Edue8Z37umveDJbTiBom0FCcSY-isZcgD4woNSVS7lEovlA0YqtoHlARKDIKK4W6N_dgI8I8YX9XTXPxvXuYxRKZZjk8QjNDCT"
+  api_version: v1
+  retry_attempts: 3
+  retry_delay: 5
+  timeout: 30
+  url: http://localhost:8000

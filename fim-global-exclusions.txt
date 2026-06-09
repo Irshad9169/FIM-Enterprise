@@ -1,0 +1,75 @@
+# FIM Exclusion Rules
+# Exported: 2026-01-06T20:31:26.312519
+# Scope: global
+
+# Package manager updates to system binaries are expected and verified by package signatures
+/usr/sbin/
+
+# Log files change constantly during normal operations
+/var/log/
+
+# Auto-synced from exclusions.txt (line 23)
+*.cache
+
+# Auto-synced from exclusions.txt (line 17)
+/dev/*
+
+# Auto-synced from exclusions.txt (line 20)
+*.log
+
+# Auto-synced from exclusions.txt (line 15)
+/proc/*
+
+# Auto-synced from exclusions.txt (line 22)
+*.swp
+
+# Auto-synced from exclusions.txt (line 16)
+/sys/*
+
+# Auto-synced from exclusions.txt (line 21)
+*.tmp
+
+# Auto-synced from exclusions.txt (line 13)
+/tmp/*
+
+# Auto-synced from exclusions.txt (line 14)
+/var/log/*
+
+# Scheduled maintenance
+/etc/motd
+
+# Scheduled maintenance window
+/etc/motd
+
+# Scheduled maintenance communication updates
+/etc/motd
+
+# Auto-synced from exclusions.txt (line 30)
+/etc/rc.d/init.d
+
+# Auto-synced from exclusions.txt (line 10)
+/etc/rc.d/rc1.d/K01untd
+
+# Auto-synced from exclusions.txt (line 9)
+/etc/rc.local
+
+# Auto-synced from exclusions.txt (line 8)
+/etc/screenrc
+
+# Testing
+/tmp/test
+
+# Auto-synced from exclusions.txt (line 7)
+/usr/sbin/xtables-monitor
+
+# Log files change frequently
+\.log$
+
+# Python bytecode regenerated automatically
+\.pyc$
+
+# Auto-synced from exclusions.txt (line 27)
+regex:^/run/.*
+
+# Auto-synced from exclusions.txt (line 26)
+regex:^/var/cache/.*

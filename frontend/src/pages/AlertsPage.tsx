@@ -8,14 +8,14 @@ export default function AlertsPage() {
   const [selectedAlert, setSelectedAlert] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("open");
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [sortField, setSortField] = useState<string>("detected_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["alerts"],
-    queryFn: () => fetchAlerts({ days: 30, limit: 1000 }),
+    queryKey: ["alerts", statusFilter],
+    queryFn: () => fetchAlerts({ days: 30, limit: 1000, ...(statusFilter !== "all" ? { status: statusFilter } : {}) }),
     refetchInterval: 30_000,
   });
 

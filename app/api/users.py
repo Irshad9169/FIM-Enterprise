@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, validator, Field, EmailStr, EmailStr
 import re
-from typing import List, Optional
+from typing import List, Dict, Tuple, Set, Optional, List, Optional
 import uuid
 from datetime import datetime
 
@@ -41,7 +41,7 @@ class UserCreate(BaseModel):
 
 # ── GAP #12: Session Revocation Helper ───────────────────────────
 from sqlalchemy import text as _text
-from typing import Optional as _Optional
+from typing import List, Dict, Tuple, Set, Optional, Optional as _Optional
 import logging as _logging
 _session_log = _logging.getLogger(__name__)
 
@@ -137,7 +137,7 @@ async def list_users(
     if current_user.role != 'admin':
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    result = await db.execute(select(User).offset(skip).limit(limit))
+    result = await db.execute(select(User).where(User.is_active == True).offset(skip).limit(limit))
     return result.scalars().all()
 
 @router.post("", response_model=UserResponse)

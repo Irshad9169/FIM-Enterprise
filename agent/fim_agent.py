@@ -18,6 +18,76 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+# ── GAP #11 / Agent 413 Fix: chunked scan submission ────────────
+SCAN_CHUNK_SIZE = 10_000   # max files per API call
+MAX_PAYLOAD_BYTES = 45_000_000  # 45MB safety margin (server allows 50MB)
+
+def _send_chunked(session, url, headers, agent_id, scan_type,
+                  files_data, scan_metadata):
+    """
+    Split large scan results into chunks and submit each separately.
+    Prevents 413 errors when monitoring paths with many files.
+    """
+    import math, json
+
+    total_files = len(files_data)
+    if total_files == 0:
+        return _send_single(session, url, headers, agent_id,
+                            scan_type, [], scan_metadata)
+
+    # Estimate payload size
+    sample = json.dumps(files_data[:min(100, total_files)])
+    avg_bytes = len(sample) / min(100, total_files)
+    estimated_total = avg_bytes * total_files
+
+    # If small enough, send as single request
+    if estimated_total < MAX_PAYLOAD_BYTES and total_files <= SCAN_CHUNK_SIZE:
+        return _send_single(session, url, headers, agent_id,
+                            scan_type, files_data, scan_metadata)
+
+    # Split into chunks
+    num_chunks = math.ceil(total_files / SCAN_CHUNK_SIZE)
+    logging.info(
+        f"Large scan: {total_files} files ~{estimated_total/1_000_000:.1f}MB "
+        f"→ splitting into {num_chunks} chunks of {SCAN_CHUNK_SIZE}"
+    )
+
+    results = []
+    for i in range(num_chunks):
+        chunk = files_data[i * SCAN_CHUNK_SIZE:(i + 1) * SCAN_CHUNK_SIZE]
+        chunk_meta = {
+            **scan_metadata,
+            "chunk_index": i,
+            "chunk_total": num_chunks,
+            "is_partial": True,
+        }
+        logging.info(f"Sending chunk {i+1}/{num_chunks} ({len(chunk)} files)")
+        result = _send_single(session, url, headers, agent_id,
+                              scan_type, chunk, chunk_meta)
+        results.append(result)
+
+    return results[-1] if results else None
+
+
+def _send_single(session, url, headers, agent_id, scan_type,
+                 files_data, scan_metadata):
+    """Send a single scan payload to the server."""
+    import json
+    payload = {
+        "agent_id": agent_id,
+        "scan_type": scan_type,
+        "files": files_data,
+        **scan_metadata,
+    }
+    payload_bytes = len(json.dumps(payload))
+    logging.debug(f"Sending scan payload: {payload_bytes:,} bytes, "
+                  f"{len(files_data)} files")
+    response = session.post(url, json=payload, headers=headers, timeout=120)
+    response.raise_for_status()
+    return response
+
+# ── End chunked scan helper ──────────────────────────────────────
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,

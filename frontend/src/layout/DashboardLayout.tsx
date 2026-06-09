@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { logout } from "../api/auth";
 import {
   LayoutDashboard, Server, Bell, FileCheck, Scan, FileText, Shield,
-  Users, History, LogOut, ShieldAlert, Sun, Moon, Monitor
+  Users, History, LogOut, ShieldAlert, Sun, Moon, Monitor, KeyRound
 } from "lucide-react";
 
 // ── Theme Context ────────────────────────────────────────────────────────
@@ -81,6 +81,7 @@ export default function DashboardLayout() {
                 )}
                 <NavLink to="/audit" className={navItemClass}><History size={18} /> Audit Logs</NavLink>
                 <NavLink to="/sessions" className={navItemClass}><Monitor size={18} /> Sessions</NavLink>
+                <NavLink to="/mfa" className={navItemClass}><KeyRound size={18} /> MFA Settings</NavLink>
               </>
             )}
           </nav>

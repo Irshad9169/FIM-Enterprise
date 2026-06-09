@@ -6,9 +6,9 @@ async-timeout==5.0.1
 asyncpg==0.29.0
 bcrypt==5.0.0
 certifi==2026.4.22
-cffi==2.0.0
-click==8.3.3
-cryptography==48.0.0
+cffi==1.17.1
+click==8.1.8
+cryptography==44.0.3
 dnspython==2.8.0
 ecdsa==0.19.2
 email-validator==2.3.0
@@ -44,3 +44,4 @@ uvicorn==0.24.0
 uvloop==0.22.1
 watchfiles==1.1.1
 websockets==16.0
+email-validator==2.3.0

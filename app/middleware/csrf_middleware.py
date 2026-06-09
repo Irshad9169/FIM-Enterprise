@@ -30,6 +30,7 @@ EXEMPT_PREFIXES = [
     "/api/v1/auth/refresh",
     "/api/v1/agents/register",
     "/api/v1/agents/heartbeat",
+    "/api/v1/agents/scan",        # Scan trigger endpoint
     "/api/v1/scans/submit",
     "/api/v1/health",
     "/docs",
@@ -59,6 +60,21 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         for prefix in EXEMPT_PREFIXES:
             if path.startswith(prefix):
                 return await call_next(request)
+        
+        # Special handling for paths with UUIDs like /api/v1/agents/{uuid}/scan
+        if path.startswith("/api/v1/agents/") and "/scan" in path:
+            return await call_next(request)
+
+        # Skip CSRF for authenticated API endpoints (JWT token in Authorization header)
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            return await call_next(request)
+        
+        # Skip CSRF for authenticated API endpoints (with Bearer token)
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            # User is authenticated via JWT, skip CSRF for API calls
+            return await call_next(request)
 
         # Validate double-submit
         cookie_token  = request.cookies.get(CSRF_COOKIE_NAME, "")
@@ -109,8 +125,8 @@ def set_csrf_cookie(response: Response, token: str) -> None:
         key=CSRF_COOKIE_NAME,
         value=token,
         httponly=False,       # JS must read this to send as header
-        samesite="lax",       # Relaxed for self-signed cert testing
-        secure=False,         # TODO: set True when CA-signed cert deployed
+        samesite="strict",    # Extra layer: browser blocks cross-site sends
+        secure=False,         # Set True when HTTPS (GAP #2) is active
         path="/",
         max_age=86400,        # 24 hours — match JWT expiry
     )

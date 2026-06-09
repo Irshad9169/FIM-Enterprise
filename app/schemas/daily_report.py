@@ -3,7 +3,7 @@ Pydantic Schemas - aligned to actual DB schema
 """
 from pydantic import BaseModel, UUID4
 from datetime import date, datetime
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Tuple, Set, Optional, Optional, List, Dict, Any
 
 
 # ── Sub-objects ───────────────────────────────────────────────────────────────
