@@ -60,3 +60,4 @@ frontend/.env
 *.pyc
 __pycache__/
 fim-secure/
+.pgpass
