@@ -3,10 +3,9 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { logout } from "../api/auth";
 import {
   LayoutDashboard, Server, Bell, FileCheck, Scan, FileText, Shield,
-  Users, History, LogOut, ShieldAlert, Sun, Moon, Monitor, KeyRound
+  Users, History, LogOut, ShieldAlert, Sun, Moon, Monitor
 } from "lucide-react";
 
-// ── Theme Context ────────────────────────────────────────────────────────
 export const ThemeContext = createContext<{ dark: boolean; toggle: () => void }>({
   dark: true, toggle: () => {}
 });
@@ -49,7 +48,6 @@ export default function DashboardLayout() {
   return (
     <ThemeContext.Provider value={{ dark, toggle }}>
       <div className={`h-screen ${bg} ${dark ? "text-slate-100" : "text-gray-900"} overflow-hidden`}>
-        {/* Sidebar */}
         <aside className={`fixed top-0 left-0 w-64 h-screen border-r ${sidebarBg} flex flex-col z-30`}>
           <div className={`p-6 border-b ${borderColor} shrink-0 flex items-center justify-between`}>
             <div className={`flex items-center gap-2 font-bold text-xl ${textPrimary}`}>
@@ -81,7 +79,6 @@ export default function DashboardLayout() {
                 )}
                 <NavLink to="/audit" className={navItemClass}><History size={18} /> Audit Logs</NavLink>
                 <NavLink to="/sessions" className={navItemClass}><Monitor size={18} /> Sessions</NavLink>
-                <NavLink to="/mfa" className={navItemClass}><KeyRound size={18} /> MFA Settings</NavLink>
               </>
             )}
           </nav>
@@ -99,7 +96,6 @@ export default function DashboardLayout() {
           </div>
         </aside>
 
-        {/* Main Content */}
         <main className={`ml-64 h-screen overflow-auto ${bg}`}>
           <div className="w-full p-8">
             <Outlet />

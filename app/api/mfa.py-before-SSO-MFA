@@ -142,24 +142,3 @@ async def verify_mfa(
         "token_type": "bearer",
         "user": {"id": str(user.id), "username": user.username, "role": user.role}
     }
-
-@router.post("/verify-sso")
-async def verify_mfa_sso(
-    req: MFAConfirmRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Verify MFA code for SSO users (already authenticated)"""
-    result = await db.execute(text("""
-        SELECT mfa_secret FROM fim.users WHERE id = :user_id
-    """), {"user_id": current_user['id']})
-    user_data = result.fetchone()
-    
-    if not user_data or not user_data.mfa_secret:
-        raise HTTPException(status_code=400, detail="MFA not enabled")
-    
-    if not verify_mfa_code(user_data.mfa_secret, req.code):
-        raise HTTPException(status_code=400, detail="Invalid code")
-    
-    return {"message": "MFA verified"}
-

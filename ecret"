@@ -1,0 +1,207 @@
+[35m.env.example[m[36m:[mDATABASE_URL=postgresql+asyncpg://fim_app:YOUR_DB_[1;31mPASSWORD[m@localhost/fim_db
+[35mFIM-report-2026-01-04.txt[m[36m:[mchanged: '/usr/sbin/grub2-set[1;31mpassword[m'
+[35mFIM-report-2026-01-04.txt[m[36m:[mchanged: '/usr/sbin/grub2-set[1;31mpassword[m'
+[35mFIM-report-2026-01-04.txt[m[36m:[mchanged: '/usr/sbin/grub2-set[1;31mpassword[m'
+[35mFIM-report-2026-01-04.txt[m[36m:[mchanged: '/usr/sbin/grub2-set[1;31mpassword[m'
+[35mFIM-report-2026-01-04.txt[m[36m:[mDirectory: '/usr/sbin/grub2-set[1;31mpassword[m'
+[35mFIM-report-2026-01-04.txt[m[36m:[mDirectory: '/usr/sbin/grub2-set[1;31mpassword[m'
+[35mFIM-report-2026-01-04.txt[m[36m:[mDirectory: '/usr/sbin/grub2-set[1;31mpassword[m'
+[35mFIM-report-2026-01-04.txt[m[36m:[mDirectory: '/usr/sbin/grub2-set[1;31mpassword[m'
+[35mREADME.md[m[36m:[m- **Session Revocation** — Sessions revoked immediately on role/[1;31mpassword[m change
+[35mREADME.md[m[36m:[m│   │   ├── auth_enhanced.py            # [1;31mPassword[m auth + CSRF cookie
+[35mREADME.md[m[36m:[mCREATE USER fim_app WITH [1;31mPASSWORD[m 'your-strong-[1;31mpassword[m';
+[35mREADME.md-old[m[36m:[m│   │   ├── auth_enhanced.py    # [1;31mPassword[m auth + RBAC
+[35mapp/api/auth.py[m[36m:[mfrom app.core.security import verify_[1;31mpassword[m, create_access_token
+[35mapp/api/auth.py[m[36m:[m    [1;31mpassword[m: str
+[35mapp/api/auth.py[m[36m:[m    if not user or not verify_[1;31mpassword[m(request.[1;31mpassword[m, user.[1;31mpassword[m_hash):
+[35mapp/api/auth.py[m[36m:[m            detail="Incorrect username or [1;31mpassword[m",
+[35mapp/api/auth_enhanced.py[m[36m:[mfrom app.core.security import verify_[1;31mpassword[m, create_access_token
+[35mapp/api/auth_enhanced.py[m[36m:[m    [1;31mpassword[m: str
+[35mapp/api/auth_enhanced.py[m[36m:[m        if not user or not verify_[1;31mpassword[m(request.[1;31mpassword[m, user.[1;31mpassword[m_hash):
+[35mapp/api/auth_enhanced.py[m[36m:[m                detail="Incorrect username or [1;31mpassword[m",
+[35mapp/api/auth_enhanced.py[m[36m:[m            details={"method": "[1;31mpassword[m"},
+[35mapp/api/mfa.py[m[36m:[m    [1;31mpassword[m: str
+[35mapp/api/mfa.py[m[36m:[m    Second factor verification after [1;31mpassword[m check.
+[35mapp/api/mfa.py[m[36m:[m    from app.core.security import verify_[1;31mpassword[m
+[35mapp/api/mfa.py[m[36m:[m    if not user or not verify_[1;31mpassword[m(req.[1;31mpassword[m, user.[1;31mpassword[m_hash):
+[35mapp/api/users.py[m[36m:[mfrom app.core.security import create_access_token, verify_[1;31mpassword[m, get_[1;31mpassword[m_hash, validate_[1;31mpassword[m_policy, get_current_user
+[35mapp/api/users.py[m[36m:[mfrom app.core.security_logger import log_[1;31mpassword[m_change, log_role_change
+[35mapp/api/users.py[m[36m:[m    [1;31mpassword[m: str = Field(..., min_length=8, max_length=128)
+[35mapp/api/users.py[m[36m:[m    Called on: role change, [1;31mpassword[m change, account disable.
+[35mapp/api/users.py[m[36m:[m        reason     : one of role_change | [1;31mpassword[m_change | account_disabled
+[35mapp/api/users.py[m[36m:[m        exclude_jti: JTI of current session to keep (for [1;31mpassword[m change)
+[35mapp/api/users.py[m[36m:[m    [1;31mpassword[m: Optional[str] = None
+[35mapp/api/users.py[m[36m:[m    # Validate [1;31mpassword[m policy (skip for SSO users)
+[35mapp/api/users.py[m[36m:[m    if user.[1;31mpassword[m != "sso-managed":
+[35mapp/api/users.py[m[36m:[m        is_valid, error_msg = validate_[1;31mpassword[m_policy(user.[1;31mpassword[m)
+[35mapp/api/users.py[m[36m:[m                detail=f"[1;31mPassword[m policy violation: {error_msg}"
+[35mapp/api/users.py[m[36m:[m    hashed_pw = get_[1;31mpassword[m_hash(user.[1;31mpassword[m)
+[35mapp/api/users.py[m[36m:[m        [1;31mpassword[m_hash=hashed_pw,
+[35mapp/api/users.py[m[36m:[m    if updates.[1;31mpassword[m:
+[35mapp/api/users.py[m[36m:[m        user.[1;31mpassword[m_hash = get_[1;31mpassword[m_hash(updates.[1;31mpassword[m)
+[35mapp/api/users.py[m[36m:[m    # GAP #14: log [1;31mpassword[m change
+[35mapp/api/users.py[m[36m:[m    log_[1;31mpassword[m_change(
+[35mapp/core/config.py[m[36m:[m    smtp_[1;31mpassword[m: str = ""
+[35mapp/core/security.py[m[36m:[m  4. Constant-time [1;31mpassword[m comparison via bcrypt
+[35mapp/core/security.py[m[36m:[mdef verify_[1;31mpassword[m(plain_[1;31mpassword[m: str, hashed_[1;31mpassword[m: str) -> bool:
+[35mapp/core/security.py[m[36m:[m    """Verify a [1;31mpassword[m against a hash using bcrypt directly"""
+[35mapp/core/security.py[m[36m:[m            plain_[1;31mpassword[m.encode('utf-8'),
+[35mapp/core/security.py[m[36m:[m            hashed_[1;31mpassword[m.encode('utf-8')
+[35mapp/core/security.py[m[36m:[m        print(f"[1;31mPassword[m verification error: {e}")
+[35mapp/core/security.py[m[36m:[mdef get_[1;31mpassword[m_hash([1;31mpassword[m: str) -> str:
+[35mapp/core/security.py[m[36m:[m    """Hash a [1;31mpassword[m using bcrypt directly"""
+[35mapp/core/security.py[m[36m:[m        hashed = bcrypt.hashpw([1;31mpassword[m.encode('utf-8'), salt)
+[35mapp/core/security.py[m[36m:[m        print(f"[1;31mPassword[m hashing error: {e}")
+[35mapp/core/security.py[m[36m:[m# [1;31mPassword[m Policy Validation (for local users only, not SSO)
+[35mapp/core/security.py[m[36m:[m# Common weak [1;31mpassword[ms (top 100)
+[35mapp/core/security.py[m[36m:[mCOMMON_[1;31mPASSWORD[mS = {
+[35mapp/core/security.py[m[36m:[m    '[1;31mpassword[m', '[1;31mpassword[m123', '123456', '12345678', 'qwerty', 'abc123',
+[35mapp/core/security.py[m[36m:[m    'football', 'welcome', 'jesus', 'ninja', 'mustang', '[1;31mpassword[m1'
+[35mapp/core/security.py[m[36m:[mdef validate_[1;31mpassword[m_policy([1;31mpassword[m: str) -> Tuple[bool, str]:
+[35mapp/core/security.py[m[36m:[m    Validate [1;31mpassword[m meets security policy.
+[35mapp/core/security.py[m[36m:[m    - Not in common [1;31mpassword[ms list
+[35mapp/core/security.py[m[36m:[m    if len([1;31mpassword[m) < 12:
+[35mapp/core/security.py[m[36m:[m        return False, "[1;31mPassword[m must be at least 12 characters long"
+[35mapp/core/security.py[m[36m:[m    if len([1;31mpassword[m) > 128:
+[35mapp/core/security.py[m[36m:[m        return False, "[1;31mPassword[m must be less than 128 characters"
+[35mapp/core/security.py[m[36m:[m    if not re.search(r'[A-Z]', [1;31mpassword[m):
+[35mapp/core/security.py[m[36m:[m        return False, "[1;31mPassword[m must contain at least one uppercase letter"
+[35mapp/core/security.py[m[36m:[m    if not re.search(r'[a-z]', [1;31mpassword[m):
+[35mapp/core/security.py[m[36m:[m        return False, "[1;31mPassword[m must contain at least one lowercase letter"
+[35mapp/core/security.py[m[36m:[m    if not re.search(r'[0-9]', [1;31mpassword[m):
+[35mapp/core/security.py[m[36m:[m        return False, "[1;31mPassword[m must contain at least one number"
+[35mapp/core/security.py[m[36m:[m    if not re.search(r'[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]', [1;31mpassword[m):
+[35mapp/core/security.py[m[36m:[m        return False, "[1;31mPassword[m must contain at least one special character (!@#$%^&* etc.)"
+[35mapp/core/security.py[m[36m:[m    # Check against common [1;31mpassword[ms (case-insensitive)
+[35mapp/core/security.py[m[36m:[m    if [1;31mpassword[m.lower() in COMMON_[1;31mPASSWORD[mS:
+[35mapp/core/security.py[m[36m:[m        return False, "[1;31mPassword[m is too common. Please choose a stronger [1;31mpassword[m"
+[35mapp/core/security.py[m[36m:[m    return True, "[1;31mPassword[m meets policy requirements"
+[35mapp/core/security_logger.py[m[36m:[m                 username="admin", ip="1.2.3.4", reason="invalid_[1;31mpassword[m")
+[35mapp/core/security_logger.py[m[36m:[m                     reason: str = "invalid_[1;31mpassword[m", **kw) -> None:
+[35mapp/core/security_logger.py[m[36m:[mdef log_[1;31mpassword[m_change(user_id: str, changed_by: str, ip: str, **kw) -> None:
+[35mapp/core/security_logger.py[m[36m:[m    security_log("[1;31mpassword[m_changed", level="INFO",
+[35mapp/models/models.py[m[36m:[m    [1;31mpassword[m_hash = Column(String(255), nullable=False)
+[35mapp/models/models.py.before_alert_fix[m[36m:[m    [1;31mpassword[m_hash = Column(String(255), nullable=False)
+[35mbackup_fim.sh[m[36m:[mif PG[1;31mPASSWORD[m="$DB_PASS" pg_dump \
+[35mdocs/ARCHITECTURE.md[m[36m:[m│ • Bcrypt [1;31mpassword[m hashing (12 rounds) │
+[35mdocs/ARCHITECTURE.md[m[36m:[m│   │   └── security.py            # JWT + [1;31mpassword[m hashing
+[35mfrontend/app/(auth)/login/page.tsx[m[36m:[m  const [[1;31mpassword[m, set[1;31mPassword[m] = useState('');
+[35mfrontend/app/(auth)/login/page.tsx[m[36m:[m      const response = await authApi.login({ username, [1;31mpassword[m });
+[35mfrontend/app/(auth)/login/page.tsx[m[36m:[m            <Label htmlFor="[1;31mpassword[m">[1;31mPassword[m</Label>
+[35mfrontend/app/(auth)/login/page.tsx[m[36m:[m              id="[1;31mpassword[m"
+[35mfrontend/app/(auth)/login/page.tsx[m[36m:[m              type="[1;31mpassword[m"
+[35mfrontend/app/(auth)/login/page.tsx[m[36m:[m              placeholder="Enter your [1;31mpassword[m"
+[35mfrontend/app/(auth)/login/page.tsx[m[36m:[m              value={[1;31mpassword[m}
+[35mfrontend/app/(auth)/login/page.tsx[m[36m:[m              onChange={(e) => set[1;31mPassword[m(e.target.value)}
+[35mfrontend/lib/types/user.ts[m[36m:[m  [1;31mpassword[m: string;
+[35mfrontend/src/api/auth.ts[m[36m:[m  [1;31mpassword[m: string;
+[35mfrontend/src/pages/LoginPage.tsx[m[36m:[m  const [[1;31mpassword[m, set[1;31mPassword[m] = useState("");
+[35mfrontend/src/pages/LoginPage.tsx[m[36m:[m        body: JSON.stringify({ username, [1;31mpassword[m })
+[35mfrontend/src/pages/LoginPage.tsx[m[36m:[m        setError(data.detail || "Invalid username or [1;31mpassword[m");
+[35mfrontend/src/pages/LoginPage.tsx[m[36m:[m        // [1;31mPassword[m OK but MFA required — show TOTP input
+[35mfrontend/src/pages/LoginPage.tsx[m[36m:[m        body: JSON.stringify({ username, [1;31mpassword[m, code: mfaCode })
+[35mfrontend/src/pages/LoginPage.tsx[m[36m:[m              type="[1;31mpassword[m" placeholder="[1;31mPassword[m"
+[35mfrontend/src/pages/LoginPage.tsx[m[36m:[m              value={[1;31mpassword[m} onChange={e => set[1;31mPassword[m(e.target.value)}
+[35mfrontend/src/pages/LoginPage.tsx[m[36m:[m            <button type="submit" disabled={loading || !username || ![1;31mpassword[m}
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m  const [newUser, setNewUser] = useState({ username: "", email: "", [1;31mpassword[m: "", role: "viewer" });
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m  const [editForm, setEditForm] = useState({ role: "", [1;31mpassword[m: "" });
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m      setNewUser({ username: "", email: "", [1;31mpassword[m: "", role: "viewer" });
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m      setEditForm({ role: "", [1;31mpassword[m: "" });
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m    setEditForm({ role: user.role, [1;31mpassword[m: "" });
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m    if (editForm.[1;31mpassword[m) data.[1;31mpassword[m = editForm.[1;31mpassword[m;
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m                <label className="block text-xs text-slate-400 mb-1">[1;31mPassword[m</label>
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m                  type="[1;31mpassword[m"
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m                  value={newUser.[1;31mpassword[m}
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m                  onChange={e => setNewUser({...newUser, [1;31mpassword[m: e.target.value})}
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m                  <Key size={12} /> Reset [1;31mPassword[m (Optional)
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m                  type="[1;31mpassword[m"
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m                  placeholder="New [1;31mpassword[m..."
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m                  value={editForm.[1;31mpassword[m}
+[35mfrontend/src/pages/UsersPage.tsx[m[36m:[m                  onChange={e => setEditForm({...editForm, [1;31mpassword[m: e.target.value})}
+Binary file [35mgo-agent/fim-agent-go[m matches
+[35mscripts/auto_generate_report.sh[m[36m:[m  -d '{"username":"admin","[1;31mpassword[m":"admin123"}' | jq -r '.access_token')
+[35mscripts/backup-all-fim-remote.sh[m[36m:[m#     Format:  localhost:5432:fim_db:fim_app:<[1;31mpassword[m>
+[35mscripts/backup-all-fim-remote.sh[m[36m:[m# Use .pgpass for authentication — never hardcode [1;31mpassword[ms.
+[35mscripts/backup-complete-fim-local.sh[m[36m:[m#     Format:  localhost:5432:fim_db:fim_app:<[1;31mpassword[m>
+[35mscripts/backup-complete-fim-local.sh[m[36m:[m# Use .pgpass for authentication — never hardcode [1;31mpassword[ms.
+[35mscripts/create_test_users.py[m[36m:[mfrom app.core.security import get_[1;31mpassword[m_hash
+[35mscripts/create_test_users.py[m[36m:[m                '[1;31mpassword[m': 'admin123',
+[35mscripts/create_test_users.py[m[36m:[m                '[1;31mpassword[m': 'analyst123',
+[35mscripts/create_test_users.py[m[36m:[m                '[1;31mpassword[m': 'trainee123',
+[35mscripts/create_test_users.py[m[36m:[m                '[1;31mpassword[m': 'auditor123',
+[35mscripts/create_test_users.py[m[36m:[m                    [1;31mpassword[m_hash=get_[1;31mpassword[m_hash(user_data['[1;31mpassword[m']),
+[35mscripts/create_test_users.py[m[36m:[m        print("Username    | [1;31mPassword[m    | Role     | Permissions")
+[35mscripts/daily_golden_run.sh[m[36m:[m  -d '{"username":"admin","[1;31mpassword[m":"admin123"}' | jq -r '.access_token')
+[35mscripts/fix-cors.sh[m[36m:[mecho "   [1;31mPassword[m: admin123"
+[35mscripts/fix_agent_413.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' \
+[35mscripts/gap10_audit_log_protection.sh[m[36m:[m# Backfill using postgres unix socket (no [1;31mpassword[m needed)
+[35mscripts/gap10_audit_log_protection.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' 2>/dev/null || echo "000")
+[35mscripts/gap11_upload_size_validation.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' \
+[35mscripts/gap11_upload_size_validation.sh[m[36m:[m    | grep -v "login_failed\|invalid_[1;31mpassword[m" || true)
+[35mscripts/gap12_session_fixation.sh[m[36m:[m# Fix: On role change, [1;31mpassword[m change, or account disable:
+[35mscripts/gap12_session_fixation.sh[m[36m:[m#   3. Patch change_[1;31mpassword[m() to revoke all sessions except the current one
+[35mscripts/gap12_session_fixation.sh[m[36m:[mecho " Fix: Revoke all active sessions on role/[1;31mpassword[m change"
+[35mscripts/gap12_session_fixation.sh[m[36m:[m-- Add revoke_reason (role_change | [1;31mpassword[m_change | account_disabled | logout)
+[35mscripts/gap12_session_fixation.sh[m[36m:[m    Called on: role change, [1;31mpassword[m change, account disable.
+[35mscripts/gap12_session_fixation.sh[m[36m:[m        reason     : one of role_change | [1;31mpassword[m_change | account_disabled
+[35mscripts/gap12_session_fixation.sh[m[36m:[m        exclude_jti: JTI of current session to keep (for [1;31mpassword[m change)
+[35mscripts/gap12_session_fixation.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' 2>/dev/null || echo "{}")
+[35mscripts/gap12_session_fixation.sh[m[36m:[m    | grep -v "login_failed\|invalid_[1;31mpassword[m\|IllegalState" || true)
+[35mscripts/gap12_session_fixation.sh[m[36m:[mecho "   ✅ [1;31mPassword[m change → all other sessions invalidated"
+[35mscripts/gap12_session_fixation.sh[m[36m:[mecho "   await revoke_user_sessions(db, user_id, reason='[1;31mpassword[m_change',"
+[35mscripts/gap13_csrf_protection.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' 2>/dev/null || echo "{}")
+[35mscripts/gap13_csrf_protection.sh[m[36m:[m    -d '{"username":"testcsrf","[1;31mpassword[m":"Test@1234!","role":"viewer"}' \
+[35mscripts/gap13_csrf_protection.sh[m[36m:[m        -d '{"username":"testcsrf","[1;31mpassword[m":"Test@1234!","role":"viewer"}' \
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m#   - [1;31mPassword[m changes and role changes (in users.py)
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m#   4. Patch users.py — log [1;31mpassword[m change and role change events
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m                 username="admin", ip="1.2.3.4", reason="invalid_[1;31mpassword[m")
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m                     reason: str = "invalid_[1;31mpassword[m", **kw) -> None:
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[mdef log_[1;31mpassword[m_change(user_id: str, changed_by: str, ip: str, **kw) -> None:
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    security_log("[1;31mpassword[m_changed", level="INFO",
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m# Find the failed [1;31mpassword[m check and inject logging after it
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m# Look for the raise HTTPException for invalid [1;31mpassword[m
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    r'(raise HTTPException\([^)]*["\']Invalid\s*(username|[1;31mpassword[m|credentials)["\'][^)]*\))',
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    # Fallback: find "incorrect [1;31mpassword[m" or similar
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    for phrase in ['wrong [1;31mpassword[m', 'user not found', 'not found', 'inactive']:
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m# STEP 5: Patch users.py — log [1;31mpassword[m and role changes
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[mecho "▶ Step 5: Patching users.py to log [1;31mpassword[m/role changes..."
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[mif 'log_[1;31mpassword[m_change' in content and 'log_role_change' in content:
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    print("   ℹ️  [1;31mPassword[m/role logging already present — skipping")
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[mIMPORT = "\nfrom app.core.security_logger import log_[1;31mpassword[m_change, log_role_change"
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m# Inject [1;31mpassword[m change log
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    "\n    # GAP #14: log [1;31mpassword[m change\n"
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    "    log_[1;31mpassword[m_change(\n"
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m# Find [1;31mpassword[m hash update pattern
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    '[1;31mpassword[m_hash =',
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    'hashed_[1;31mpassword[m =',
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    'get_[1;31mpassword[m_hash(',
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m        if 'log_[1;31mpassword[m_change' not in content[max(0,idx-300):line_end+200]:
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m            print(f"   ✅ [1;31mPassword[m change logging injected (anchor: {pat})")
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    print("   ⚠️  Could not locate [1;31mpassword[m hash update — add log_[1;31mpassword[m_change() manually")
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"WRONG_[1;31mPASSWORD[m_GAP14"}' \
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[mif grep -q "login_failed\|WRONG_[1;31mPASSWORD[m\|invalid" "$SECURITY_LOG" 2>/dev/null; then
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' \
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' \
+[35mscripts/gap14_insufficient_logging.sh[m[36m:[mecho "   ✅ [1;31mpassword[m_changed      : user_id, changed_by, ip"
+[35mscripts/gap15_agent_rate_limiting.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' 2>/dev/null || echo "000")
+[35mscripts/gap16_backup_encryption.sh[m[36m:[mPG[1;31mPASSWORD[m=\$(grep "fim_app:" /usr/local/opt/fim/.env 2>/dev/null \
+[35mscripts/gap16_backup_encryption.sh[m[36m:[m    --no-[1;31mpassword[m \
+[35mscripts/gap18_cors_configuration.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' 2>/dev/null || echo "000")
+[35mscripts/gap19_anomaly_detection.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' \
+[35mscripts/gap21_baseline_version_control.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' \
+[35mscripts/gap23_baseline_diff_signing.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' \
+[35mscripts/gap23_baseline_diff_signing.sh-bak[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' \
+[35mscripts/gap7_request_size_limits.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}')
+[35mscripts/gap8_db_connection_encryption.sh[m[36m:[m    echo "   Updated DATABASE_URL ([1;31mpassword[m masked):"
+[35mscripts/gap8_db_connection_encryption.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' 2>/dev/null || echo "000")
+[35mscripts/gap9_encrypt_api_keys.sh[m[36m:[m    -d '{"username":"admin","[1;31mpassword[m":"FIMAdmin@2024!"}' 2>/dev/null || echo "000")
+[35mscripts/generate_test_alerts.py[m[36m:[mDATABASE_URL = env_vars.get('DATABASE_URL', 'postgresql+asyncpg://fim_user:Secure[1;31mPassword[m123!@localhost/fim_db')
+[35mscripts/golden_run.sh[m[36m:[m  -d '{"username":"admin","[1;31mpassword[m":"admin123"}' | jq -r '.access_token')
+[35mscripts/setup_backups.sh[m[36m:[m# Create .pgpass file for [1;31mpassword[mless backup
+[35mscripts/setup_backups.sh[m[36m:[mlocalhost:5432:fim_db:fim_app:your_[1;31mpassword[m_here
+[35mscripts/setup_backups.sh[m[36m:[mecho "⚠️  IMPORTANT: Edit ~/.pgpass and replace 'your_[1;31mpassword[m_here' with actual fim_app [1;31mpassword[m"
+[35mscripts/setup_backups.sh[m[36m:[mecho "Press Enter after updating the [1;31mpassword[m..."
+[35mscripts/setup_backups.sh[m[36m:[m    echo "❌ Database connection failed. Check ~/.pgpass [1;31mpassword[m"
+[35mscripts/setup_backups.sh[m[36m:[mecho "1. Edit ~/.pgpass and add your fim_app [1;31mpassword[m"
+[35mscripts/verify_phase1.sh[m[36m:[m      -d '{"username":"admin","[1;31mpassword[m":"admin123"}' 2>/dev/null)
+[35mscripts/verify_phase2.sh[m[36m:[m  -d '{"username":"admin","[1;31mpassword[m":"admin123"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)

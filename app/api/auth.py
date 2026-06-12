@@ -56,14 +56,6 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
         expires_delta=access_token_expires
     )
     
-    # MFA challenge — return flag instead of token if MFA enabled
-    if getattr(user, 'mfa_enabled', False) and getattr(user, 'mfa_confirmed', False):
-        return {
-            "access_token": "",
-            "token_type": "bearer",
-            "mfa_required": True,
-            "user": {"id": str(user.id), "username": user.username, "role": user.role}
-        }
     return {
         "access_token": access_token,
         "token_type": "bearer",

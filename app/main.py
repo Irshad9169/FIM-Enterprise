@@ -17,7 +17,6 @@ from app.core.database import db_manager
 
 # Import routers
 from app.api import (
-    mfa,
     sessions,
     health, auth_enhanced as auth, agents, alerts, scans,
     baselines, dashboard, reports, exclusions,
@@ -87,7 +86,6 @@ app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(audit.router, prefix="/api/v1/audit", tags=["audit"])
 app.include_router(integrations.router, prefix="/api/v1/integrations", tags=["integrations"])
 app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["sessions"])
-app.include_router(mfa.router, prefix="/api/v1/mfa", tags=["mfa"])
 
 
 @app.get("/api/debug_routes")
