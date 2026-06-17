@@ -169,9 +169,19 @@ async def list_scans(
                 "scan_health": scan_health
             })
         
+        # Calculate summary counts
+        summary = {
+            "healthy": sum(1 for s in scans_with_health if s["scan_health"] == "healthy"),
+            "stale": sum(1 for s in scans_with_health if s["scan_health"] == "stale"),
+            "warning": sum(1 for s in scans_with_health if s["scan_health"] == "warning"),
+            "critical": sum(1 for s in scans_with_health if s["scan_health"] == "critical"),
+            "never_scanned": sum(1 for s in scans_with_health if s["scan_health"] == "never_scanned"),
+            "total": len(scans_with_health)
+        }
+        
         return {
             "scans": scans_with_health,
-            "total": len(scans_with_health)
+            "summary": summary
         }
     except Exception as e:
         logger.error(f"List scans error: {e}")
