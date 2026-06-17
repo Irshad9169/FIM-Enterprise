@@ -115,53 +115,67 @@ async def list_scans(
 ):
     """List latest scan for each agent"""
     try:
-        # PostgreSQL specific DISTINCT ON for latest per agent
+        # Get latest scan per agent using subquery
         query_sql = """
-            SELECT DISTINCT ON (s.agent_id) 
-                s.id, s.agent_id, s.scan_type, s.status, s.files_scanned, 
-                s.files_changed, s.started_at, s.completed_at,
-                a.hostname as agent_hostname
+            SELECT s.id, s.agent_id, s.scan_type, s.status, s.files_scanned,
+                   s.files_changed, s.started_at, s.completed_at, a.hostname
             FROM fim.scans s
             JOIN fim.agents a ON s.agent_id = a.id
             WHERE a.status != 'inactive'
+            AND s.id IN (
+                SELECT DISTINCT ON (agent_id) id 
+                FROM fim.scans 
+                ORDER BY agent_id, started_at DESC
+            )
         """
-        
         params = {}
         if search:
             query_sql += " AND a.hostname ILIKE :search"
             params['search'] = f"%{search}%"
-            
-        query_sql += " ORDER BY s.agent_id, s.started_at DESC"
-        
-        # We handle pagination in UI for this view usually, or limit the agents
-        # limit here limits the number of AGENTS returned
         
         result = await db.execute(text(query_sql), params)
         rows = result.fetchall()
-        
-        # Apply limit manually if needed, but distinct on is tricky with limit
         scans = rows[:limit]
-
+        
+        # Calculate scan health for each scan
+        from datetime import datetime as dt, timezone
+        now = dt.now(timezone.utc)
+        
+        scans_with_health = []
+        for r in scans:
+            if not r.started_at:
+                scan_health = "never_scanned"
+            else:
+                hours_since = (now - r.started_at).total_seconds() / 3600
+                if hours_since < 24:
+                    scan_health = "healthy"
+                elif hours_since < 48:
+                    scan_health = "stale"
+                elif hours_since < 72:
+                    scan_health = "warning"
+                else:
+                    scan_health = "critical"
+            
+            scans_with_health.append({
+                "id": str(r.id),
+                "agent_id": str(r.agent_id),
+                "agent_hostname": r.hostname,
+                "scan_type": r.scan_type,
+                "status": r.status,
+                "files_scanned": r.files_scanned,
+                "files_changed": r.files_changed,
+                "started_at": str(r.started_at),
+                "completed_at": str(r.completed_at),
+                "scan_health": scan_health
+            })
+        
         return {
-            "scans": [
-                {
-                    "id": str(r.id),
-                    "agent_id": str(r.agent_id),
-                    "agent_hostname": r.agent_hostname,
-                    "scan_type": r.scan_type,
-                    "status": r.status,
-                    "files_scanned": r.files_scanned,
-                    "files_changed": r.files_changed,
-                    "started_at": str(r.started_at),
-                    "completed_at": str(r.completed_at)
-                } for r in scans
-            ],
-            "total": len(scans)
+            "scans": scans_with_health,
+            "total": len(scans_with_health)
         }
     except Exception as e:
         logger.error(f"List scans error: {e}")
         return {"scans": [], "total": 0}
-
 @router.get("/{scan_id}")
 async def get_scan(scan_id: str, db: AsyncSession = Depends(get_db)):
     # ... (Keep existing get_scan) ...
