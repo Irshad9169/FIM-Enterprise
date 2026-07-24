@@ -94,7 +94,7 @@ async def debug_routes():
 
 
 # === STATIC FILES (SPA Support) ===
-WEB_DIR = "/opt/fim/web"
+WEB_DIR = f"{os.environ.get('FIM_HOME', '/opt/fim')}/web"
 
 
 class SPAStaticFiles(StaticFiles):

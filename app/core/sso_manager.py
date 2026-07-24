@@ -8,7 +8,7 @@ class SSOManager:
     def __init__(self):
         self.OPENSSL_BIN = '/usr/bin/openssl'
         self.SSO_SERVER_URL = 'https://auth.qa.int.untd.com/bin/sso'
-        self.PUBLIC_KEY_PATH = '/opt/fim/config/sso-public.pem'
+        self.PUBLIC_KEY_PATH = f"{os.environ.get('FIM_HOME', '/opt/fim')}/config/sso-public.pem"
         self.APP_ID = 'FIM_ENTERPRISE' 
 
     def run_openssl_decrypt(self, data: bytes) -> Optional[bytes]:

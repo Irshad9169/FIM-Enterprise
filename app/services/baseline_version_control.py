@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
-BASELINES_GIT_DIR = "/opt/fim/baselines-git"
+BASELINES_GIT_DIR = f"{os.environ.get('FIM_HOME', '/opt/fim')}/baselines-git"
 
 
 def _git(args: List[str], cwd: str = BASELINES_GIT_DIR) -> Tuple[int, str]:

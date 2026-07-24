@@ -1,8 +1,11 @@
 """
 Configuration Management
 """
+import os
 from pydantic_settings import BaseSettings
 from typing import List, Dict, Tuple, Set, Optional, List
+
+FIM_HOME = os.environ.get("FIM_HOME", "/opt/fim")
 
 class Settings(BaseSettings):
     # Application
@@ -30,7 +33,7 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     
     class Config:
-        env_file = "/opt/fim/.env"
+        env_file = f"{FIM_HOME}/.env"
         case_sensitive = False
 
 settings = Settings()

@@ -10,6 +10,7 @@ NOTE: SSOManager is inbound-only (verifies user tokens).
 """
 import logging
 import httpx
+import os
 import re
 import subprocess
 import json
@@ -340,9 +341,9 @@ class TicketLinkerService:
         """Post a comment to RT via sendmail."""
         username  = _username_from_token(token)
         from_addr = f"{username}@{FIM_EMAIL_DOMAIN}"
-        # Resolve email from /opt/fim/email_map.conf (SSO username may differ)
+        # Resolve email from $FIM_HOME/email_map.conf (SSO username may differ)
         try:
-            with open("/opt/fim/email_map.conf") as mf:
+            with open(f"{os.environ.get('FIM_HOME', '/opt/fim')}/email_map.conf") as mf:
                 for mline in mf:
                     mline = mline.strip()
                     if mline.startswith(f"{username}="):

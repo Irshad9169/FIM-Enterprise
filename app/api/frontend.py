@@ -7,7 +7,7 @@ import os
 
 router = APIRouter()
 
-WEB_DIR = "/opt/fim/web"
+WEB_DIR = f"{os.environ.get('FIM_HOME', '/opt/fim')}/web"
 
 @router.get("/{full_path:path}")
 async def serve_frontend(full_path: str):
