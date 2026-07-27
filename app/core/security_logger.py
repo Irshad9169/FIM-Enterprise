@@ -13,26 +13,41 @@ Usage:
 import json
 import logging
 import logging.handlers
+import os
 from datetime import datetime, timezone
 from typing import Any
 
 # ── File handler for security events ────────────────────────────
-_SECURITY_LOG_PATH = "/var/log/fim-security.log"
-
-_security_file_handler = logging.handlers.RotatingFileHandler(
-    _SECURITY_LOG_PATH,
-    maxBytes=100_000_000,   # 100 MB
-    backupCount=10,
-    mode='a',
-    encoding='utf-8',
-)
-_security_file_handler.setFormatter(logging.Formatter('%(message)s'))
+# Overridable via SECURITY_LOG_PATH (e.g. in CI, or any environment where
+# /var/log isn't writable) — defaults to the same path production has
+# always used, so real deployments are unaffected.
+_SECURITY_LOG_PATH = os.environ.get("SECURITY_LOG_PATH", "/var/log/fim-security.log")
 
 _security_logger = logging.getLogger("fim.security")
 _security_logger.setLevel(logging.DEBUG)
-_security_logger.addHandler(_security_file_handler)
 # Also propagate to root logger (journald / uvicorn)
 _security_logger.propagate = True
+
+try:
+    _security_file_handler = logging.handlers.RotatingFileHandler(
+        _SECURITY_LOG_PATH,
+        maxBytes=100_000_000,   # 100 MB
+        backupCount=10,
+        mode='a',
+        encoding='utf-8',
+    )
+    _security_file_handler.setFormatter(logging.Formatter('%(message)s'))
+    _security_logger.addHandler(_security_file_handler)
+except OSError as e:
+    # Don't let a missing/unwritable log path crash the whole app at import
+    # time — this is a module-level side effect that runs the moment
+    # anything imports app.core.security_logger. Fall back to the root
+    # logger only (still visible in console/journald), and continue.
+    logging.getLogger(__name__).warning(
+        "Could not open security log file %s (%s) — security events will "
+        "only go to the standard logger, not %s. Set SECURITY_LOG_PATH to "
+        "override the path.", _SECURITY_LOG_PATH, e, _SECURITY_LOG_PATH,
+    )
 
 
 def security_log(event: str, level: str = "INFO", **fields: Any) -> None:
