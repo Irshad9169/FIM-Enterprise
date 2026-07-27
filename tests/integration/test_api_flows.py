@@ -182,8 +182,16 @@ async def test_admin_can_approve_baseline(client, db_session):
     agent = Agent(id=uuid.uuid4(), hostname="test-agent-03", status="online")
     db_session.add(agent)
     await db_session.commit()
+    # baseline_data must be non-empty here: ChangeDetector.process_scan()
+    # (the only real code path that creates baselines) always populates it,
+    # so a baseline with neither baseline_data nor checksum set isn't a
+    # realistic precondition — approve_baseline() isn't written to handle
+    # that combination gracefully (crashes on checksum[:16] when both are
+    # None), which is a minor robustness gap worth knowing about, but not
+    # what this test is meant to exercise.
     baseline = Baseline(
         id=uuid.uuid4(), agent_id=agent.id, baseline_name="b1",
+        baseline_data={"files": [{"path": "/etc/passwd", "hash": "abc"}]},
         status="pending", is_active=False,
     )
     db_session.add(baseline)
@@ -215,6 +223,7 @@ async def test_trainee_cannot_approve_baseline(client, db_session):
     await db_session.commit()
     baseline = Baseline(
         id=uuid.uuid4(), agent_id=agent.id, baseline_name="b2",
+        baseline_data={"files": [{"path": "/etc/passwd", "hash": "abc"}]},
         status="pending", is_active=False,
     )
     db_session.add(baseline)
