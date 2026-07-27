@@ -95,7 +95,7 @@ async def get_current_user(
       - Issuer (iss)
       - User exists and is active in DB
     """
-    from app.core.database import get_db
+    from app.core.database import db_manager
     from app.models import User
 
     credentials_exception = HTTPException(
@@ -121,39 +121,47 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    # GAP #12: check session is not revoked using JTI
-    token_jti = payload.get("jti")
-    if token_jti:
-        from app.services.session_service import SessionService
-        if db is None:
-            async for session in get_db():
-                db = session
-                break
-        is_valid = await SessionService.is_session_valid(db, token_jti)
-        if not is_valid:
+    # No db was injected via Depends — acquire one ourselves, and make sure
+    # we're the ones who close it. The previous version of this did
+    # `async for session in get_db(): db = session; break`, which yields
+    # once and abandons the generator — get_db()'s `finally: await
+    # session.close()` never runs, since the generator is never driven to
+    # completion or explicitly closed. That leaked one DB connection on
+    # every single authenticated request in the app (this is the only
+    # branch ever taken in practice, since nothing else supplies `db`).
+    _owns_db = db is None
+    if _owns_db:
+        db = db_manager.get_session()
+
+    try:
+        # GAP #12: check session is not revoked using JTI
+        token_jti = payload.get("jti")
+        if token_jti:
+            from app.services.session_service import SessionService
+            is_valid = await SessionService.is_session_valid(db, token_jti)
+            if not is_valid:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session has been revoked. Please log in again.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+
+        if user is None:
+            raise credentials_exception
+
+        if not user.is_active:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session has been revoked. Please log in again.",
-                headers={"WWW-Authenticate": "Bearer"},
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is disabled"
             )
-    if db is None:
-        async for session in get_db():
-            db = session
-            break
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-
-    if user is None:
-        raise credentials_exception
-
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled"
-        )
-
-    return user
+        return user
+    finally:
+        if _owns_db:
+            await db.close()
 
 
 # ══════════════════════════════════════════════════════════════════
