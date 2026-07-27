@@ -9,6 +9,13 @@ on:
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    env:
+      # app/core/config.py's Settings() is instantiated at import time
+      # (via app/core/__init__.py) and requires these two fields with no
+      # defaults. No real database or secret is needed for these unit
+      # tests — they're dummy values purely so Settings() can construct.
+      DATABASE_URL: "postgresql+asyncpg://test:test@localhost/test_db"
+      SECRET_KEY: "ci-dummy-secret-not-used-for-anything-real"
     steps:
       - uses: actions/checkout@v4
 
