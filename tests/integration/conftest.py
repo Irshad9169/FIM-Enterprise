@@ -40,12 +40,54 @@ def event_loop():
     loop.close()
 
 
+# The ORM models in app/models/models.py have drifted from the real schema —
+# some tables and columns exist only via raw SQL (text()) elsewhere in the
+# app and were never added to the SQLAlchemy models. `fim.sessions` is one
+# such table (used by app/services/session_service.py, hit on every login
+# and every authenticated request via get_current_user's session-revocation
+# check), and `fim.users` is missing last_login/last_login_ip for the same
+# reason. This supplements Base.metadata.create_all() with exactly what's
+# needed for the current test suite to run — NOT a claim that this is the
+# complete real schema. Other tables in the same situation
+# (agent_health_events, anomaly_scores, correlation_groups, whitelist_matches)
+# aren't included here because nothing in the current tests touches them;
+# add them here if a future test needs one.
+_SUPPLEMENTARY_DDL = """
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+ALTER TABLE fim.users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP;
+ALTER TABLE fim.users ADD COLUMN IF NOT EXISTS last_login_ip VARCHAR(50);
+
+CREATE TABLE IF NOT EXISTS fim.sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES fim.users(id) ON DELETE CASCADE,
+    token_jti VARCHAR(64) NOT NULL,
+    ip_address VARCHAR(50),
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_activity TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL,
+    is_revoked BOOLEAN DEFAULT false,
+    revoked_at TIMESTAMP,
+    revoked_by UUID
+);
+"""
+
+# Tables that exist only via the DDL above, not via any SQLAlchemy model —
+# Base.metadata doesn't know about these, so they need to be truncated
+# separately from the ORM-registered tables.
+_SUPPLEMENTARY_TABLES = ["fim.sessions"]
+
+
 @pytest.fixture(scope="session")
 async def _initialized_db():
     await db_manager.initialize()
     async with db_manager.engine.begin() as conn:
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS fim"))
         await conn.run_sync(Base.metadata.create_all)
+        for statement in _SUPPLEMENTARY_DDL.split(";"):
+            if statement.strip():
+                await conn.execute(text(statement))
     yield
     await db_manager.close()
 
@@ -54,7 +96,7 @@ async def _initialized_db():
 async def _clean_tables(_initialized_db):
     """Truncate every table after each test so tests never see each other's data."""
     yield
-    table_names = ", ".join(Base.metadata.tables.keys())
+    table_names = ", ".join(list(Base.metadata.tables.keys()) + _SUPPLEMENTARY_TABLES)
     async with db_manager.engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE"))
 

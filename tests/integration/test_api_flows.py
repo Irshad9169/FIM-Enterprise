@@ -16,11 +16,13 @@ which is legitimate since that function has its own dedicated unit
 tests in tests/test_security.py.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
+from jose import jwt as jose_jwt
+from sqlalchemy import text
 
-from app.core.security import create_access_token, get_password_hash
+from app.core.security import create_access_token, get_password_hash, SECRET_KEY, ALGORITHM
 from app.models.models import Agent, Baseline, User
 
 pytestmark = pytest.mark.integration
@@ -41,10 +43,28 @@ async def _create_user(db_session, role="admin", username="testuser"):
     return user
 
 
-def _auth_headers(user):
+async def _auth_headers(db_session, user):
+    """
+    Mint a JWT directly (bypassing the rate-limited /login endpoint — see
+    module docstring) AND insert the matching fim.sessions row, since
+    get_current_user() checks session validity by token jti on every
+    authenticated request (app/core/security.py, GAP #12). Without this,
+    every request using a directly-minted token gets 401 "Session has
+    been revoked" even though no session was ever revoked — none existed.
+    """
     token = create_access_token(
         {"sub": str(user.id), "username": user.username, "role": user.role}
     )
+    payload = jose_jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"require_exp": True})
+    await db_session.execute(text("""
+        INSERT INTO fim.sessions (user_id, token_jti, expires_at)
+        VALUES (:uid, :jti, :expires)
+    """), {
+        "uid": str(user.id),
+        "jti": payload["jti"],
+        "expires": datetime.utcnow() + timedelta(hours=1),
+    })
+    await db_session.commit()
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -171,7 +191,7 @@ async def test_admin_can_approve_baseline(client, db_session):
 
     resp = await client.post(
         f"/api/v1/baselines/{baseline.id}/approve",
-        headers=_auth_headers(admin),
+        headers=await _auth_headers(db_session, admin),
     )
 
     assert resp.status_code == 200
@@ -202,7 +222,7 @@ async def test_trainee_cannot_approve_baseline(client, db_session):
 
     resp = await client.post(
         f"/api/v1/baselines/{baseline.id}/approve",
-        headers=_auth_headers(trainee),
+        headers=await _auth_headers(db_session, trainee),
     )
 
     assert resp.status_code == 403
@@ -229,7 +249,7 @@ async def test_approve_nonexistent_baseline_returns_404(client, db_session):
 
     resp = await client.post(
         f"/api/v1/baselines/{uuid.uuid4()}/approve",
-        headers=_auth_headers(admin),
+        headers=await _auth_headers(db_session, admin),
     )
 
     assert resp.status_code == 404
