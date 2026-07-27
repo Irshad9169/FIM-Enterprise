@@ -39,10 +39,14 @@ async def submit_scan(raw_request: Request, db: AsyncSession = Depends(get_db)):
         scan_data = json.loads(body_bytes)
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
-    if len(scan_data.get("files", [])) > 100000:
+    # 200,000 gives headroom above real observed scans (test06 legitimately
+    # scans 108k+ files under /opt) while keeping typical payloads
+    # comfortably under the 50MB cap above — don't raise this much further
+    # without also reconsidering that relationship.
+    if len(scan_data.get("files", [])) > 200000:
         raise HTTPException(
             status_code=400,
-            detail="Too many files in scan (max 100,000)"
+            detail="Too many files in scan (max 200,000)"
         )
     # Parse body and verify signature
     try:
