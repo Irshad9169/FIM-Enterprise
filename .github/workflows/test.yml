@@ -1,4 +1,4 @@
-name: Backend unit tests
+name: Backend tests
 
 on:
   push:
@@ -7,7 +7,8 @@ on:
     branches: ["main"]
 
 jobs:
-  pytest:
+  unit:
+    name: Unit tests (no database)
     runs-on: ubuntu-latest
     env:
       # app/core/config.py's Settings() is instantiated at import time
@@ -28,4 +29,41 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Run unit tests
-        run: pytest -v
+        run: pytest -v -m "not integration"
+
+  integration:
+    name: Integration tests (real throwaway Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: fim_test
+          POSTGRES_PASSWORD: fim_test_password
+          POSTGRES_DB: fim_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Points at the ephemeral Postgres service container above — created
+      # fresh every run via Base.metadata.create_all() in
+      # tests/integration/conftest.py, never a dump of any real database.
+      DATABASE_URL: "postgresql+asyncpg://fim_test:fim_test_password@localhost:5432/fim_test"
+      SECRET_KEY: "ci-dummy-secret-not-used-for-anything-real"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run integration tests
+        run: pytest -v -m integration tests/integration
