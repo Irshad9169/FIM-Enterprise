@@ -1,0 +1,7 @@
+# Dev/test-only dependencies — NOT installed in production.
+# Production deploys use `pip install -r requirements.txt` only; this file
+# is separate on purpose so test tooling never touches what's actually
+# running on a server.
+-r requirements.txt
+pytest==7.4.3
+pytest-asyncio==0.21.1
