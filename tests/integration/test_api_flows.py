@@ -208,14 +208,15 @@ async def test_admin_can_approve_baseline(client, db_session):
 async def test_trainee_cannot_approve_baseline(client, db_session):
     """
     Per the README's Roles & Permissions table, only admin/analyst should
-    be able to approve baselines. This test encodes that INTENDED policy.
+    be able to approve baselines.
 
-    If this fails, it's surfacing a real authorization gap, not a bad
-    test: app/api/baselines.py's approve_baseline() only requires
-    Depends(get_current_user) — ANY authenticated user — with no role
-    check anywhere in the handler body. A failure here means a trainee
-    or auditor account can currently approve baselines via a direct API
-    call even though the UI hides that action for their role.
+    This test originally caught a real gap: approve_baseline() required
+    only Depends(get_current_user) — ANY authenticated user — with no
+    role check anywhere in the handler body, so a trainee or auditor
+    account could approve baselines via a direct API call even though
+    the UI hides that action for their role. Fixed by depending on
+    core/rbac.py's analyst_plus instead (admin or analyst only),
+    matching rebaseline() which had the identical gap.
     """
     trainee = await _create_user(db_session, role="trainee", username="trainee1")
     agent = Agent(id=uuid.uuid4(), hostname="test-agent-04", status="online")

@@ -11,6 +11,7 @@ from datetime import datetime
 
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.core.rbac import analyst_plus
 from app.models.models import User, Baseline
 from app.services.audit_service import AuditService
 from app.services.baseline_version_control import snapshot_baseline, get_baseline_history, get_snapshot_content, snapshot_all_approved_baselines
@@ -77,7 +78,7 @@ async def approve_baseline(
     request: Request,
     body: Optional[ApproveBaselineRequest] = None,
     db: AsyncSession = Depends(get_db),
-    u=Depends(get_current_user)
+    u=Depends(analyst_plus)
 ):
     """Approve a baseline and make it active. Deactivates any other active baseline for same agent."""
     try:
@@ -138,7 +139,7 @@ async def rebaseline(
     req: RebaselineRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    u=Depends(get_current_user)
+    u=Depends(analyst_plus)
 ):
     """
     Create a new baseline from the latest scan data for the same agent.
