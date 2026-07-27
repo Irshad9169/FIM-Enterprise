@@ -9,6 +9,7 @@ import json
 import yaml
 import hashlib
 import hmac
+import fnmatch
 import logging
 import platform
 import socket
@@ -216,14 +217,22 @@ class FIMClient:
 
 class FileScanner:
     def __init__(self, paths: List[Union[str, Dict]], hash_algo: str = 'sha256'):
-        # Normalize paths: extract 'path' string if item is a dict
-        self.paths = []
+        # Normalize paths: each monitored path keeps its own exclude_patterns
+        # (config['monitoring']['paths'] entries look like
+        #  {path: /opt, recursive: true, exclude_patterns: [...]}).
+        # Previously only 'path' was ever read here — exclude_patterns was
+        # silently dropped, so every exclusion entry in agent_config.yaml
+        # (fim*, IBM*, EMPsysedge*, etc.) had zero effect on what got scanned.
+        self.path_configs = []
         for p in paths:
             if isinstance(p, dict):
-                self.paths.append(p.get('path'))
+                self.path_configs.append({
+                    'path': p.get('path'),
+                    'exclude_patterns': p.get('exclude_patterns') or [],
+                })
             else:
-                self.paths.append(str(p))
-                
+                self.path_configs.append({'path': str(p), 'exclude_patterns': []})
+
         self.hash_algo = hash_algo
         self.logger = logging.getLogger('FIMAgent.Scanner')
 
@@ -239,24 +248,64 @@ class FileScanner:
             self.logger.warning(f"Failed to hash {file_path}: {e}")
             return ""
 
-    def scan(self) -> List[Dict]:
-        """Scan all monitored paths"""
-        results = []
-        self.logger.info(f"Starting scan of {len(self.paths)} paths")
+    @staticmethod
+    def _is_excluded(file_path: str, base_path: str, exclude_patterns: List[str]) -> bool:
+        """
+        Check file_path against exclude_patterns (glob-style), scoped to
+        base_path. Matches every path-suffix below base_path, not just the
+        full relative path or the bare filename, so a pattern works
+        regardless of how deep the match is nested:
+          - 'IBM*'          matches a component named IBM, IBM-something, ... anywhere
+          - '__pycache__/*' matches anything inside any __pycache__ dir, any depth
+          - '*.tmp'         matches any file ending in .tmp, any depth
+        """
+        if not exclude_patterns:
+            return False
+        try:
+            rel_path = os.path.relpath(file_path, base_path)
+        except ValueError:
+            rel_path = file_path
+        parts = rel_path.split(os.sep)
+        suffixes = [os.sep.join(parts[i:]) for i in range(len(parts))]
+        return any(
+            fnmatch.fnmatch(suffix, pattern)
+            for pattern in exclude_patterns
+            for suffix in suffixes
+        )
 
-        for path in self.paths:
-            if not os.path.exists(path):
+    def scan(self) -> List[Dict]:
+        """Scan all monitored paths, honoring each path's own exclude_patterns"""
+        results = []
+        self.logger.info(f"Starting scan of {len(self.path_configs)} paths")
+
+        for path_config in self.path_configs:
+            path = path_config['path']
+            exclude_patterns = path_config['exclude_patterns']
+
+            if not path or not os.path.exists(path):
                 self.logger.warning(f"Path not found: {path}")
                 continue
 
             if os.path.isfile(path):
+                if self._is_excluded(path, path, exclude_patterns):
+                    continue
                 file_info = self._process_file(path)
                 if file_info:
                     results.append(file_info)
             else:
-                for root, _, files in os.walk(path):
+                for root, dirs, files in os.walk(path):
+                    # Prune excluded directories in place so os.walk never
+                    # descends into them at all (not just filters after the
+                    # fact) — this is what actually stops /opt/IBM/* from
+                    # being scanned, instead of just discarding the results.
+                    dirs[:] = [
+                        d for d in dirs
+                        if not self._is_excluded(os.path.join(root, d), path, exclude_patterns)
+                    ]
                     for file in files:
                         file_path = os.path.join(root, file)
+                        if self._is_excluded(file_path, path, exclude_patterns):
+                            continue
                         file_info = self._process_file(file_path)
                         if file_info:
                             results.append(file_info)
