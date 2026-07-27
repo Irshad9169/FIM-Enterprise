@@ -1,0 +1,22 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = ["archive", "venv", ".venv"]
+
+[tool.ruff.lint]
+# Starting baseline for a large, organically-grown codebase with no prior
+# linting at all: pyflakes (F) is the highest-value ruleset here — it catches
+# undefined names and unused imports, which have already turned up as real
+# bugs by hand (app/api/mfa.py referencing MFAConfirmRequest/verify_mfa_code,
+# neither defined or imported — that module can't even be imported today).
+# E/W (pycodestyle) catch basic style issues. Deliberately NOT enabling
+# stricter rulesets (B, C90, N, UP, ...) yet — that's a much bigger, separate
+# cleanup effort once the codebase has had a chance to address what a basic
+# pass already finds.
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # line length — not enforcing yet on a codebase with no prior limit
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["F401"]  # test fixtures often import for side effects (model registration)
