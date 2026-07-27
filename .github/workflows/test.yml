@@ -10,6 +10,7 @@ jobs:
   unit:
     name: Unit tests (no database)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       # app/core/config.py's Settings() is instantiated at import time
       # (via app/core/__init__.py) and requires these two fields with no
@@ -34,6 +35,7 @@ jobs:
   integration:
     name: Integration tests (real throwaway Postgres)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     services:
       postgres:
         image: postgres:15

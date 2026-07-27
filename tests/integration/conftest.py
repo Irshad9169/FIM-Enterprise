@@ -9,13 +9,19 @@ but for testing purposes the ORM models ARE the source of truth for what the
 application code actually expects to query — so this is both simpler and more
 accurate than depending on a dump from a specific point-in-time production DB.
 
+The DB fixture is function-scoped (fresh schema created and dropped for every
+single test) rather than session-scoped. That's slower, but deliberately so:
+a session-scoped async fixture needs a session-scoped event loop, which is a
+known source of tests hanging indefinitely (rather than failing cleanly) when
+mixed with pytest-asyncio's `auto` mode. Function-scoped means every fixture
+runs on the same per-test event loop pytest-asyncio already manages by
+default — no custom event_loop fixture needed, no loop-mismatch class of bug
+possible. Revisit only if test runtime actually becomes a problem.
+
 Requires DATABASE_URL (env var) to point at a real, empty-is-fine Postgres.
 In CI this is the `postgres` service container (see .github/workflows/test.yml).
-Locally, point it at any throwaway Postgres — never a real database with real
-data, since tables get truncated between every test.
+Locally, point it at any throwaway Postgres.
 """
-import asyncio
-
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 
@@ -24,21 +30,6 @@ import pytest
 from app.core.database import Base, db_manager
 import app.models  # noqa: F401 — registers every model on Base.metadata
 import app.main as main_module
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """
-    Session-scoped event loop so the session-scoped _initialized_db fixture
-    below (and the asyncpg connection pool it creates) is used from a single
-    consistent loop across every test in the run — mixing a session-scoped
-    async resource with pytest-asyncio's default per-function loop raises
-    "attached to a different loop" errors otherwise.
-    """
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
 
 # The ORM models in app/models/models.py have drifted from the real schema —
 # some tables and columns exist only via raw SQL (text()) elsewhere in the
@@ -73,13 +64,8 @@ CREATE TABLE IF NOT EXISTS fim.sessions (
 );
 """
 
-# Tables that exist only via the DDL above, not via any SQLAlchemy model —
-# Base.metadata doesn't know about these, so they need to be truncated
-# separately from the ORM-registered tables.
-_SUPPLEMENTARY_TABLES = ["fim.sessions"]
 
-
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def _initialized_db():
     await db_manager.initialize()
     async with db_manager.engine.begin() as conn:
@@ -89,16 +75,9 @@ async def _initialized_db():
             if statement.strip():
                 await conn.execute(text(statement))
     yield
-    await db_manager.close()
-
-
-@pytest.fixture(autouse=True)
-async def _clean_tables(_initialized_db):
-    """Truncate every table after each test so tests never see each other's data."""
-    yield
-    table_names = ", ".join(list(Base.metadata.tables.keys()) + _SUPPLEMENTARY_TABLES)
     async with db_manager.engine.begin() as conn:
-        await conn.execute(text(f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE"))
+        await conn.execute(text("DROP SCHEMA IF EXISTS fim CASCADE"))
+    await db_manager.close()
 
 
 @pytest.fixture
