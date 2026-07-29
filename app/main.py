@@ -20,7 +20,7 @@ from app.api import (
     sessions,
     health, auth_enhanced as auth, agents, alerts, scans,
     baselines, dashboard, reports, exclusions,
-    users, audit, integrations, auth_sso,
+    users, audit, auth_sso,
     anomalies)
 
 # Setup specialized logger for routing debug
@@ -84,7 +84,6 @@ app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 app.include_router(exclusions.router, prefix="/api/v1/exclusions", tags=["exclusions"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(audit.router, prefix="/api/v1/audit", tags=["audit"])
-app.include_router(integrations.router, prefix="/api/v1/integrations", tags=["integrations"])
 app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["sessions"])
 
 

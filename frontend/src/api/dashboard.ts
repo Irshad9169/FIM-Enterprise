@@ -172,10 +172,6 @@ export const publishReport = (reportId: string, force = false) =>
     body:   JSON.stringify({ force }),
   });
 
-// ── Integrations (legacy search) ──────────────────────────────────────────────
-export const searchTickets = (hostname: string) =>
-  apiCall(`/api/v1/integrations/search?hostname=${encodeURIComponent(hostname)}`);
-
 // ── Administration ────────────────────────────────────────────────────────────
 export const fetchUsers  = () => apiCall("/api/v1/users");
 export const createUser  = (data: Record<string, unknown>) =>

@@ -156,106 +156,106 @@ class ReportScheduler:
                 logger.info(f"Report for {report_date} already exists — skipping")
                 return
 
-                # Fetch alerts for the day
-                res = await db.execute(text("""
-                    SELECT a.id, a.file_path, a.alert_type, a.severity,
-                           a.previous_state, a.current_state, a.detected_at,
-                           ag.hostname, ag.ip_address
-                    FROM fim.alerts a
-                    LEFT JOIN fim.agents ag ON a.agent_id = ag.id
-                    WHERE DATE(a.detected_at) = :d
-                    ORDER BY ag.hostname, a.detected_at
-                """), {"d": report_date})
-                alerts = res.fetchall()
+            # Fetch alerts for the day
+            res = await db.execute(text("""
+                SELECT a.id, a.file_path, a.alert_type, a.severity,
+                       a.previous_state, a.current_state, a.detected_at,
+                       ag.hostname, ag.ip_address
+                FROM fim.alerts a
+                LEFT JOIN fim.agents ag ON a.agent_id = ag.id
+                WHERE DATE(a.detected_at) = :d
+                ORDER BY ag.hostname, a.detected_at
+            """), {"d": report_date})
+            alerts = res.fetchall()
 
-                report_id = uuid.uuid4()
-                agents = list({a.hostname for a in alerts if a.hostname})
+            report_id = uuid.uuid4()
+            agents = list({a.hostname for a in alerts if a.hostname})
 
-                report = DailyReport(
-                    id=report_id,
-                    report_date=report_date,
-                    agent_list=agents,
-                    submitted_agents=[],
-                    total_added=sum(1 for a in alerts if "created" in str(a.alert_type).lower()),
-                    total_removed=sum(1 for a in alerts if "deleted" in str(a.alert_type).lower()),
-                    total_changed=sum(1 for a in alerts if "modified" in str(a.alert_type).lower()),
-                    total_changes=len(alerts),
-                    total_servers=len(agents),
-                    agents_total=len(agents),
-                    status="pending",
-                    # generated_by left as None for auto-generated reports
-                )
-                db.add(report)
-                await db.flush()
+            report = DailyReport(
+                id=report_id,
+                report_date=report_date,
+                agent_list=agents,
+                submitted_agents=[],
+                total_added=sum(1 for a in alerts if "created" in str(a.alert_type).lower()),
+                total_removed=sum(1 for a in alerts if "deleted" in str(a.alert_type).lower()),
+                total_changed=sum(1 for a in alerts if "modified" in str(a.alert_type).lower()),
+                total_changes=len(alerts),
+                total_servers=len(agents),
+                agents_total=len(agents),
+                status="pending",
+                # generated_by left as None for auto-generated reports
+            )
+            db.add(report)
+            await db.flush()
 
-                # Create report changes
-                for a in alerts:
-                    try:
-                        p = json.loads(a.previous_state) if isinstance(a.previous_state, str) else (a.previous_state or {})
-                        c = json.loads(a.current_state) if isinstance(a.current_state, str) else (a.current_state or {})
-                        change = ReportChange(
-                            id=uuid.uuid4(),
-                            report_id=report_id,
-                            alert_id=a.id,
-                            agent_hostname=a.hostname or "unknown",
-                            file_path=a.file_path or "unknown",
-                            change_type=(
-                                "added" if "created" in str(a.alert_type).lower() else
-                                "removed" if "deleted" in str(a.alert_type).lower() else
-                                "changed"
-                            ),
-                            severity=a.severity or "medium",
-                            current_mtime=a.detected_at,
-                            baseline_hash=p.get("hash"),
-                            current_hash=c.get("hash"),
-                            baseline_size=p.get("size"),
-                            current_size=c.get("size"),
-                            baseline_mtime=(
-                                datetime.fromisoformat(str(p["mtime"]).replace("Z", "+00:00"))
-                                if p.get("mtime") else None
-                            ),
-                        )
-                        db.add(change)
-                    except Exception:
-                        continue
-
-                # Create report_agents entries
-                agent_ips = {}
-                for a in alerts:
-                    if a.hostname and a.hostname not in agent_ips:
-                        agent_ips[a.hostname] = a.ip_address
-
-                for hostname in agents:
-                    ra = ReportAgent(
+            # Create report changes
+            for a in alerts:
+                try:
+                    p = json.loads(a.previous_state) if isinstance(a.previous_state, str) else (a.previous_state or {})
+                    c = json.loads(a.current_state) if isinstance(a.current_state, str) else (a.current_state or {})
+                    change = ReportChange(
                         id=uuid.uuid4(),
                         report_id=report_id,
-                        agent_hostname=hostname,
-                        ip_address=agent_ips.get(hostname),
-                        status="pending",
+                        alert_id=a.id,
+                        agent_hostname=a.hostname or "unknown",
+                        file_path=a.file_path or "unknown",
+                        change_type=(
+                            "added" if "created" in str(a.alert_type).lower() else
+                            "removed" if "deleted" in str(a.alert_type).lower() else
+                            "changed"
+                        ),
+                        severity=a.severity or "medium",
+                        current_mtime=a.detected_at,
+                        baseline_hash=p.get("hash"),
+                        current_hash=c.get("hash"),
+                        baseline_size=p.get("size"),
+                        current_size=c.get("size"),
+                        baseline_mtime=(
+                            datetime.fromisoformat(str(p["mtime"]).replace("Z", "+00:00"))
+                            if p.get("mtime") else None
+                        ),
                     )
-                    db.add(ra)
+                    db.add(change)
+                except Exception:
+                    continue
 
-                await db.commit()
-                logger.info(
-                    f"Auto-generated report for {report_date}: "
-                    f"{len(alerts)} alerts, {len(agents)} agents, "
-                    f"report_id={report_id}"
+            # Create report_agents entries
+            agent_ips = {}
+            for a in alerts:
+                if a.hostname and a.hostname not in agent_ips:
+                    agent_ips[a.hostname] = a.ip_address
+
+            for hostname in agents:
+                ra = ReportAgent(
+                    id=uuid.uuid4(),
+                    report_id=report_id,
+                    agent_hostname=hostname,
+                    ip_address=agent_ips.get(hostname),
+                    status="pending",
                 )
+                db.add(ra)
 
-                # Send email notification
-                try:
-                    from app.services.email_service import EmailService
-                    # Get analyst emails from DB
-                    email_result = await db.execute(text(
-                        "SELECT email FROM fim.users WHERE role IN ('admin', 'analyst') AND is_active = true"
-                    ))
-                    recipients = [row.email for row in email_result.fetchall() if row.email]
-                    if recipients:
-                        EmailService.notify_report_generated(
-                            str(report_date), len(agents), len(alerts), recipients
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to send report notification: {e}")
+            await db.commit()
+            logger.info(
+                f"Auto-generated report for {report_date}: "
+                f"{len(alerts)} alerts, {len(agents)} agents, "
+                f"report_id={report_id}"
+            )
+
+            # Send email notification
+            try:
+                from app.services.email_service import EmailService
+                # Get analyst emails from DB
+                email_result = await db.execute(text(
+                    "SELECT email FROM fim.users WHERE role IN ('admin', 'analyst') AND is_active = true"
+                ))
+                recipients = [row.email for row in email_result.fetchall() if row.email]
+                if recipients:
+                    EmailService.notify_report_generated(
+                        str(report_date), len(agents), len(alerts), recipients
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to send report notification: {e}")
 
         except Exception as e:
             await db.rollback()
