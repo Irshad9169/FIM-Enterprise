@@ -162,11 +162,13 @@ export function buildDetailEntries(
 // ── Host clubbing ─────────────────────────────────────────────────────────
 
 function changeFingerprint(c: ReportChangeDetail): string {
-  // Same file + same change type + same resulting hash = the same actual
-  // change, not just coincidentally the same path (e.g. /etc/mtab changes
-  // on every host with a different hash each time — that must NOT count
-  // as a shared pattern).
-  return `${normalizedType(c)}:${c.file_path}:${c.current_hash ?? ""}`;
+  // Path + change type only — hash is deliberately excluded here. An
+  // analyst working this report clubs hosts by "did the same file change,"
+  // not by byte-identical content; if a specific file needs a closer look
+  // they check it directly on the server. (Hash is still recorded on every
+  // change record and can be brought back for a different, more forensic
+  // report — just not this one.)
+  return `${normalizedType(c)}:${c.file_path}`;
 }
 
 /** Jaccard similarity between two hosts' change sets, by fingerprint. */
