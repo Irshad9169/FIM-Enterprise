@@ -118,10 +118,18 @@ async def agent_heartbeat(
     if request.current_config:
         agent.reported_config = request.current_config
 
-    # Self-integrity: alert once per NEW mismatch (binary_hash_mismatch_since
-    # gates it), not every heartbeat while it stays mismatched — mirrors the
-    # transition-based approach used for stale-agent alerting.
-    if request.script_hash and agent.binary_hash and request.script_hash != agent.binary_hash:
+    # Self-integrity: seed the trust-on-first-sight baseline here too, not
+    # just in register_agent() — an agent that already had a saved agent_id
+    # before this feature existed will never call /register again, so
+    # register_agent()'s seeding alone would leave binary_hash permanently
+    # null for every pre-existing agent.
+    if request.script_hash and not agent.binary_hash:
+        agent.binary_hash = request.script_hash
+
+    # Alert once per NEW mismatch (binary_hash_mismatch_since gates it), not
+    # every heartbeat while it stays mismatched — mirrors the transition-based
+    # approach used for stale-agent alerting.
+    elif request.script_hash and agent.binary_hash and request.script_hash != agent.binary_hash:
         agent.pending_binary_hash = request.script_hash
         if agent.binary_hash_mismatch_since is None:
             agent.binary_hash_mismatch_since = datetime.utcnow()
