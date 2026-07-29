@@ -9,9 +9,18 @@ import uuid
 
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.services.audit_service import AuditService
 from app.models.models import User, Agent, ScanRequest
 
 router = APIRouter()
+
+
+def _client_ip(request: Request) -> str:
+    """Extract client IP from request, respecting X-Forwarded-For (mirrors app/api/reports.py's helper)."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else ""
 
 class AgentRegisterRequest(BaseModel):
     hostname: str
@@ -186,6 +195,7 @@ async def agent_heartbeat(
 @router.post("/{agent_id}/accept-binary-hash")
 async def accept_agent_binary_hash(
     agent_id: str,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(analyst_plus)
 ):
@@ -207,10 +217,19 @@ async def accept_agent_binary_hash(
     if not agent.binary_hash_mismatch_since or not agent.pending_binary_hash:
         raise HTTPException(status_code=400, detail="No pending binary hash mismatch for this agent")
 
+    old_hash = agent.binary_hash
     accepted_hash = agent.pending_binary_hash
     agent.binary_hash = accepted_hash
     agent.pending_binary_hash = None
     agent.binary_hash_mismatch_since = None
+    await db.commit()
+
+    await AuditService.log(
+        db, current_user.id, current_user.username, "AGENT_BINARY_HASH_ACCEPTED",
+        resource_type="agent", resource_id=agent.id,
+        details={"hostname": agent.hostname, "old_hash": old_hash, "accepted_hash": accepted_hash},
+        ip_address=_client_ip(http_request),
+    )
     await db.commit()
 
     return {"message": "Binary hash accepted as new baseline", "binary_hash": accepted_hash}
@@ -219,7 +238,8 @@ async def accept_agent_binary_hash(
 @router.put("/{agent_id}/config")
 async def push_agent_config(
     agent_id: str,
-    request: AgentConfigPushRequest,
+    body: AgentConfigPushRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(analyst_plus)
 ):
@@ -238,8 +258,25 @@ async def push_agent_config(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    agent.desired_config = {"paths": [p.model_dump() for p in request.paths]}
+    old_paths = (agent.desired_config or {}).get("paths")
+    new_paths = [p.model_dump() for p in body.paths]
+    agent.desired_config = {"paths": new_paths}
     agent.desired_config_version = (agent.desired_config_version or 0) + 1
+    await db.commit()
+
+    # Security-relevant: this changes what a monitoring agent actually
+    # watches, so it needs a trail like any other admin action here.
+    await AuditService.log(
+        db, current_user.id, current_user.username, "AGENT_CONFIG_PUSHED",
+        resource_type="agent", resource_id=agent.id,
+        details={
+            "hostname": agent.hostname,
+            "old_paths": old_paths,
+            "new_paths": new_paths,
+            "desired_config_version": agent.desired_config_version,
+        },
+        ip_address=_client_ip(http_request),
+    )
     await db.commit()
 
     return {
