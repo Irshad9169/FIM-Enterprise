@@ -208,14 +208,14 @@ class Scan(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id = Column(UUID(as_uuid=True), ForeignKey('fim.agents.id'), nullable=False)
     scan_type = Column(String(50), default="full")
-    status = Column(String(50), default="running")
+    status = Column(String(20), default="running")
     files_scanned = Column(Integer, default=0)
     files_changed = Column(Integer, default=0)
     scan_duration = Column(Integer, default=0)
     scan_data = Column(JSONB)
-    started_at = Column(DateTime, default=datetime.utcnow)
-    completed_at = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    completed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 class WhitelistRule(Base):
     __tablename__ = "whitelist_rules"

@@ -48,7 +48,14 @@ UNMANAGED_TABLES = {
     "anomaly_scores",
     "correlation_groups",
     "whitelist_matches",
-    "rt_ticket_cache",
+    # Found via the actual baseline autogenerate diff against production —
+    # all pre-existing, real tables with data, just never modeled:
+    "file_changes",
+    "baseline_history",
+    "retention_policies",
+    "api_keys",
+    "integration_settings",
+    "scans_archive",
 }
 
 # This app only manages the `fim` schema — ignore anything Alembic finds in
@@ -67,6 +74,13 @@ def include_name(name, type_, parent_names):
 
 def include_object(object, name, type_, reflected, compare_to):
     if type_ == "table" and reflected and compare_to is None and name in UNMANAGED_TABLES:
+        return False
+    # Indexes/unique constraints/FKs were never explicitly modeled in the ORM
+    # (no Index()/index=True usage anywhere) — modeling every one of them
+    # correctly is a separate, much bigger undertaking than this adoption
+    # pass. Out of scope for now: Alembic manages tables/columns here, not
+    # index or constraint naming/existence.
+    if type_ in ("index", "unique_constraint", "foreign_key_constraint"):
         return False
     return True
 

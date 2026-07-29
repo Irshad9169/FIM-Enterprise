@@ -18,7 +18,11 @@ class DailyReport(Base):
 
     id                      = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     report_type             = Column(String(20), default="daily")
-    report_date             = Column(Date, nullable=False, unique=True)
+    # NOTE: not actually NOT NULL/UNIQUE at the DB level today (confirmed via
+    # autogenerate diff against live schema) — left un-constrained here to
+    # match reality rather than risk an ALTER on existing data; app code
+    # always supplies report_date regardless.
+    report_date             = Column(Date)
 
     # Date range (custom reports)
     date_from               = Column(Date)
@@ -39,9 +43,9 @@ class DailyReport(Base):
 
     # Agent tracking
     # agent_list is text[] in DB
-    agent_list              = Column(ARRAY(String))
+    agent_list              = Column(ARRAY(Text))
     # submitted_agents tracks hostnames that have been submitted
-    submitted_agents        = Column(ARRAY(String), default=list)
+    submitted_agents        = Column(ARRAY(Text), default=list)
     # agents_total added by migration 002
     agents_total            = Column(Integer, default=0)
 
@@ -115,7 +119,7 @@ class ReportChange(Base):
 
     # RT / ticket linking — use these existing columns
     external_ticket_id      = Column(String(50))        # primary RT# for this change
-    linked_rt_tickets       = Column(ARRAY(String))     # confirmed RT links (text[])
+    linked_rt_tickets       = Column(ARRAY(Text))       # confirmed RT links (text[])
     matched_rt_tickets      = Column(JSONB)             # auto-matched (read-only from correlation)
     rt_ticket_manually_added = Column(Boolean, default=False)
 
@@ -154,7 +158,7 @@ class ReportAgent(Base):
     correlation_note    = Column(Text)
 
     # Workflow state: pending / correlated / submitted / skipped
-    status              = Column(Text, default="pending")
+    status              = Column(Text, nullable=False, default="pending")
     is_skipped          = Column(Boolean, default=False)
     skip_reason         = Column(Text)
 
@@ -208,7 +212,7 @@ class RTTicketCache(Base):
     queue        = Column(String(100))
     created      = Column(DateTime)
     last_updated = Column(DateTime)
-    keywords     = Column(ARRAY(String))    # used for hostname search
+    keywords     = Column(ARRAY(Text))      # used for hostname search
     ticket_data  = Column(JSONB)
     cached_at    = Column(DateTime, server_default=func.now())
     expires_at   = Column(DateTime)
