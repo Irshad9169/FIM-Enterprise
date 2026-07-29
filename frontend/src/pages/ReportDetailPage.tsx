@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   fetchReportDetail, correlateReport, updateReportAgent,
   submitAgent, publishReport, updateReportNotes, updateReportStatus,
@@ -12,8 +12,12 @@ import type {
 import {
   ArrowLeft, Printer, CheckCircle, RotateCcw, Send, BookOpen,
   Link as LinkIcon, Search, ChevronDown, ChevronUp, Edit2,
-  SkipForward, AlertTriangle, Check, X, ExternalLink, Download,
+  SkipForward, AlertTriangle, Check, X, ExternalLink, Download, LayoutGrid, List,
 } from "lucide-react";
+import { GroupedChangesView } from "../components/GroupedChangesView";
+import { clubHosts, type HostChanges } from "../lib/reportGrouping";
+
+type ViewMode = "grouped" | "classic";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -339,8 +343,8 @@ function ChangeRow({ change, reportId }: { change: ReportChangeDetail; reportId:
 // Agent Card
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AgentCard({ agent, report, defaultExpanded }: {
-  agent: ReportAgent; report: DailyReportDetail; defaultExpanded: boolean;
+function AgentCard({ agent, report, defaultExpanded, viewMode = "classic" }: {
+  agent: ReportAgent; report: DailyReportDetail; defaultExpanded: boolean; viewMode?: ViewMode;
 }) {
   const qc = useQueryClient();
   const [expanded,     setExpanded]     = useState(defaultExpanded);
@@ -436,12 +440,18 @@ function AgentCard({ agent, report, defaultExpanded }: {
           <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
             {/* Changes */}
             <div className="lg:col-span-2 max-h-72 overflow-y-auto bg-slate-950 p-3 space-y-2">
-              {agent.changes.length === 0 && (
-                <div className="text-slate-500 text-xs italic py-4 text-center">No changes for this agent.</div>
+              {viewMode === "grouped" ? (
+                <GroupedChangesView changes={agent.changes} />
+              ) : (
+                <>
+                  {agent.changes.length === 0 && (
+                    <div className="text-slate-500 text-xs italic py-4 text-center">No changes for this agent.</div>
+                  )}
+                  {agent.changes.map((ch, idx) => (
+                    <ChangeRow key={ch.id || idx} change={ch} reportId={report.id} />
+                  ))}
+                </>
               )}
-              {agent.changes.map((ch, idx) => (
-                <ChangeRow key={ch.id || idx} change={ch} reportId={report.id} />
-              ))}
             </div>
 
             {/* Tickets + note */}
@@ -483,6 +493,115 @@ function AgentCard({ agent, report, defaultExpanded }: {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Host Group Card — grouped-view only. Multiple hosts sharing one
+// categorized change summary (see GroupedChangesView), but each host still
+// gets its own independent status/RT/submit/skip controls below — that
+// workflow is a real per-host DB operation (fim.report_agents) and must
+// keep working exactly as it does in AgentCard, regardless of how the
+// change list itself is displayed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function HostActionRow({ agent, report }: { agent: ReportAgent; report: DailyReportDetail }) {
+  const qc = useQueryClient();
+  const [editModal, setEditModal] = useState(false);
+  const [submitModal, setSubmitModal] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  const effectiveRt = agent.manual_rt || agent.correlated_rt;
+
+  const handleFindTickets = async () => {
+    setSearching(true);
+    try {
+      await findTicketsForAgent(report.id, agent.agent_hostname);
+      qc.invalidateQueries({ queryKey: ["report", report.id] });
+    } finally { setSearching(false); }
+  };
+
+  const handleSkip = async () => {
+    await updateReportAgent(report.id, agent.agent_hostname, {
+      is_skipped: true, skip_reason: "Skipped by analyst",
+    });
+    qc.invalidateQueries({ queryKey: ["report", report.id] });
+  };
+
+  return (
+    <>
+      {editModal   && <EditAgentModal   agent={agent} reportId={report.id} onClose={() => setEditModal(false)} />}
+      {submitModal && <SubmitAgentModal agent={agent} reportId={report.id} onClose={() => setSubmitModal(false)} />}
+      <div className="flex items-center gap-2 text-xs py-1 flex-wrap">
+        <span className="font-mono font-bold text-white min-w-[15ch]">{agent.agent_hostname}</span>
+        <StatusBadge status={agent.status} map={AGENT_STATUS_COLORS} />
+        {effectiveRt && (
+          <a href={`https://tickets.int.untd.com/Ticket/Display.html?id=${effectiveRt}`} target="_blank" rel="noopener noreferrer"
+            className="text-blue-300 font-mono hover:underline">RT#{effectiveRt}</a>
+        )}
+        {agent.correlated_cmr && <span className="text-cyan-300 font-mono">CMR#{agent.correlated_cmr}</span>}
+
+        {agent.status !== "submitted" && agent.status !== "skipped" && (
+          <div className="flex items-center gap-1 ml-auto">
+            <button onClick={handleFindTickets} disabled={searching} title="Search RT & CMR"
+              className="p-1 rounded bg-slate-700 text-cyan-400 hover:bg-cyan-900/40 disabled:opacity-50">
+              {searching ? <RotateCcw size={11} className="animate-spin" /> : <Search size={11} />}
+            </button>
+            <button onClick={() => setEditModal(true)} title="Edit" className="p-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600">
+              <Edit2 size={11} />
+            </button>
+            <button onClick={() => setSubmitModal(true)}
+              className="px-2 py-1 rounded bg-green-700 text-white hover:bg-green-600 flex items-center gap-1">
+              <Send size={11} /> Submit
+            </button>
+            <button onClick={handleSkip} title="Skip" className="p-1 rounded bg-slate-700 text-slate-400 hover:bg-slate-600">
+              <SkipForward size={11} />
+            </button>
+          </div>
+        )}
+        {agent.status === "submitted" && <span className="ml-auto text-green-400 flex items-center gap-1"><Check size={11} /> Done</span>}
+        {agent.status === "skipped"   && <span className="ml-auto text-slate-400 flex items-center gap-1"><SkipForward size={11} /> Skipped</span>}
+      </div>
+    </>
+  );
+}
+
+function HostGroupCard({ hostnames, changes, agentsByHostname, report }: {
+  hostnames: string[]; changes: ReportChangeDetail[];
+  agentsByHostname: Record<string, ReportAgent>; report: DailyReportDetail;
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="bg-slate-900 border border-violet-800/40 rounded-lg overflow-hidden mb-3">
+      <div className="p-3 bg-violet-900/10 border-b border-violet-800/30 cursor-pointer hover:bg-violet-900/20 transition-colors"
+        onClick={() => setExpanded(p => !p)}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
+              Identical changes · {hostnames.length} hosts
+            </span>
+            {hostnames.map(h => (
+              <span key={h} className="font-mono text-xs font-bold text-white bg-slate-950/50 border border-violet-800/40 rounded px-2 py-0.5">
+                {h}
+              </span>
+            ))}
+          </div>
+          {expanded ? <ChevronUp size={15} className="text-slate-500" /> : <ChevronDown size={15} className="text-slate-500" />}
+        </div>
+      </div>
+
+      {expanded && (
+        <>
+          <div className="p-3 bg-slate-950/30 border-b border-slate-800 space-y-1">
+            {hostnames.map(h => agentsByHostname[h] && (
+              <HostActionRow key={h} agent={agentsByHostname[h]} report={report} />
+            ))}
+          </div>
+          <GroupedChangesView changes={changes} />
+        </>
+      )}
+    </div>
+  );
+}
+
 function TicketChip({ ticket, color }: { ticket: ReportTicket; color: "blue" | "cyan" }) {
   const cls = color === "blue"
     ? "border-blue-900/50 bg-blue-900/10 text-blue-400"
@@ -508,13 +627,20 @@ function TicketChip({ ticket, color }: { ticket: ReportTicket; color: "blue" | "
 // Pre-correlation placeholder
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PreCorrelationView({ report }: { report: DailyReportDetail }) {
+function PreCorrelationView({ report, viewMode }: { report: DailyReportDetail; viewMode: ViewMode }) {
   const byAgent: Record<string, typeof report.details> = {};
   for (const d of report.details) {
     const host = d.agent_hostname || "unknown";
     if (!byAgent[host]) byAgent[host] = [];
     byAgent[host].push(d);
   }
+
+  const hostChanges: HostChanges[] = Object.entries(byAgent).map(([hostname, changes]) => ({ hostname, changes }));
+  const { groups, solos } = useMemo(
+    () => (viewMode === "grouped" ? clubHosts(hostChanges) : { groups: [], solos: hostChanges }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewMode, report.details],
+  );
 
   return (
     <div className="space-y-3">
@@ -528,53 +654,74 @@ function PreCorrelationView({ report }: { report: DailyReportDetail }) {
         </div>
       </div>
 
-      {Object.entries(byAgent).map(([host, changes]) => (
-        <div key={host} className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-          <div className="px-4 py-2 bg-slate-800/50 border-b border-slate-800 flex justify-between">
-            <span className="font-mono font-bold text-white text-sm">{host}</span>
-            <span className="text-slate-400 text-xs">{changes.length} changes</span>
-          </div>
-          <div className="divide-y divide-slate-800/50">
-            {changes.map((c, idx) => (
-              <div key={idx} className="px-4 py-2.5 text-xs font-mono">
-                {/* File path + type */}
-                <div className="flex items-center gap-2 mb-1.5">
-                  <SeverityDot severity={c.severity} />
-                  <span className="text-slate-500 uppercase w-16">{c.change_type}</span>
-                  <span className="text-pink-400 truncate">{c.file_path}</span>
-                </div>
-                {/* Hash diff */}
-                {(c.baseline_hash || c.current_hash) && (
-                  <div className="ml-[4.5rem] space-y-0.5 text-[10px]">
-                    <div>
-                      <span className="text-orange-400 font-bold">Hash: </span>
-                      <span className="text-slate-500">{c.baseline_hash?.slice(0, 16) || 'N/A'}</span>
-                      <span className="text-slate-600"> → </span>
-                      <span className="text-slate-300">{c.current_hash?.slice(0, 16) || 'N/A'}</span>
-                    </div>
-                    {/* Size diff */}
-                    {(c.baseline_size != null || c.current_size != null) && (
-                      <div>
-                        <span className="text-sky-400 font-bold">Size: </span>
-                        <span className="text-slate-500">{c.baseline_size ?? 'N/A'}</span>
-                        <span className="text-slate-600"> → </span>
-                        <span className="text-slate-300">{c.current_size ?? 'N/A'} bytes</span>
-                      </div>
-                    )}
-                    {/* Mtime diff */}
-                    {(c.baseline_mtime || c.current_mtime) && (
-                      <div>
-                        <span className="text-green-400 font-bold">Mtime: </span>
-                        <span className="text-slate-500">{c.baseline_mtime?.slice(0, 19) || 'N/A'}</span>
-                        <span className="text-slate-600"> → </span>
-                        <span className="text-slate-300">{c.current_mtime?.slice(0, 19) || 'N/A'}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+      {viewMode === "grouped" && groups.map(g => (
+        <div key={g.hostnames.join(",")} className="bg-slate-900 border border-violet-800/40 rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-violet-900/10 border-b border-violet-800/30 flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
+              Identical changes · {g.hostnames.length} hosts
+            </span>
+            {g.hostnames.map(h => (
+              <span key={h} className="font-mono text-xs font-bold text-white bg-slate-950/50 border border-violet-800/40 rounded px-2 py-0.5">
+                {h}
+              </span>
             ))}
           </div>
+          <GroupedChangesView changes={g.changes} />
+        </div>
+      ))}
+
+      {solos.map(({ hostname, changes }) => (
+        <div key={hostname} className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-slate-800/50 border-b border-slate-800 flex justify-between">
+            <span className="font-mono font-bold text-white text-sm">{hostname}</span>
+            <span className="text-slate-400 text-xs">{changes.length} changes</span>
+          </div>
+
+          {viewMode === "grouped" ? (
+            <GroupedChangesView changes={changes} />
+          ) : (
+            <div className="divide-y divide-slate-800/50">
+              {changes.map((c, idx) => (
+                <div key={idx} className="px-4 py-2.5 text-xs font-mono">
+                  {/* File path + type */}
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <SeverityDot severity={c.severity} />
+                    <span className="text-slate-500 uppercase w-16">{c.change_type}</span>
+                    <span className="text-pink-400 truncate">{c.file_path}</span>
+                  </div>
+                  {/* Hash diff */}
+                  {(c.baseline_hash || c.current_hash) && (
+                    <div className="ml-[4.5rem] space-y-0.5 text-[10px]">
+                      <div>
+                        <span className="text-orange-400 font-bold">Hash: </span>
+                        <span className="text-slate-500">{c.baseline_hash?.slice(0, 16) || 'N/A'}</span>
+                        <span className="text-slate-600"> → </span>
+                        <span className="text-slate-300">{c.current_hash?.slice(0, 16) || 'N/A'}</span>
+                      </div>
+                      {/* Size diff */}
+                      {(c.baseline_size != null || c.current_size != null) && (
+                        <div>
+                          <span className="text-sky-400 font-bold">Size: </span>
+                          <span className="text-slate-500">{c.baseline_size ?? 'N/A'}</span>
+                          <span className="text-slate-600"> → </span>
+                          <span className="text-slate-300">{c.current_size ?? 'N/A'} bytes</span>
+                        </div>
+                      )}
+                      {/* Mtime diff */}
+                      {(c.baseline_mtime || c.current_mtime) && (
+                        <div>
+                          <span className="text-green-400 font-bold">Mtime: </span>
+                          <span className="text-slate-500">{c.baseline_mtime?.slice(0, 19) || 'N/A'}</span>
+                          <span className="text-slate-600"> → </span>
+                          <span className="text-slate-300">{c.current_mtime?.slice(0, 19) || 'N/A'}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -631,6 +778,11 @@ export default function ReportDetailPage() {
   const [corrError,    setCorrError]    = useState("");
   const [exporting,    setExporting]    = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  // Defaults to "grouped" (the new categorized/clubbed view) — "classic" is
+  // the exact pre-existing flat per-host list, kept fully intact and one
+  // click away rather than deleted, precisely so this is trivially
+  // reversible if the new format doesn't work out in practice.
+  const [viewMode, setViewMode] = useState<ViewMode>("grouped");
 
   const { data: report, isLoading, error } = useQuery<DailyReportDetail>({
     queryKey: ["report", reportId],
@@ -694,6 +846,19 @@ export default function ReportDetailPage() {
   const totalCount    = report.agents_total || report.agents.length;
   const pct           = totalCount > 0 ? Math.round((submittedCount / totalCount) * 100) : 0;
 
+  const agentsByHostname = useMemo(() => {
+    const map: Record<string, ReportAgent> = {};
+    for (const a of report.report_agents || []) map[a.agent_hostname] = a;
+    return map;
+  }, [report.report_agents]);
+
+  const { groups: hostGroups, solos: hostSolos } = useMemo(() => {
+    if (viewMode !== "grouped" || !hasWorkflow) {
+      return { groups: [] as ReturnType<typeof clubHosts>["groups"], solos: [] as HostChanges[] };
+    }
+    return clubHosts((report.report_agents || []).map(a => ({ hostname: a.agent_hostname, changes: a.changes })));
+  }, [viewMode, hasWorkflow, report.report_agents]);
+
   return (
     <>
       {publishModal && <PublishModal report={report} onClose={() => setPublishModal(false)} />}
@@ -705,6 +870,16 @@ export default function ReportDetailPage() {
             <ArrowLeft size={14} /> Back
           </button>
           <div className="flex flex-wrap gap-2">
+            <div className="flex rounded overflow-hidden border border-slate-700">
+              <button onClick={() => setViewMode("grouped")} title="Categorized view — grouped by pattern"
+                className={`px-2.5 py-2 text-xs flex items-center gap-1.5 ${viewMode === "grouped" ? "bg-violet-700 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"}`}>
+                <LayoutGrid size={13} /> Grouped
+              </button>
+              <button onClick={() => setViewMode("classic")} title="Flat per-host list — every change shown individually"
+                className={`px-2.5 py-2 text-xs flex items-center gap-1.5 ${viewMode === "classic" ? "bg-slate-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"}`}>
+                <List size={13} /> Classic
+              </button>
+            </div>
             <button onClick={handleCorrelate} disabled={correlating}
               className="px-3 py-2 bg-cyan-700 text-white text-xs rounded flex items-center gap-1.5 hover:bg-cyan-600 disabled:opacity-50">
               {correlating ? <RotateCcw size={13} className="animate-spin" /> : <Search size={13} />}
@@ -772,13 +947,20 @@ export default function ReportDetailPage() {
             <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
               Agents ({report.report_agents.length})
             </h2>
-            {report.report_agents.map(agent => (
-              <AgentCard key={agent.agent_hostname} agent={agent} report={report}
-                defaultExpanded={report.report_agents.length <= 3} />
+
+            {viewMode === "grouped" && hostGroups.map(g => (
+              <HostGroupCard key={g.hostnames.join(",")} hostnames={g.hostnames} changes={g.changes}
+                agentsByHostname={agentsByHostname} report={report} />
             ))}
+
+            {(viewMode === "grouped" ? hostSolos.map(s => agentsByHostname[s.hostname]).filter(Boolean) : report.report_agents)
+              .map(agent => (
+                <AgentCard key={agent.agent_hostname} agent={agent} report={report} viewMode={viewMode}
+                  defaultExpanded={report.report_agents.length <= 3} />
+              ))}
           </div>
         ) : (
-          <PreCorrelationView report={report} />
+          <PreCorrelationView report={report} viewMode={viewMode} />
         )}
 
         <AnalystNotesPanel report={report} />
