@@ -53,6 +53,7 @@ class Agent(Base):
     desired_config = Column(JSONB)
     desired_config_version = Column(Integer, default=0)
     applied_config_version = Column(Integer, default=0)
+    reported_config = Column(JSONB)
 
 class Policy(Base):
     __tablename__ = "policies"

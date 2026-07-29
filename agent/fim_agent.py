@@ -139,7 +139,8 @@ class FIMClient:
         })
         self.logger = logging.getLogger('FIMAgent.Client')
 
-    def register_agent(self, hostname: str, ip_address: str, script_hash: Optional[str] = None) -> Optional[str]:
+    def register_agent(self, hostname: str, ip_address: str, script_hash: Optional[str] = None,
+                        current_config: Optional[Dict] = None) -> Optional[str]:
         """Register agent with server"""
         try:
             data = {
@@ -151,6 +152,8 @@ class FIMClient:
             }
             if script_hash:
                 data['script_hash'] = script_hash
+            if current_config:
+                data['current_config'] = current_config
 
             response = self.session.post(
                 f'{self.server_url}/api/v1/agents/register',
@@ -169,7 +172,8 @@ class FIMClient:
             self.logger.error(f"Registration failed: {e}")
             return None
 
-    def send_heartbeat(self, agent_id: str, hostname: str, script_hash: Optional[str] = None) -> Dict:
+    def send_heartbeat(self, agent_id: str, hostname: str, script_hash: Optional[str] = None,
+                       current_config: Optional[Dict] = None) -> Dict:
         """
         Send heartbeat to server. Returns a dict always (rather than the
         previous bool/"SCAN_REQUIRED" sentinel mix) since there are now two
@@ -184,6 +188,8 @@ class FIMClient:
             }
             if script_hash:
                 data['script_hash'] = script_hash
+            if current_config:
+                data['current_config'] = current_config
 
             response = self.session.post(
                 f'{self.server_url}/api/v1/agents/heartbeat',
@@ -652,10 +658,22 @@ class FIMAgent:
         self.run_scan(scan_type='realtime')
         return True
 
+    def _current_config_payload(self) -> Dict:
+        """
+        What we're actually monitoring right now, in the same {path,
+        exclude_patterns} shape the config-push feature uses — reported so
+        the admin config editor can pre-fill with reality instead of a
+        blank form on agents nothing's ever been pushed to. Purely for
+        display; doesn't participate in the push/apply/ack protocol.
+        """
+        return {"paths": self.scanner.path_configs}
+
     def register(self):
         """Register agent with server"""
         self.logger.info("Registering agent...")
-        self.agent_id = self.client.register_agent(self.hostname, self.ip_address, self.script_hash)
+        self.agent_id = self.client.register_agent(
+            self.hostname, self.ip_address, self.script_hash, self._current_config_payload()
+        )
         
         if self.agent_id:
             # Save agent_id to config
@@ -763,7 +781,9 @@ class FIMAgent:
         while self.running:
             try:
                 # Heartbeat
-                result = self.client.send_heartbeat(self.agent_id, self.hostname, self.script_hash)
+                result = self.client.send_heartbeat(
+                    self.agent_id, self.hostname, self.script_hash, self._current_config_payload()
+                )
 
                 # Check if scan requested
                 if result.get('scan_required'):

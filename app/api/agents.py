@@ -21,12 +21,14 @@ class AgentRegisterRequest(BaseModel):
     agent_version: Optional[str] = None
     tags: Optional[dict] = None
     script_hash: Optional[str] = None
+    current_config: Optional[dict] = None
 
 class AgentHeartbeatRequest(BaseModel):
     agent_id: str
     hostname: str
     timestamp: Optional[str] = None
     script_hash: Optional[str] = None
+    current_config: Optional[dict] = None
 
 class AgentConfigPathEntry(BaseModel):
     path: str
@@ -71,6 +73,8 @@ async def register_agent(
         # known-good hash (that would defeat the whole point).
         if request.script_hash and not agent.binary_hash:
             agent.binary_hash = request.script_hash
+        if request.current_config:
+            agent.reported_config = request.current_config
     else:
         agent = Agent(
             id=uuid.uuid4(),
@@ -83,6 +87,7 @@ async def register_agent(
             last_heartbeat=datetime.now(),
             tags=request.tags or {},
             binary_hash=request.script_hash,
+            reported_config=request.current_config,
         )
         db.add(agent)
 
@@ -110,6 +115,8 @@ async def agent_heartbeat(
     agent.last_heartbeat = datetime.now()
     agent.status = 'online'
     agent.is_healthy = True
+    if request.current_config:
+        agent.reported_config = request.current_config
 
     # Self-integrity: alert once per NEW mismatch (binary_hash_mismatch_since
     # gates it), not every heartbeat while it stays mismatched — mirrors the
@@ -258,6 +265,11 @@ async def get_agent_config(
         "desired_config": agent.desired_config,
         "desired_config_version": agent.desired_config_version,
         "applied_config_version": agent.applied_config_version,
+        # What the agent says it's actually running right now — display-only,
+        # doesn't participate in the push/apply/ack protocol. Lets the editor
+        # pre-fill with reality instead of a blank form when nothing's ever
+        # been pushed to this agent via desired_config yet.
+        "reported_config": agent.reported_config,
     }
 
 

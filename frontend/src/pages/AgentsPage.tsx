@@ -12,12 +12,18 @@ function ConfigEditorModal({ agentId, hostname, onClose }: {
   const [rows, setRows] = useState<ConfigPathRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [source, setSource] = useState<"pushed" | "reported" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     fetchAgentConfig(agentId).then(res => {
       if (cancelled) return;
-      const paths = res?.desired_config?.paths;
+      // Prefer desired_config (what's been pushed via this feature); fall
+      // back to reported_config (what the agent says it's actually running)
+      // so an agent nothing's ever been pushed to doesn't show a blank form.
+      const hasPushed = res?.desired_config?.paths?.length > 0;
+      const paths = hasPushed ? res.desired_config.paths : res?.reported_config?.paths;
+      setSource(paths?.length ? (hasPushed ? "pushed" : "reported") : null);
       setRows(
         Array.isArray(paths) && paths.length > 0
           ? paths.map((p: any) => ({
@@ -70,9 +76,20 @@ function ConfigEditorModal({ agentId, hostname, onClose }: {
           <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={16} /></button>
         </div>
 
-        <div className="text-[11px] text-slate-500 mb-3">
+        <div className="text-[11px] text-slate-500 mb-1">
           Pushed here doesn't apply instantly — the agent picks it up on its next heartbeat.
         </div>
+        {source && (
+          <div className="text-[11px] mb-3">
+            {source === "pushed" ? (
+              <span className="text-sky-400">Showing the last config pushed to this agent.</span>
+            ) : (
+              <span className="text-amber-400">
+                Nothing's been pushed yet — showing what the agent last reported it's actually monitoring.
+              </span>
+            )}
+          </div>
+        )}
 
         {loading || !rows ? (
           <div className="text-center text-slate-400 py-6 text-sm">Loading current config...</div>
