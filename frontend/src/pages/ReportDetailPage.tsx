@@ -664,15 +664,17 @@ function PreCorrelationView({ report, viewMode }: { report: DailyReportDetail; v
 
       {viewMode === "grouped" && groups.map(g => (
         <div key={g.hostnames.join(",")} className="bg-slate-900 border border-violet-800/40 rounded-lg overflow-hidden">
-          <div className="px-4 py-2 bg-violet-900/10 border-b border-violet-800/30 flex items-center gap-2 flex-wrap">
+          <div className="px-4 py-2 bg-violet-900/10 border-b border-violet-800/30 flex flex-col gap-1.5">
             <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
               Identical changes · {g.hostnames.length} hosts
             </span>
-            {g.hostnames.map(h => (
-              <span key={h} className="font-mono text-xs font-bold text-white bg-slate-950/50 border border-violet-800/40 rounded px-2 py-0.5">
-                {h}
-              </span>
-            ))}
+            <div className="flex flex-col gap-1 items-start">
+              {g.hostnames.map(h => (
+                <span key={h} className="font-mono text-xs font-bold text-white bg-slate-950/50 border border-violet-800/40 rounded px-2 py-0.5">
+                  {h}
+                </span>
+              ))}
+            </div>
           </div>
           <GroupedChangesView changes={g.changes} />
         </div>
