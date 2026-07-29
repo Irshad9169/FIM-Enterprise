@@ -41,6 +41,11 @@ class ReportChangeDetail(BaseModel):
     is_verified:              bool = False
     requires_investigation:   bool = False
 
+    # auditd correlation (optional — see fim.alerts.audit_uid/etc)
+    audit_uid:                Optional[str] = None
+    audit_process:            Optional[str] = None
+    audit_command:            Optional[str] = None
+
 
 class ReportTicketSchema(BaseModel):
     id:             Optional[str] = None

@@ -154,7 +154,11 @@ export function buildDetailEntries(
 ): ReportChangeDetail[] {
   return changes.filter(
     c => normalizedType(c) === "changed"
-      && isDetailWorthy(c.file_path, extensions)
+      // A change with auditd attribution (e.g. /etc/passwd, /etc/shadow —
+      // critical-path files with no matching extension) always gets
+      // individual treatment, regardless of extension — attribution is
+      // exactly the kind of detail this section exists to surface.
+      && (isDetailWorthy(c.file_path, extensions) || Boolean(c.audit_uid || c.audit_process || c.audit_command))
       && (c.baseline_mtime || c.current_mtime),
   );
 }

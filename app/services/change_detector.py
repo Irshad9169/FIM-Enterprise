@@ -10,7 +10,7 @@ Security features:
     database row from silently affecting change detection.
 """
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, desc
 from typing import List, Dict, Tuple, Set, Optional, Dict, List, Optional, Set
 import logging
 import uuid
@@ -23,6 +23,8 @@ from datetime import datetime
 from app.models.models import Scan, Baseline, Alert, WhitelistRule
 
 logger = logging.getLogger(__name__)
+
+GENESIS_HASH = "0" * 64  # matches fim.alerts.prev_hash / fim.audit_logs.prev_hash default
 
 
 class BaselineIntegrityError(Exception):
@@ -80,6 +82,32 @@ class ChangeDetector:
 
         logger.debug(f"Baseline {baseline.id} integrity verified OK")
         return True
+
+    # ── Alert Hash Chain ──────────────────────────────────────────────────
+
+    @staticmethod
+    async def _chain_alert_hashes(db: AsyncSession, evidence_fields: Dict) -> Tuple[str, str]:
+        """
+        Compute (entry_hash, prev_hash) for a new fim.alerts row, chaining
+        from the most recent existing row — same pattern as
+        AuditService._chain_hashes. A DB trigger (see migration
+        0002_alert_hash_chain) blocks changing these "evidence" fields (or
+        entry_hash/prev_hash themselves) on UPDATE, and blocks DELETE
+        entirely; the ordinary analyst workflow columns (status,
+        assigned_to, resolution_notes, acknowledged_at/by, resolved_at)
+        stay updatable as normal.
+        Same concurrency caveat as AuditService: no explicit serialization,
+        so concurrent inserts can fork the chain rather than guarantee
+        strict linearity — acceptable for now, matches the existing
+        audit-log chain's design.
+        """
+        result = await db.execute(
+            select(Alert.entry_hash).order_by(desc(Alert.detected_at), desc(Alert.id)).limit(1)
+        )
+        prev_hash = result.scalar_one_or_none() or GENESIS_HASH
+        canonical = json.dumps(evidence_fields, sort_keys=True, separators=(",", ":"), default=str)
+        entry_hash = hashlib.sha256((canonical + prev_hash).encode("utf-8")).hexdigest()
+        return entry_hash, prev_hash
 
     # ── Main Scan Processing ──────────────────────────────────────────────
 
@@ -139,6 +167,24 @@ class ChangeDetector:
 
             # Create a critical alert for the integrity failure
             try:
+                detected_at = datetime.utcnow()
+                previous_state = {"baseline_id": str(baseline.id), "stored_checksum": baseline.checksum}
+                current_state = {"computed_checksum": ChangeDetector.compute_baseline_checksum(baseline.baseline_data)}
+                change_details = {
+                    'change_type': 'baseline_integrity_failure',
+                    'detected_at': detected_at.isoformat(),
+                    'message': 'Baseline data does not match stored checksum. Possible tampering.'
+                }
+                entry_hash, prev_hash = await ChangeDetector._chain_alert_hashes(db, {
+                    "agent_id": str(scan.agent_id),
+                    "file_path": "SYSTEM:baseline_integrity",
+                    "alert_type": "baseline_tampered",
+                    "severity": "critical",
+                    "previous_state": previous_state,
+                    "current_state": current_state,
+                    "change_details": change_details,
+                    "detected_at": detected_at.isoformat(),
+                })
                 integrity_alert = Alert(
                     id=uuid.uuid4(),
                     agent_id=scan.agent_id,
@@ -146,15 +192,13 @@ class ChangeDetector:
                     alert_type="baseline_tampered",
                     severity="critical",
                     status='open',
-                    previous_state={"baseline_id": str(baseline.id), "stored_checksum": baseline.checksum},
-                    current_state={"computed_checksum": ChangeDetector.compute_baseline_checksum(baseline.baseline_data)},
-                    change_details={
-                        'change_type': 'baseline_integrity_failure',
-                        'detected_at': datetime.utcnow().isoformat(),
-                        'message': 'Baseline data does not match stored checksum. Possible tampering.'
-                    },
-                    detected_at=datetime.utcnow(),
-                    created_at=datetime.utcnow()
+                    previous_state=previous_state,
+                    current_state=current_state,
+                    change_details=change_details,
+                    detected_at=detected_at,
+                    created_at=detected_at,
+                    entry_hash=entry_hash,
+                    prev_hash=prev_hash,
                 )
                 db.add(integrity_alert)
                 await db.commit()
@@ -317,21 +361,53 @@ class ChangeDetector:
 
     @staticmethod
     async def _create_alert(agent_id: uuid.UUID, change: Dict, db: AsyncSession):
+        detected_at = datetime.utcnow()
+        alert_type = f"file_{change['type']}"
+        previous_state = change.get('previous_state')
+        current_state = change.get('current_state')
+        change_details = {
+            'change_type': change['type'],
+            'detected_at': detected_at.isoformat(),
+            'changes': change.get('changes', {})
+        }
+        # Populated agent-side (fim_agent.py's _correlate_auditd) only for a
+        # curated critical-path list, and only when the file's content
+        # actually changed — null for everything else. Lives in
+        # current_state (the raw per-file scan dict) since the agent
+        # payload already carries arbitrary fields through untouched.
+        audit_uid = (current_state or {}).get('audit_uid')
+        audit_process = (current_state or {}).get('audit_process')
+        audit_command = (current_state or {}).get('audit_command')
+
+        entry_hash, prev_hash = await ChangeDetector._chain_alert_hashes(db, {
+            "agent_id": str(agent_id),
+            "file_path": change['path'],
+            "alert_type": alert_type,
+            "severity": change['severity'],
+            "previous_state": previous_state,
+            "current_state": current_state,
+            "change_details": change_details,
+            "detected_at": detected_at.isoformat(),
+            "audit_uid": audit_uid,
+            "audit_process": audit_process,
+            "audit_command": audit_command,
+        })
         alert = Alert(
             id=uuid.uuid4(),
             agent_id=agent_id,
             file_path=change['path'],
-            alert_type=f"file_{change['type']}",
+            alert_type=alert_type,
             severity=change['severity'],
             status='open',
-            previous_state=change.get('previous_state'),
-            current_state=change.get('current_state'),
-            change_details={
-                'change_type': change['type'],
-                'detected_at': datetime.utcnow().isoformat(),
-                'changes': change.get('changes', {})
-            },
-            detected_at=datetime.utcnow(),
-            created_at=datetime.utcnow()
+            previous_state=previous_state,
+            current_state=current_state,
+            change_details=change_details,
+            detected_at=detected_at,
+            created_at=detected_at,
+            entry_hash=entry_hash,
+            prev_hash=prev_hash,
+            audit_uid=audit_uid,
+            audit_process=audit_process,
+            audit_command=audit_command,
         )
         db.add(alert)

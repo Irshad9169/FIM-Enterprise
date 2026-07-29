@@ -90,6 +90,12 @@ export interface ReportChangeDetail {
   is_known_change:          boolean;
   is_verified:              boolean;
   requires_investigation:   boolean;
+
+  // auditd correlation — populated only for a curated critical-path list
+  // (see agent/fim_agent.py's _correlate_auditd), null otherwise
+  audit_uid:                string | null;
+  audit_process:            string | null;
+  audit_command:            string | null;
 }
 
 export interface ReportTicket {

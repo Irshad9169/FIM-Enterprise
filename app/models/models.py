@@ -84,6 +84,11 @@ class Alert(Base):
     acknowledged_by = Column(UUID(as_uuid=True), ForeignKey("fim.users.id"))
     alert_group_id = Column(UUID(as_uuid=True))
     occurrence_count = Column(Integer, default=1)
+    entry_hash = Column(String(64))
+    prev_hash = Column(String(64), default='0' * 64)
+    audit_uid = Column(String(50))
+    audit_process = Column(Text)
+    audit_command = Column(Text)
 
 class Baseline(Base):
     __tablename__ = "baselines"

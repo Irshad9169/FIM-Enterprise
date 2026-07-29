@@ -368,6 +368,52 @@ echo "fs.inotify.max_user_watches=524288" | sudo tee /etc/sysctl.d/99-fim-agent.
 sudo sysctl --system
 ```
 
+**Process/user attribution via auditd (optional):** for a curated list of
+high-value files — not the whole monitored tree, auditd has a rule-count limit
+and blanket watches over tens of thousands of files would be both infeasible
+and noisy — the agent can correlate a detected change back to the user/process
+that made it, via `ausearch`.
+
+Prerequisite check — this whole feature is a no-op (fields stay null) if
+auditd isn't installed, nothing else breaks:
+```bash
+systemctl status auditd
+```
+
+If it is, provision watch rules for whichever critical paths you want
+attribution on:
+```bash
+auditctl -w /etc/passwd -p wa -k fim_watch
+auditctl -w /etc/shadow -p wa -k fim_watch
+auditctl -w /etc/sudoers -p wa -k fim_watch
+auditctl -w /etc/ssh/sshd_config -p wa -k fim_watch
+# Make these survive a reboot:
+cat <<'RULES' | sudo tee /etc/audit/rules.d/fim-watch.rules
+-w /etc/passwd -p wa -k fim_watch
+-w /etc/shadow -p wa -k fim_watch
+-w /etc/sudoers -p wa -k fim_watch
+-w /etc/ssh/sshd_config -p wa -k fim_watch
+RULES
+augenrules --load
+```
+
+Then list the same paths in `agent_config.yaml` under `monitoring`:
+```yaml
+monitoring:
+  audit_critical_paths:
+    - /etc/passwd
+    - /etc/shadow
+    - /etc/sudoers
+    - /etc/ssh/sshd_config
+```
+
+Requires the agent to read `/var/log/audit/audit.log` (via `ausearch`) —
+the checked-in `fim-agent.service` unit already runs as `root`, which has
+this by default. Correlation only runs for a critical-path file whose
+content the agent itself detects changed since its own last scan (not on
+first sight, not for every scan of an unchanged file), so it only fires
+when there's actually something new to attribute.
+
 If a monitored root can't be watched (permission denied, watch limit hit),
 `fim_agent.py` logs a warning for that root specifically and continues
 scanning it on the scheduled interval only — it doesn't affect other roots

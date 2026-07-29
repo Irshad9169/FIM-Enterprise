@@ -135,6 +135,13 @@ class ReportChange(Base):
     reviewed_by             = Column(UUID(as_uuid=True), ForeignKey("fim.users.id"))
     created_at              = Column(DateTime, server_default=func.now())
 
+    # auditd correlation (optional — see fim.alerts.audit_uid/etc and
+    # agent/fim_agent.py's _correlate_auditd). Null unless the source
+    # alert had it.
+    audit_uid               = Column(String(50))
+    audit_process           = Column(Text)
+    audit_command           = Column(Text)
+
     # Relationships
     report                  = relationship("DailyReport", back_populates="changes")
 

@@ -80,6 +80,9 @@ def _change_to_schema(c: ReportChange) -> ReportChangeDetail:
         is_known_change=c.is_known_change or False,
         is_verified=c.is_verified or False,
         requires_investigation=c.requires_investigation or False,
+        audit_uid=c.audit_uid,
+        audit_process=c.audit_process,
+        audit_command=c.audit_command,
     )
 
 
@@ -192,6 +195,7 @@ async def generate_daily_report(
         res = await db.execute(text("""
             SELECT a.id, a.file_path, a.alert_type, a.severity,
                    a.previous_state, a.current_state, a.detected_at,
+                   a.audit_uid, a.audit_process, a.audit_command,
                    ag.hostname, ag.ip_address
             FROM fim.alerts a
             LEFT JOIN fim.agents ag ON a.agent_id = ag.id
@@ -245,6 +249,9 @@ async def generate_daily_report(
                         datetime.fromisoformat(str(p["mtime"]).replace("Z", "+00:00"))
                         if p.get("mtime") else None
                     ),
+                    audit_uid=a.audit_uid,
+                    audit_process=a.audit_process,
+                    audit_command=a.audit_command,
                 )
                 db.add(change)
             except Exception:

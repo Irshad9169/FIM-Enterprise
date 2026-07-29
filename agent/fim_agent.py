@@ -14,6 +14,8 @@ import logging
 import platform
 import socket
 import threading
+import subprocess
+import re
 import requests
 import argparse
 from datetime import datetime
@@ -231,7 +233,8 @@ class FIMClient:
 
 class FileScanner:
     def __init__(self, paths: List[Union[str, Dict]], hash_algo: str = 'sha256',
-                 cache_path: Optional[str] = None):
+                 cache_path: Optional[str] = None,
+                 audit_critical_paths: Optional[set] = None):
         # Normalize paths: each monitored path keeps its own exclude_patterns
         # (config['monitoring']['paths'] entries look like
         #  {path: /opt, recursive: true, exclude_patterns: [...]}).
@@ -261,6 +264,14 @@ class FileScanner:
         self._new_cache: Dict[str, Dict] = {}
         self.hashes_skipped = 0
         self.hashes_computed = 0
+
+        # auditd correlation: curated critical-path list only (not the whole
+        # monitored tree — auditd has a rule-count limit and blanket watches
+        # over tens of thousands of files would be both infeasible and
+        # noisy). Only correlates when a critical file's content actually
+        # changed since our own last scan (see _process_file) — not on
+        # first sight, and not for every scan of an unchanged file.
+        self.audit_critical_paths = set(audit_critical_paths or [])
 
     def _load_cache(self) -> Dict[str, Dict]:
         if not self.cache_path or not os.path.exists(self.cache_path):
@@ -380,16 +391,23 @@ class FileScanner:
             mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
 
             cached = self._prev_cache.get(file_path)
+            audit_info = None
             if cached and cached.get('mtime') == mtime and cached.get('size') == size:
                 file_hash = cached['hash']
                 self.hashes_skipped += 1
             else:
                 file_hash = self.calculate_hash(file_path)
                 self.hashes_computed += 1
+                # Only correlate for a real, locally-detected content change
+                # on a critical path — not the first time we've ever seen
+                # this file (no local baseline to compare against yet).
+                if (file_path in self.audit_critical_paths
+                        and cached and cached.get('hash') != file_hash):
+                    audit_info = self._correlate_auditd(file_path)
 
             self._new_cache[file_path] = {'mtime': mtime, 'size': size, 'hash': file_hash}
 
-            return {
+            result = {
                 'path': file_path,
                 'hash': file_hash,
                 'size': size,
@@ -398,8 +416,56 @@ class FileScanner:
                 'owner': stat.st_uid,
                 'group': stat.st_gid
             }
+            if audit_info:
+                result.update(audit_info)
+            return result
         except Exception as e:
             self.logger.warning(f"Error processing {file_path}: {e}")
+            return None
+
+    def _correlate_auditd(self, file_path: str) -> Optional[Dict]:
+        """
+        Best-effort auditd correlation for a critical-path file that just
+        changed — who/what process touched it, via `ausearch` (requires
+        auditd installed/running and an `auditctl -w <path> -k fim_watch`
+        rule already provisioned for this path; see
+        docs/PRODUCTION_DEPLOYMENT.md). Returns None silently on anything
+        going wrong (auditd absent, no permission, no match in the time
+        window) — this must never block or fail a scan, it's purely
+        additive metadata.
+        """
+        try:
+            result = subprocess.run(
+                ['ausearch', '-k', 'fim_watch', '-f', file_path, '-ts', 'recent', '-i'],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                return None
+
+            auid = exe = comm = None
+            for line in reversed(result.stdout.splitlines()):
+                if auid is None:
+                    m = re.search(r'\bauid=(\S+)', line)
+                    if m and m.group(1) != 'unset':
+                        auid = m.group(1)
+                if exe is None:
+                    m = re.search(r'\bexe="?([^"\s]+)"?', line)
+                    if m:
+                        exe = m.group(1)
+                if comm is None:
+                    m = re.search(r'\bcomm="?([^"\s]+)"?', line)
+                    if m:
+                        comm = m.group(1)
+                if auid and exe and comm:
+                    break
+
+            if not (auid or exe or comm):
+                return None
+            return {'audit_uid': auid, 'audit_process': exe, 'audit_command': comm}
+        except FileNotFoundError:
+            return None  # ausearch not installed — auditd absent, silently skip
+        except Exception as e:
+            self.logger.warning(f"auditd correlation failed for {file_path}: {e}")
             return None
 
 class _RealtimeChangeHandler(FileSystemEventHandler):
@@ -450,6 +516,7 @@ class FIMAgent:
             self.monitored_paths,
             self.config['monitoring'].get('hash_algorithm', 'sha256'),
             cache_path=cache_path,
+            audit_critical_paths=self.config['monitoring'].get('audit_critical_paths'),
         )
         
         self.hostname = socket.gethostname()

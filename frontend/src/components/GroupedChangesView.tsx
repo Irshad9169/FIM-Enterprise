@@ -103,6 +103,14 @@ export function GroupedChangesView({ changes: rawChanges }: { changes: ReportCha
                   <span className="text-green-400 font-semibold">Mtime:</span>{" "}
                   {c.baseline_mtime?.slice(0, 19) || "N/A"} → {c.current_mtime?.slice(0, 19) || "N/A"}
                 </div>
+                {(c.audit_uid || c.audit_process || c.audit_command) && (
+                  <div className="text-slate-500 pl-4">
+                    <span className="text-orange-400 font-semibold">Attributed to:</span>{" "}
+                    {c.audit_process ? c.audit_process.split("/").pop() : "unknown process"}
+                    {c.audit_command && c.audit_command !== c.audit_process ? ` (${c.audit_command})` : ""}
+                    {c.audit_uid ? `, uid ${c.audit_uid}` : ""}
+                  </div>
+                )}
               </div>
             ))}
           </div>
