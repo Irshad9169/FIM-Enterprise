@@ -169,8 +169,13 @@ class FIMClient:
             self.logger.error(f"Registration failed: {e}")
             return None
 
-    def send_heartbeat(self, agent_id: str, hostname: str, script_hash: Optional[str] = None):
-        """Send heartbeat to server"""
+    def send_heartbeat(self, agent_id: str, hostname: str, script_hash: Optional[str] = None) -> Dict:
+        """
+        Send heartbeat to server. Returns a dict always (rather than the
+        previous bool/"SCAN_REQUIRED" sentinel mix) since there are now two
+        independent signals to carry back: scan_required and config_version.
+        {'ok': bool, 'scan_required': bool, 'config_version': Optional[int]}
+        """
         try:
             data = {
                 'agent_id': agent_id,
@@ -186,21 +191,49 @@ class FIMClient:
                 timeout=10
             )
             response.raise_for_status()
-            
-            # Check for on-demand scan
+
+            scan_required = False
+            config_version = None
             try:
                 resp_data = response.json()
-                if isinstance(resp_data, dict) and resp_data.get('scan_required'):
-                    self.logger.info("Received on-demand scan request from server")
-                    return "SCAN_REQUIRED"
+                if isinstance(resp_data, dict):
+                    scan_required = bool(resp_data.get('scan_required'))
+                    config_version = resp_data.get('config_version')
+                    if scan_required:
+                        self.logger.info("Received on-demand scan request from server")
             except Exception as json_err:
                 self.logger.warning(f"Failed to parse heartbeat response: {json_err}")
 
             self.logger.debug("Heartbeat sent")
-            return True
+            return {'ok': True, 'scan_required': scan_required, 'config_version': config_version}
 
         except Exception as e:
             self.logger.error(f"Heartbeat failed: {e}")
+            return {'ok': False, 'scan_required': False, 'config_version': None}
+
+    def fetch_agent_config(self, agent_id: str) -> Optional[Dict]:
+        """GET the server's desired config for this agent. None on any failure — caller keeps running current config."""
+        try:
+            response = self.session.get(
+                f'{self.server_url}/api/v1/agents/{agent_id}/config', timeout=10
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self.logger.error(f"Failed to fetch agent config: {e}")
+            return None
+
+    def ack_agent_config(self, agent_id: str, version: int) -> bool:
+        """Confirm to the server that a config version was applied."""
+        try:
+            response = self.session.post(
+                f'{self.server_url}/api/v1/agents/{agent_id}/config/ack',
+                json={'version': version}, timeout=10
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to ack agent config: {e}")
             return False
 
     def send_scan_results(self, agent_id: str, scan_data: List[Dict], scan_type: str = 'full'):
@@ -541,6 +574,12 @@ class FIMAgent:
         except Exception as e:
             self.logger.warning(f"Could not hash own script for self-integrity check: {e}")
 
+        # Item 11: fleet config push. Persisted in agent_config.yaml itself
+        # (same file save_agent_id already reads/writes) rather than a new
+        # state file — 0 if never set, meaning "always fetch on first
+        # heartbeat that reports a config_version > 0".
+        self.applied_config_version = self.config['agent'].get('config_version', 0)
+
         # Real-time watching state — additive to the scheduled scan, not a
         # replacement (see _RealtimeChangeHandler docstring). scan_lock
         # prevents a realtime-triggered scan from overlapping a scheduled one.
@@ -637,6 +676,64 @@ class FIMAgent:
             yaml.dump(config, f, default_flow_style=False)
         self.logger.info(f"Agent ID saved: {agent_id}")
 
+    def _apply_agent_config(self, config_version: int):
+        """
+        Fetch and apply a newer config version pushed from the server (see
+        app/api/agents.py's PUT .../config). Writes only monitoring.paths
+        into agent_config.yaml — leaves server url/api_key/everything else
+        untouched — then hot-reloads self.scanner and the real-time watcher
+        in place, no process restart. Any failure here (malformed config,
+        unreachable server) must leave the agent running on its current
+        config, never crash it.
+        """
+        try:
+            remote = self.client.fetch_agent_config(self.agent_id)
+            if not remote or not remote.get('desired_config'):
+                return
+            paths = remote['desired_config'].get('paths')
+            if not isinstance(paths, list) or not paths:
+                self.logger.warning("Received empty/invalid config push — ignoring")
+                return
+
+            with open(self.config_path, 'r') as f:
+                yaml_config = yaml.safe_load(f)
+            yaml_config.setdefault('monitoring', {})['paths'] = paths
+            yaml_config.setdefault('agent', {})['config_version'] = config_version
+            with open(self.config_path, 'w') as f:
+                yaml.dump(yaml_config, f, default_flow_style=False)
+
+            # Hot-reload: FileScanner is cheap to reconstruct, no restart needed.
+            self.config = AgentConfig(self.config_path)
+            self.monitored_paths = paths
+            cache_path = os.path.join(
+                os.path.dirname(os.path.abspath(self.config_path)), '.scan_cache.json'
+            )
+            self.scanner = FileScanner(
+                self.monitored_paths,
+                self.config['monitoring'].get('hash_algorithm', 'sha256'),
+                cache_path=cache_path,
+                audit_critical_paths=self.config['monitoring'].get('audit_critical_paths'),
+            )
+
+            # Real-time watcher was watching the OLD paths — restart it.
+            if self._observer:
+                try:
+                    self._observer.stop()
+                    self._observer.join(timeout=5)
+                except Exception:
+                    pass
+                self._observer = None
+            self.start_realtime_watch()
+
+            self.applied_config_version = config_version
+            self.logger.info(
+                f"Applied pushed config (version {config_version}), "
+                f"{len(paths)} monitored path(s)"
+            )
+            self.client.ack_agent_config(self.agent_id, config_version)
+        except Exception as e:
+            self.logger.error(f"Failed to apply pushed config: {e}")
+
     def run_scan(self, scan_type: str = 'full'):
         """Execute file integrity scan"""
         with self._scan_lock:
@@ -669,9 +766,14 @@ class FIMAgent:
                 result = self.client.send_heartbeat(self.agent_id, self.hostname, self.script_hash)
 
                 # Check if scan requested
-                if result == "SCAN_REQUIRED":
+                if result.get('scan_required'):
                     self.run_scan()
                     last_scan = time.time()  # Reset scheduled scan timer
+
+                # Check if a newer config was pushed
+                config_version = result.get('config_version')
+                if config_version is not None and config_version > self.applied_config_version:
+                    self._apply_agent_config(config_version)
 
                 # Scheduled scan
                 if time.time() - last_scan > scan_interval:

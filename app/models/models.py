@@ -50,6 +50,9 @@ class Agent(Base):
     binary_hash = Column(String(64))
     binary_hash_mismatch_since = Column(DateTime)
     pending_binary_hash = Column(String(64))
+    desired_config = Column(JSONB)
+    desired_config_version = Column(Integer, default=0)
+    applied_config_version = Column(Integer, default=0)
 
 class Policy(Base):
     __tablename__ = "policies"

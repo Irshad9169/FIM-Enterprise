@@ -1,7 +1,111 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchAgents, triggerScan, updateAgentTags } from "../api/dashboard";
-import { Tag, X } from "lucide-react";
+import { fetchAgents, triggerScan, updateAgentTags, fetchAgentConfig, pushAgentConfig } from "../api/dashboard";
+import { Tag, X, Settings } from "lucide-react";
+
+type ConfigPathRow = { path: string; exclude_patterns: string };
+
+function ConfigEditorModal({ agentId, hostname, onClose }: {
+  agentId: string; hostname: string; onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [rows, setRows] = useState<ConfigPathRow[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAgentConfig(agentId).then(res => {
+      if (cancelled) return;
+      const paths = res?.desired_config?.paths;
+      setRows(
+        Array.isArray(paths) && paths.length > 0
+          ? paths.map((p: any) => ({
+              path: p.path || "",
+              exclude_patterns: (p.exclude_patterns || []).join(", "),
+            }))
+          : [{ path: "", exclude_patterns: "" }],
+      );
+      setLoading(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setRows([{ path: "", exclude_patterns: "" }]);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [agentId]);
+
+  const updateRow = (i: number, field: keyof ConfigPathRow, value: string) => {
+    if (!rows) return;
+    const next = [...rows];
+    next[i] = { ...next[i], [field]: value };
+    setRows(next);
+  };
+
+  const handleSave = async () => {
+    if (!rows) return;
+    setSaving(true);
+    try {
+      const paths = rows
+        .filter(r => r.path.trim())
+        .map(r => ({
+          path: r.path.trim(),
+          exclude_patterns: r.exclude_patterns.split(",").map(p => p.trim()).filter(Boolean),
+        }));
+      await pushAgentConfig(agentId, paths);
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      onClose();
+    } catch (e: any) {
+      alert(e?.message || "Failed to push config");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-2xl p-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold">Monitored paths — {hostname}</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={16} /></button>
+        </div>
+
+        <div className="text-[11px] text-slate-500 mb-3">
+          Pushed here doesn't apply instantly — the agent picks it up on its next heartbeat.
+        </div>
+
+        {loading || !rows ? (
+          <div className="text-center text-slate-400 py-6 text-sm">Loading current config...</div>
+        ) : (
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {rows.map((r, i) => (
+              <div key={i} className="flex gap-2 items-start">
+                <input value={r.path} onChange={e => updateRow(i, "path", e.target.value)}
+                  placeholder="/path/to/monitor"
+                  className="flex-1 px-2 py-1.5 bg-slate-950 border border-slate-700 rounded text-xs text-white outline-none font-mono" />
+                <input value={r.exclude_patterns} onChange={e => updateRow(i, "exclude_patterns", e.target.value)}
+                  placeholder="exclude patterns, comma-separated"
+                  className="flex-1 px-2 py-1.5 bg-slate-950 border border-slate-700 rounded text-xs text-white outline-none font-mono" />
+                <button onClick={() => setRows(rows.filter((_, idx) => idx !== i))}
+                  className="text-slate-500 hover:text-red-400 p-1.5"><X size={14} /></button>
+              </div>
+            ))}
+            <button onClick={() => setRows([...rows, { path: "", exclude_patterns: "" }])}
+              className="text-xs text-sky-400 hover:text-sky-300">+ Add path</button>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-slate-800">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs rounded bg-slate-800 hover:bg-slate-700">Cancel</button>
+          <button onClick={handleSave} disabled={saving || loading}
+            className="px-3 py-1.5 text-xs rounded bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500">
+            {saving ? "Pushing..." : "Push config"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AgentsPage() {
   const [sortField, setSortField] = useState<string>("hostname");
@@ -9,6 +113,7 @@ export default function AgentsPage() {
   const [scanningAgent, setScanningAgent] = useState<string | null>(null);
   const [editingTags, setEditingTags] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [configEditorAgent, setConfigEditorAgent] = useState<{ id: string; hostname: string } | null>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({ queryKey: ["agents"], queryFn: fetchAgents });
@@ -126,10 +231,17 @@ export default function AgentsPage() {
                   </td>
                   <td className="px-3 py-2 text-slate-300 text-xs text-center">{a.last_heartbeat ? new Date(a.last_heartbeat).toLocaleString() : "-"}</td>
                   <td className="px-3 py-2 text-center">
-                    <button onClick={() => handleScan(a.id)} disabled={scanningAgent === a.id}
-                      className="px-3 py-1 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 rounded text-xs font-medium transition-colors">
-                      {scanningAgent === a.id ? "⏳ Scanning..." : "🔍 Scan Now"}
-                    </button>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button onClick={() => handleScan(a.id)} disabled={scanningAgent === a.id}
+                        className="px-3 py-1 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 rounded text-xs font-medium transition-colors">
+                        {scanningAgent === a.id ? "⏳ Scanning..." : "🔍 Scan Now"}
+                      </button>
+                      <button onClick={() => setConfigEditorAgent({ id: a.id, hostname: a.hostname })}
+                        title="Edit monitored paths"
+                        className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">
+                        <Settings size={13} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -138,6 +250,14 @@ export default function AgentsPage() {
           </tbody>
         </table>
       </div>
+
+      {configEditorAgent && (
+        <ConfigEditorModal
+          agentId={configEditorAgent.id}
+          hostname={configEditorAgent.hostname}
+          onClose={() => setConfigEditorAgent(null)}
+        />
+      )}
     </div>
   );
 }

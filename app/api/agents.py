@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, text
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 import uuid
 
@@ -27,6 +27,16 @@ class AgentHeartbeatRequest(BaseModel):
     hostname: str
     timestamp: Optional[str] = None
     script_hash: Optional[str] = None
+
+class AgentConfigPathEntry(BaseModel):
+    path: str
+    exclude_patterns: List[str] = []
+
+class AgentConfigPushRequest(BaseModel):
+    paths: List[AgentConfigPathEntry]
+
+class AgentConfigAckRequest(BaseModel):
+    version: int
 
 @router.get("")
 async def list_agents(
@@ -146,11 +156,15 @@ async def agent_heartbeat(
         )
     
     await db.commit()
-    
+
     return {
         "status": "ok",
         "scan_required": scan_required,
         "scan_id": scan_id,
+        # Item 11: agent compares this to its own last-applied version (kept
+        # in its agent_config.yaml) and fetches new config only if newer —
+        # same shape as scan_required's "act now" signal, not a new channel.
+        "config_version": agent.desired_config_version,
         "message": "Heartbeat received"
     }
 
@@ -185,6 +199,89 @@ async def accept_agent_binary_hash(
     await db.commit()
 
     return {"message": "Binary hash accepted as new baseline", "binary_hash": accepted_hash}
+
+
+@router.put("/{agent_id}/config")
+async def push_agent_config(
+    agent_id: str,
+    request: AgentConfigPushRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(analyst_plus)
+):
+    """
+    Push a new monitored-paths config to an agent. Doesn't touch the agent
+    directly — the agent picks this up on its next heartbeat (config_version
+    field) and pulls it via GET .../config, same pattern as scan_required.
+    """
+    try:
+        agent_uuid = uuid.UUID(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    result = await db.execute(select(Agent).where(Agent.id == agent_uuid))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.desired_config = {"paths": [p.model_dump() for p in request.paths]}
+    agent.desired_config_version = (agent.desired_config_version or 0) + 1
+    await db.commit()
+
+    return {
+        "message": "Config pushed — agent will pick it up on next heartbeat",
+        "desired_config_version": agent.desired_config_version,
+    }
+
+
+@router.get("/{agent_id}/config")
+async def get_agent_config(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Current desired config for an agent — used by both the frontend editor
+    and the agent's own pull. No get_current_user dependency: the agent
+    authenticates via X-API-Key (like /register and /heartbeat), not a JWT
+    bearer token, so it can't satisfy that dependency.
+    """
+    try:
+        agent_uuid = uuid.UUID(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    result = await db.execute(select(Agent).where(Agent.id == agent_uuid))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    return {
+        "desired_config": agent.desired_config,
+        "desired_config_version": agent.desired_config_version,
+        "applied_config_version": agent.applied_config_version,
+    }
+
+
+@router.post("/{agent_id}/config/ack")
+async def ack_agent_config(
+    agent_id: str,
+    request: AgentConfigAckRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Agent confirms it has applied a given config version."""
+    try:
+        agent_uuid = uuid.UUID(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    result = await db.execute(select(Agent).where(Agent.id == agent_uuid))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.applied_config_version = request.version
+    await db.commit()
+
+    return {"message": "Config version acknowledged", "applied_config_version": agent.applied_config_version}
 
 
 @router.post("/{agent_id}/scan")

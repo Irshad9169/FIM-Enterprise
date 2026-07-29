@@ -268,3 +268,16 @@ export const generateComplianceReport = async (days = 30) => {
 
 export const fetchAgentDetails = () =>
   apiCall(`/api/v1/dashboard/agents/details`);
+
+// ── Fleet config push ─────────────────────────────────────────────────────────
+export const fetchAgentConfig = (agentId: string) =>
+  apiCall(`/api/v1/agents/${agentId}/config`);
+
+export const pushAgentConfig = (
+  agentId: string,
+  paths: Array<{ path: string; exclude_patterns: string[] }>,
+) =>
+  apiCall(`/api/v1/agents/${agentId}/config`, {
+    method: "PUT",
+    body: JSON.stringify({ paths }),
+  });
