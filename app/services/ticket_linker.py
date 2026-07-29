@@ -20,13 +20,18 @@ from typing import List, Dict, Tuple, Set, Optional, Optional, List, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
+from app.core.config import settings
+
 logger = logging.getLogger("ticket_linker")
 
-RT_LOOKUP_URL = "http://rtapi.int.untd.com/cgi-bin/rt.cgi"
-RT_UPDATE_URL = "https://rtapi.int.untd.com/cgi-bin/rt.cgi"
-RT_EMAIL      = "security@tickets.int.untd.com"
+# Sourced from Settings (app/core/config.py) so these are .env-configurable
+# instead of baked into source; defaults there match the original hardcoded
+# values, so this is a no-op unless overridden.
+RT_LOOKUP_URL = settings.rt_lookup_url
+RT_UPDATE_URL = settings.rt_update_url
+RT_EMAIL      = settings.rt_email
 FIM_EMAIL_DOMAIN = "corp.untd.com"
-CMR_URL       = "https://phantom.int.untd.com/bin/phantom"
+CMR_URL       = settings.cmr_url
 HTTPX_OPTS    = dict(verify=False, timeout=10.0)
 RT_CACHE_TTL_HOURS = 1
 
@@ -221,6 +226,56 @@ class TicketLinkerService:
             logger.error(f"search_cmr_by_hostname({hostname}): {e}")
         return results
 
+    # ── JIRA search ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    async def search_jira_by_hostname(hostname: str, days_back: int = 7) -> List[Dict]:
+        """
+        Search JIRA for issues mentioning a hostname. No-op (returns []) if
+        settings.jira_url isn't configured — JIRA is optional, unlike RT/CMR.
+        Auth: Basic (email+token) if jira_email is set, else Bearer token —
+        covers both JIRA Cloud and Server/Data Center PAT-style auth; confirm
+        which matches your instance before relying on this.
+        """
+        if not settings.jira_url:
+            return []
+
+        results = []
+        auth = None
+        headers = {}
+        if settings.jira_email:
+            auth = (settings.jira_email, settings.jira_api_token)
+        elif settings.jira_api_token:
+            headers["Authorization"] = f"Bearer {settings.jira_api_token}"
+
+        jql = f'text ~ "{hostname}" AND created >= -{days_back}d ORDER BY created DESC'
+        try:
+            async with httpx.AsyncClient(**HTTPX_OPTS) as client:
+                resp = await client.get(
+                    f"{settings.jira_url.rstrip('/')}/rest/api/2/search",
+                    params={"jql": jql, "maxResults": 20, "fields": "summary,status"},
+                    auth=auth,
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    for issue in resp.json().get("issues", []):
+                        key = issue.get("key")
+                        fields = issue.get("fields", {}) or {}
+                        results.append({
+                            "ticket_id": key,
+                            "subject":   fields.get("summary", ""),
+                            "status":    (fields.get("status") or {}).get("name", "open"),
+                            "url":       f"{settings.jira_url.rstrip('/')}/browse/{key}",
+                            "source":    "jira",
+                        })
+                else:
+                    logger.warning(
+                        f"search_jira_by_hostname({hostname}): HTTP {resp.status_code}"
+                    )
+        except Exception as e:
+            logger.error(f"search_jira_by_hostname({hostname}): {e}")
+        return results
+
     # ── report_tickets helpers ────────────────────────────────────────────────
 
     @staticmethod
@@ -254,7 +309,10 @@ class TicketLinkerService:
           4. Upsert fim.report_agents with best auto-match
         token: raw SSO token from the user's Authorization header
         """
-        summary = {"agents_processed": 0, "rt_found": 0, "cmr_found": 0, "errors": []}
+        summary = {
+            "agents_processed": 0, "rt_found": 0, "cmr_found": 0, "jira_found": 0,
+            "errors": [],
+        }
 
         for hostname in agent_list:
             try:
@@ -264,6 +322,7 @@ class TicketLinkerService:
                 cmr_tickets = await TicketLinkerService.search_cmr_by_hostname(
                     hostname, token
                 )
+                jira_tickets = await TicketLinkerService.search_jira_by_hostname(hostname)
 
                 for t in rt_tickets:
                     await TicketLinkerService._upsert_report_ticket(
@@ -273,9 +332,17 @@ class TicketLinkerService:
                     await TicketLinkerService._upsert_report_ticket(
                         report_id, hostname, "cmr", t, db
                     )
+                for t in jira_tickets:
+                    await TicketLinkerService._upsert_report_ticket(
+                        report_id, hostname, "jira", t, db
+                    )
 
                 best_rt  = rt_tickets[0]["ticket_id"]  if rt_tickets  else None
                 best_cmr = cmr_tickets[0]["ticket_id"] if cmr_tickets else None
+                # NOTE: no correlated_jira column on fim.report_agents yet
+                # (would need a migration — deferred to Phase 0/Alembic).
+                # JIRA matches still land in fim.report_tickets above, just
+                # without a "best auto-match" summary field for now.
                 status   = "correlated" if (best_rt or best_cmr) else "pending"
 
                 await db.execute(text("""
@@ -299,6 +366,7 @@ class TicketLinkerService:
                 summary["agents_processed"] += 1
                 if best_rt:  summary["rt_found"]  += 1
                 if best_cmr: summary["cmr_found"] += 1
+                if jira_tickets: summary["jira_found"] += 1
 
             except Exception as e:
                 logger.error(f"correlate_all_agents – {hostname}: {e}")
@@ -317,10 +385,11 @@ class TicketLinkerService:
     async def find_tickets_for_agent(report_id: str, hostname: str,
                                      token: str, db: AsyncSession) -> Dict:
         """On-demand refresh for a single agent."""
-        rt_tickets  = await TicketLinkerService.search_rt_by_hostname(
+        rt_tickets   = await TicketLinkerService.search_rt_by_hostname(
             hostname, token, db=db
         )
-        cmr_tickets = await TicketLinkerService.search_cmr_by_hostname(hostname, token)
+        cmr_tickets  = await TicketLinkerService.search_cmr_by_hostname(hostname, token)
+        jira_tickets = await TicketLinkerService.search_jira_by_hostname(hostname)
 
         for t in rt_tickets:
             await TicketLinkerService._upsert_report_ticket(
@@ -330,8 +399,12 @@ class TicketLinkerService:
             await TicketLinkerService._upsert_report_ticket(
                 report_id, hostname, "cmr", t, db
             )
+        for t in jira_tickets:
+            await TicketLinkerService._upsert_report_ticket(
+                report_id, hostname, "jira", t, db
+            )
         await db.commit()
-        return {"rt": rt_tickets, "cmr": cmr_tickets}
+        return {"rt": rt_tickets, "cmr": cmr_tickets, "jira": jira_tickets}
 
     # ── RT write operations ───────────────────────────────────────────────────
 

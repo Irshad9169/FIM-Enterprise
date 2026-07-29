@@ -127,6 +127,21 @@ Fill in `SMTP_*` if you like for documentation purposes, but see §8 — they do
 Fill in `CORS_ORIGINS` too for documentation purposes, but see §7 — it also does nothing
 at runtime; the real value is hardcoded in source and must be edited there.
 
+Optional — RT/CMR/JIRA ticket-system integration (these ARE live via `Settings`,
+unlike `SMTP_*`/`CORS_ORIGINS` above — safe to omit, defaults match the original
+hardcoded RT/CMR URLs so nothing changes unless you override them):
+```bash
+RT_LOOKUP_URL=http://rtapi.int.untd.com/cgi-bin/rt.cgi
+RT_UPDATE_URL=https://rtapi.int.untd.com/cgi-bin/rt.cgi
+RT_EMAIL=security@tickets.int.untd.com
+CMR_URL=https://phantom.int.untd.com/bin/phantom
+# JIRA is net-new and disabled by default (empty JIRA_URL = no-op). Set all
+# three to enable; jira_email present -> Basic auth, absent -> Bearer token.
+JIRA_URL=
+JIRA_EMAIL=
+JIRA_API_TOKEN=
+```
+
 ⚠️ **`.env` alone is not enough** — several values (`SECRET_KEY`, `JWT_ALGORITHM`,
 `ACCESS_TOKEN_EXPIRE_MINUTES`, `REPORT_AUTO_GENERATE`, `REPORT_SCHEDULE_HOUR`,
 `REPORT_SCHEDULE_MINUTE`) are read via `os.getenv()` directly in `app/core/security.py`

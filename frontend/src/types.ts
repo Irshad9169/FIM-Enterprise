@@ -94,7 +94,7 @@ export interface ReportChangeDetail {
 
 export interface ReportTicket {
   id:          string;
-  source:      "rt" | "cmr";
+  source:      "rt" | "cmr" | "jira";
   external_id: string;
   summary:     string | null;
   url:         string | null;

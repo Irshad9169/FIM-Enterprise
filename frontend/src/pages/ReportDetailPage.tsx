@@ -379,8 +379,9 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic" }: {
     } finally { setSkipping(false); }
   };
 
-  const rtTickets  = agent.tickets.filter(t => t.source === "rt");
-  const cmrTickets = agent.tickets.filter(t => t.source === "cmr");
+  const rtTickets   = agent.tickets.filter(t => t.source === "rt");
+  const cmrTickets  = agent.tickets.filter(t => t.source === "cmr");
+  const jiraTickets = agent.tickets.filter(t => t.source === "jira");
   const isSubmittedInReport = (report.submitted_agents || []).includes(agent.agent_hostname);
 
   return (
@@ -486,7 +487,16 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic" }: {
                 </div>
               )}
 
-              {rtTickets.length === 0 && cmrTickets.length === 0 && (
+              {jiraTickets.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
+                    <LinkIcon size={10} className="text-violet-400" /> JIRA Issues
+                  </div>
+                  {jiraTickets.map(t => <TicketChip key={t.external_id} ticket={t} color="violet" />)}
+                </div>
+              )}
+
+              {rtTickets.length === 0 && cmrTickets.length === 0 && jiraTickets.length === 0 && (
                 <div className="text-slate-500 text-xs italic text-center py-3">
                   No tickets found. Use <Search size={10} className="inline" /> to search.
                 </div>
@@ -610,10 +620,13 @@ function HostGroupCard({ hostnames, changes, agentsByHostname, report }: {
   );
 }
 
-function TicketChip({ ticket, color }: { ticket: ReportTicket; color: "blue" | "cyan" }) {
+function TicketChip({ ticket, color }: { ticket: ReportTicket; color: "blue" | "cyan" | "violet" }) {
   const cls = color === "blue"
     ? "border-blue-900/50 bg-blue-900/10 text-blue-400"
-    : "border-cyan-900/50 bg-cyan-900/10 text-cyan-400";
+    : color === "cyan"
+    ? "border-cyan-900/50 bg-cyan-900/10 text-cyan-400"
+    : "border-violet-900/50 bg-violet-900/10 text-violet-400";
+  const label = color === "blue" ? "RT" : color === "cyan" ? "CMR" : "JIRA";
   return (
     <div className={`p-2 border rounded text-xs mb-1 ${cls}`}>
       <div className="flex justify-between items-start">
@@ -624,7 +637,7 @@ function TicketChip({ ticket, color }: { ticket: ReportTicket; color: "blue" | "
       {ticket.url && (
         <a href={ticket.url} target="_blank" rel="noreferrer"
           className="text-[10px] flex items-center gap-1 mt-1 hover:underline opacity-60">
-          <ExternalLink size={9} /> View in {color === "blue" ? "RT" : "CMR"}
+          <ExternalLink size={9} /> View in {label}
         </a>
       )}
     </div>
