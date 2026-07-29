@@ -36,6 +36,30 @@ export const DEFAULT_CLUB_THRESHOLD = 0.9;
 const MAX_SAMPLES_PER_BUCKET = 4;
 const ROLLUP_MIN_COUNT = 20; // only worth a directory rollup line above this many files
 
+/**
+ * Collapse multiple changes for the same (host, file_path) down to just the
+ * most recent one, by current_mtime. The same file can legitimately show up
+ * more than once in a single day's report — e.g. /etc/shadow changing twice
+ * in one day from separate password resets — and every downstream count
+ * (bucket totals, "N changes" headers, clubbing similarity) should reflect
+ * one logical change per file, not each individual detection.
+ */
+export function dedupeByLatestMtime(changes: ReportChangeDetail[]): ReportChangeDetail[] {
+  const latest = new Map<string, ReportChangeDetail>();
+  for (const c of changes) {
+    const key = `${c.agent_hostname ?? ""}:${normalizedType(c)}:${c.file_path}`;
+    const existing = latest.get(key);
+    if (!existing) {
+      latest.set(key, c);
+      continue;
+    }
+    const existingTime = existing.current_mtime ? Date.parse(existing.current_mtime) : -Infinity;
+    const candidateTime = c.current_mtime ? Date.parse(c.current_mtime) : -Infinity;
+    if (candidateTime >= existingTime) latest.set(key, c);
+  }
+  return Array.from(latest.values());
+}
+
 function normalizedType(c: ReportChangeDetail): string {
   return (c.change_type || "").toLowerCase();
 }
@@ -178,7 +202,9 @@ export function clubHosts(
   hosts: HostChanges[],
   threshold: number = DEFAULT_CLUB_THRESHOLD,
 ): { groups: HostGroup[]; solos: HostChanges[] } {
-  const remaining = [...hosts];
+  // Dedupe first — a file detected twice in one day for one host must not
+  // inflate that host's change-set size or skew its similarity to others.
+  const remaining = hosts.map(h => ({ ...h, changes: dedupeByLatestMtime(h.changes) }));
   const groups: HostGroup[] = [];
   const solos: HostChanges[] = [];
 

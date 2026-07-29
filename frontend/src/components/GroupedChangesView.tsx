@@ -1,5 +1,5 @@
 import {
-  buildBuckets, buildDirectoryRollups, buildDetailEntries,
+  buildBuckets, buildDirectoryRollups, buildDetailEntries, dedupeByLatestMtime,
 } from "../lib/reportGrouping";
 import type { ReportChangeDetail } from "../types";
 
@@ -9,13 +9,18 @@ const CHANGE_KIND_STYLE: Record<string, { label: string; color: string }> = {
   changed: { label: "● Changed", color: "text-sky-400" },
 };
 
+/** "was changed"/"were changed", agreeing with count — not just always "were". */
+function verbFor(count: number, changeType: string): string {
+  const base = changeType === "changed" ? "changed" : changeType;
+  return count === 1 ? `was ${base}` : `were ${base}`;
+}
+
 function BucketSection({ changes, changeType }: { changes: ReportChangeDetail[]; changeType: string }) {
   const buckets = buildBuckets(changes, changeType);
   const rollups = changeType !== "changed" ? buildDirectoryRollups(changes, changeType) : [];
   if (buckets.length === 0) return null;
 
   const style = CHANGE_KIND_STYLE[changeType] || { label: changeType, color: "text-slate-400" };
-  const verb = changeType === "changed" ? "were changed" : `were ${changeType}`;
 
   return (
     <div className="px-4 pt-2 pb-2 border-t border-slate-800/60 first:border-t-0">
@@ -24,25 +29,30 @@ function BucketSection({ changes, changeType }: { changes: ReportChangeDetail[];
       </div>
 
       {buckets.map(b => (
-        <div key={b.category} className="text-[13px] text-slate-400 py-0.5 pl-1">
-          <b className="text-white font-mono">{b.count}</b>{" "}
-          {b.category === "other" ? "other" : `${b.category} related`}{" "}
-          file{b.count === 1 ? "" : "s"} {verb}
+        <div key={b.category} className="pb-2 last:pb-0">
+          <div className="text-[13px] text-slate-400 py-0.5 pl-1">
+            <b className="text-white font-mono">{b.count}</b>{" "}
+            {b.category === "other" ? "other" : `${b.category} related`}{" "}
+            file{b.count === 1 ? "" : "s"} {verbFor(b.count, changeType)}
+          </div>
+          <div className="font-mono text-xs text-pink-400/80 pl-4 space-y-0.5">
+            {b.samples.map(s => <div key={s} className="truncate">{s}</div>)}
+            {b.moreCount > 0 && (
+              <div className="text-slate-500 italic font-sans text-[11px]">
+                + {b.moreCount} more {b.category === "other" ? "" : `${b.category}-related `}
+                file{b.moreCount === 1 ? "" : "s"}
+              </div>
+            )}
+          </div>
         </div>
       ))}
 
-      <div className="font-mono text-xs text-pink-400/80 pl-4 pt-1 space-y-0.5">
-        {buckets.slice(0, 3).flatMap(b => b.samples.map(s => (
-          <div key={s} className="truncate">{s}</div>
-        )))}
-      </div>
-
       {rollups.length > 0 && (
-        <div className="font-mono text-xs text-slate-400 pl-1 pt-1.5 space-y-0.5">
+        <div className="font-mono text-xs text-slate-400 pl-1 pt-0.5 pb-1 space-y-0.5">
           {rollups.map(r => (
             <div key={r.directory}>
               In <span className="text-pink-400">{r.directory}</span>,{" "}
-              <b className="text-white">{r.count}</b> files {verb}
+              <b className="text-white">{r.count}</b> files {verbFor(r.count, changeType)}
             </div>
           ))}
         </div>
@@ -57,7 +67,13 @@ function BucketSection({ changes, changeType }: { changes: ReportChangeDetail[];
  * thousands of changes from a single patch). See project memory
  * "report-grouping-design-pending" for the full design rationale.
  */
-export function GroupedChangesView({ changes }: { changes: ReportChangeDetail[] }) {
+export function GroupedChangesView({ changes: rawChanges }: { changes: ReportChangeDetail[] }) {
+  // Same file detected more than once in one report window (e.g. /etc/shadow
+  // changing twice in a day from separate password resets) collapses to one
+  // entry — the latest by current_mtime — rather than being counted/shown
+  // more than once.
+  const changes = dedupeByLatestMtime(rawChanges);
+
   if (changes.length === 0) {
     return <div className="text-slate-500 text-xs italic py-4 text-center">No changes.</div>;
   }

@@ -15,7 +15,7 @@ import {
   SkipForward, AlertTriangle, Check, X, ExternalLink, Download, LayoutGrid, List,
 } from "lucide-react";
 import { GroupedChangesView } from "../components/GroupedChangesView";
-import { clubHosts, type HostChanges } from "../lib/reportGrouping";
+import { clubHosts, dedupeByLatestMtime, type HostChanges } from "../lib/reportGrouping";
 
 type ViewMode = "grouped" | "classic";
 
@@ -354,6 +354,12 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic" }: {
   const [skipping,     setSkipping]     = useState(false);
 
   const effectiveRt = agent.manual_rt || agent.correlated_rt;
+  // Classic mode keeps the exact original raw count. Grouped mode dedupes
+  // first so this number agrees with what the bucket breakdown below
+  // actually shows — a file detected twice in one day is one change, not two.
+  const displayChangeCount = viewMode === "grouped"
+    ? dedupeByLatestMtime(agent.changes).length
+    : agent.changes.length;
 
   const handleFindTickets = async () => {
     setSearching(true);
@@ -394,7 +400,7 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic" }: {
             <StatusBadge status={agent.status} map={AGENT_STATUS_COLORS} />
             <span className="font-mono font-bold text-white text-sm truncate">{agent.agent_hostname}</span>
             {agent.ip_address && <span className="text-slate-500 text-xs hidden md:block">{agent.ip_address}</span>}
-            <span className="text-slate-500 text-xs">{agent.changes.length} changes</span>
+            <span className="text-slate-500 text-xs">{displayChangeCount} changes</span>
             {isSubmittedInReport && <span className="text-green-400 text-xs">✓</span>}
           </div>
 
