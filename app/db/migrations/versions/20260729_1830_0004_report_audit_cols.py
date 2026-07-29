@@ -7,7 +7,7 @@ by report_scheduler.py's _generate_report and app/api/reports.py's
 generate_daily_report, both of which build ReportChange rows from Alert
 rows.
 
-Revision ID: 0004_report_changes_audit_columns
+Revision ID: 0004_report_audit_cols
 Revises: 0003_auditd_correlation
 Create Date: 2026-07-29 18:30:00.000000
 
@@ -18,7 +18,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = '0004_report_changes_audit_columns'
+revision: str = '0004_report_audit_cols'
 down_revision: Union[str, None] = '0003_auditd_correlation'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
