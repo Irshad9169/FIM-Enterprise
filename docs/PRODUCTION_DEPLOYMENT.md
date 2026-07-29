@@ -329,10 +329,15 @@ vi config/agent_config.yaml
 # Set: server.url (https://your-new-hostname), server.api_key, agent.hostname, monitored_paths
 sudo bash scripts/gap9_encrypt_api_keys.sh    # encrypts the API key in place
 
+# Base dependencies (required):
+python3 -m pip install --quiet requests pyyaml
 # Real-time detection (in addition to the scheduled scan) needs watchdog.
 # Optional — the agent falls back to scheduled-scan-only if this isn't
 # installed, so it's safe to skip and add later.
 python3 -m pip install --quiet watchdog
+# If this host's Python blocks system-wide pip installs ("externally
+# managed environment"), use a venv instead and point ExecStart below at
+# its python: python3 -m venv venv && venv/bin/pip install requests pyyaml watchdog
 
 sudo tee /etc/systemd/system/fim-agent.service << 'EOF'
 [Unit]

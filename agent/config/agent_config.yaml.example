@@ -1,21 +1,59 @@
 # FIM Agent Configuration Template
-# Copy to agent_config.yaml and fill in values
-# The api_key will be encrypted by gap9_encrypt_api_keys.sh
+# Copy to agent_config.yaml and fill in values.
+# The api_key will be encrypted in place by scripts/gap9_encrypt_api_keys.sh
+# — put the plain key here first, encrypt as the very last step before starting
+# the service.
 
 server:
   url: https://your-fim-server-hostname
   api_key: YOUR_AGENT_API_KEY_HERE
+  api_version: v1
   timeout: 30
+  retry_attempts: 3
+  retry_delay: 5
 
 agent:
+  # id is populated automatically on first successful registration — leave
+  # this out entirely for a brand-new agent, don't put a placeholder here.
   hostname: your-agent-hostname
-  scan_interval: 60
-  monitored_paths:
-    - /etc
-    - /bin
-    - /usr/bin
-    - /usr/sbin
+
+monitoring:
+  hash_algorithm: sha256
+  scan_interval: 3600        # seconds between scheduled full scans
+  heartbeat_interval: 60     # seconds between heartbeats
+  # realtime_debounce_seconds: 3   # optional, default shown
+
+  # Each monitored path keeps its own exclude_patterns — matched against
+  # every path-suffix below that root, so a pattern works regardless of
+  # nesting depth (see agent/fim_agent.py's FileScanner._is_excluded).
+  paths:
+    - path: /etc
+      exclude_patterns:
+        - '*.tmp'
+        - '*.swp'
+        - .git/*
+    - path: /var/www
+      exclude_patterns:
+        - '*.log'
+        - cache/*
+    - path: /opt
+      exclude_patterns:
+        - '*.pyc'
+        - __pycache__/*
+
+  # Optional — process/user attribution via auditd for a curated critical-path
+  # list (NOT the whole monitored tree). Requires auditd installed/running and
+  # matching `auditctl -w <path> -k fim_watch` rules provisioned — see
+  # docs/PRODUCTION_DEPLOYMENT.md §12. No-op (fields stay null) if auditd
+  # isn't set up, so safe to leave in even before provisioning the rules.
+  # audit_critical_paths:
+  #   - /etc/passwd
+  #   - /etc/shadow
+  #   - /etc/sudoers
+  #   - /etc/ssh/sshd_config
 
 logging:
   level: INFO
   file: /var/log/fim-agent.log
+  max_size: 10485760
+  backup_count: 5
