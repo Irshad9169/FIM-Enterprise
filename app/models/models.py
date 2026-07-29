@@ -235,6 +235,10 @@ class WhitelistRule(Base):
     match_count = Column(Integer, default=0)
     scope = Column(String(20), default='global')
     agent_id = Column(UUID(as_uuid=True), ForeignKey("fim.agents.id", ondelete="CASCADE"))
+    status = Column(String(20), default='pending')
+    approved_by = Column(UUID(as_uuid=True), ForeignKey("fim.users.id", ondelete="SET NULL"))
+    approved_at = Column(TIMESTAMP(timezone=True))
+    rejection_reason = Column(Text)
 
 class ScanRequest(Base):
     __tablename__ = "scan_requests"
