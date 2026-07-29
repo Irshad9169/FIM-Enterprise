@@ -13,11 +13,24 @@ import fnmatch
 import logging
 import platform
 import socket
+import threading
 import requests
 import argparse
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+
+# Real-time filesystem watching (complements the scheduled full scan — see
+# FIMAgent._check_realtime_trigger). Optional dependency: if watchdog isn't
+# installed, the agent falls back to scheduled-scan-only, same as before.
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+    Observer = None
+    FileSystemEventHandler = object
 
 # ── GAP #11 / Agent 413 Fix: chunked scan submission ────────────
 SCAN_CHUNK_SIZE = 10_000   # max files per API call
@@ -184,14 +197,15 @@ class FIMClient:
             self.logger.error(f"Heartbeat failed: {e}")
             return False
 
-    def send_scan_results(self, agent_id: str, scan_data: List[Dict]):
+    def send_scan_results(self, agent_id: str, scan_data: List[Dict], scan_type: str = 'full'):
         """Send scan results to server"""
         try:
             data = {
                 'agent_id': agent_id,
                 'files': scan_data,
                 'timestamp': datetime.utcnow().isoformat(),
-                'total_files': len(scan_data)
+                'total_files': len(scan_data),
+                'scan_type': scan_type
             }
 
             # Sign payload with HMAC-SHA256
@@ -216,7 +230,8 @@ class FIMClient:
             return False
 
 class FileScanner:
-    def __init__(self, paths: List[Union[str, Dict]], hash_algo: str = 'sha256'):
+    def __init__(self, paths: List[Union[str, Dict]], hash_algo: str = 'sha256',
+                 cache_path: Optional[str] = None):
         # Normalize paths: each monitored path keeps its own exclude_patterns
         # (config['monitoring']['paths'] entries look like
         #  {path: /opt, recursive: true, exclude_patterns: [...]}).
@@ -235,6 +250,42 @@ class FileScanner:
 
         self.hash_algo = hash_algo
         self.logger = logging.getLogger('FIMAgent.Scanner')
+
+        # Incremental scanning: skip re-hashing files whose mtime+size are
+        # unchanged since the last scan, instead of hashing every monitored
+        # file every cycle. Every file is still reported every cycle (the
+        # outgoing payload shape is unchanged) — this only avoids the
+        # read-and-hash work for files that provably didn't change.
+        self.cache_path = cache_path
+        self._prev_cache: Dict[str, Dict] = self._load_cache()
+        self._new_cache: Dict[str, Dict] = {}
+        self.hashes_skipped = 0
+        self.hashes_computed = 0
+
+    def _load_cache(self) -> Dict[str, Dict]:
+        if not self.cache_path or not os.path.exists(self.cache_path):
+            return {}
+        try:
+            with open(self.cache_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            self.logger.warning(f"Failed to load scan cache, starting fresh: {e}")
+            return {}
+
+    def _save_cache(self):
+        if not self.cache_path:
+            return
+        try:
+            tmp_path = self.cache_path + '.tmp'
+            with open(tmp_path, 'w') as f:
+                json.dump(self._new_cache, f)
+            os.replace(tmp_path, self.cache_path)
+            try:
+                os.chmod(self.cache_path, 0o600)
+            except Exception:
+                pass  # not meaningful on all platforms (e.g. Windows) — best effort
+        except Exception as e:
+            self.logger.warning(f"Failed to persist scan cache: {e}")
 
     def calculate_hash(self, file_path: str) -> str:
         """Calculate file hash"""
@@ -277,6 +328,11 @@ class FileScanner:
         """Scan all monitored paths, honoring each path's own exclude_patterns"""
         results = []
         self.logger.info(f"Starting scan of {len(self.path_configs)} paths")
+        # Rebuilt fresh each cycle (not merged) so files that no longer exist
+        # don't linger in the cache forever.
+        self._new_cache = {}
+        self.hashes_skipped = 0
+        self.hashes_computed = 0
 
         for path_config in self.path_configs:
             path = path_config['path']
@@ -310,17 +366,34 @@ class FileScanner:
                         if file_info:
                             results.append(file_info)
 
-        self.logger.info(f"Scan complete: {len(results)} files scanned")
+        self._save_cache()
+        self.logger.info(
+            f"Scan complete: {len(results)} files scanned "
+            f"({self.hashes_computed} hashed, {self.hashes_skipped} unchanged/skipped)"
+        )
         return results
 
     def _process_file(self, file_path: str) -> Optional[Dict]:
         try:
             stat = os.stat(file_path)
+            size = stat.st_size
+            mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
+
+            cached = self._prev_cache.get(file_path)
+            if cached and cached.get('mtime') == mtime and cached.get('size') == size:
+                file_hash = cached['hash']
+                self.hashes_skipped += 1
+            else:
+                file_hash = self.calculate_hash(file_path)
+                self.hashes_computed += 1
+
+            self._new_cache[file_path] = {'mtime': mtime, 'size': size, 'hash': file_hash}
+
             return {
                 'path': file_path,
-                'hash': self.calculate_hash(file_path),
-                'size': stat.st_size,
-                'mtime': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                'hash': file_hash,
+                'size': size,
+                'mtime': mtime,
                 'permissions': oct(stat.st_mode)[-3:],
                 'owner': stat.st_uid,
                 'group': stat.st_gid
@@ -328,6 +401,31 @@ class FileScanner:
         except Exception as e:
             self.logger.warning(f"Error processing {file_path}: {e}")
             return None
+
+class _RealtimeChangeHandler(FileSystemEventHandler):
+    """
+    watchdog event handler for one monitored root. Doesn't scan or hash
+    anything itself — just marks the agent "dirty" so the heartbeat loop's
+    debounce check (FIMAgent._check_realtime_trigger) can trigger a full
+    rescan shortly after activity quiets down. Kept deliberately dumb: the
+    existing full-scan/ChangeDetector pipeline already does the real work,
+    and it assumes a complete file inventory per submission (see
+    ChangeDetector._compare_files) — a partial/per-event submission would
+    make every other file look "deleted", so real-time here means "detect
+    fast, then trigger the same full pipeline sooner," not "stream deltas."
+    """
+    def __init__(self, base_path: str, exclude_patterns: List[str], mark_dirty):
+        self.base_path = base_path
+        self.exclude_patterns = exclude_patterns
+        self.mark_dirty = mark_dirty
+
+    def on_any_event(self, event):
+        if event.is_directory:
+            return
+        if FileScanner._is_excluded(event.src_path, self.base_path, self.exclude_patterns):
+            return
+        self.mark_dirty()
+
 
 class FIMAgent:
     def __init__(self, config_file: str):
@@ -345,15 +443,91 @@ class FIMAgent:
             self.config['server']['api_key']
         )
         
+        cache_path = os.path.join(
+            os.path.dirname(os.path.abspath(config_file)), '.scan_cache.json'
+        )
         self.scanner = FileScanner(
             self.monitored_paths,
-            self.config['monitoring'].get('hash_algorithm', 'sha256')
+            self.config['monitoring'].get('hash_algorithm', 'sha256'),
+            cache_path=cache_path,
         )
         
         self.hostname = socket.gethostname()
         self.ip_address = socket.gethostbyname(self.hostname)
         self.agent_id = self.config['agent'].get('id')
         self.running = True
+
+        # Real-time watching state — additive to the scheduled scan, not a
+        # replacement (see _RealtimeChangeHandler docstring). scan_lock
+        # prevents a realtime-triggered scan from overlapping a scheduled one.
+        self._scan_lock = threading.Lock()
+        self._realtime_lock = threading.Lock()
+        self._realtime_pending = False
+        self._realtime_last_event = 0.0
+        self._realtime_debounce_seconds = self.config['monitoring'].get(
+            'realtime_debounce_seconds', 3
+        )
+        self._observer = None
+
+    def start_realtime_watch(self):
+        """
+        Start watching monitored directories for filesystem events. Purely
+        additive — if watchdog isn't installed, or a given root can't be
+        watched (e.g. permission denied, inotify watch limit reached), logs
+        a warning and the agent continues on scheduled scans alone.
+        """
+        if not WATCHDOG_AVAILABLE:
+            self.logger.warning(
+                "watchdog not installed — real-time detection disabled, "
+                "falling back to scheduled scans only"
+            )
+            return
+
+        observer = Observer()
+        watched_count = 0
+        for path_config in self.scanner.path_configs:
+            path = path_config['path']
+            if not path or not os.path.isdir(path):
+                continue  # single-file paths: covered by scheduled scan only
+            try:
+                handler = _RealtimeChangeHandler(
+                    path, path_config['exclude_patterns'], self._mark_realtime_dirty
+                )
+                observer.schedule(handler, path, recursive=True)
+                watched_count += 1
+            except Exception as e:
+                self.logger.warning(f"Real-time watch failed for {path}: {e}")
+
+        if watched_count == 0:
+            self.logger.warning("No paths could be watched in real-time")
+            return
+
+        observer.start()
+        self._observer = observer
+        self.logger.info(f"Real-time watching started on {watched_count} path(s)")
+
+    def _mark_realtime_dirty(self):
+        with self._realtime_lock:
+            self._realtime_pending = True
+            self._realtime_last_event = time.time()
+
+    def _check_realtime_trigger(self) -> bool:
+        """
+        Called periodically from the heartbeat loop. Returns True if a
+        realtime-triggered scan was run. Waits for a quiet period after the
+        last event (debounce) so a burst of writes to the same file doesn't
+        trigger a rescan per-event.
+        """
+        with self._realtime_lock:
+            if not self._realtime_pending:
+                return False
+            if time.time() - self._realtime_last_event < self._realtime_debounce_seconds:
+                return False
+            self._realtime_pending = False
+
+        self.logger.info("Real-time change detected — triggering rescan")
+        self.run_scan(scan_type='realtime')
+        return True
 
     def register(self):
         """Register agent with server"""
@@ -379,12 +553,13 @@ class FIMAgent:
             yaml.dump(config, f, default_flow_style=False)
         self.logger.info(f"Agent ID saved: {agent_id}")
 
-    def run_scan(self):
+    def run_scan(self, scan_type: str = 'full'):
         """Execute file integrity scan"""
-        self.logger.info("Starting file integrity scan")
-        scan_results = self.scanner.scan()
-        if scan_results:
-            self.client.send_scan_results(self.agent_id, scan_results)
+        with self._scan_lock:
+            self.logger.info(f"Starting file integrity scan (scan_type={scan_type})")
+            scan_results = self.scanner.scan()
+            if scan_results:
+                self.client.send_scan_results(self.agent_id, scan_results, scan_type=scan_type)
 
     def run_daemon(self):
         """Main agent loop"""
@@ -395,10 +570,11 @@ class FIMAgent:
 
         self.logger.info("Starting heartbeat loop")
         self.logger.info("============================================================")
-        
+
         # Initial scan
         self.run_scan()
-        
+        self.start_realtime_watch()
+
         last_scan = time.time()
         scan_interval = self.config['monitoring'].get('scan_interval', 3600)
         heartbeat_interval = self.config['monitoring'].get('heartbeat_interval', 60)
@@ -407,7 +583,7 @@ class FIMAgent:
             try:
                 # Heartbeat
                 result = self.client.send_heartbeat(self.agent_id, self.hostname)
-                
+
                 # Check if scan requested
                 if result == "SCAN_REQUIRED":
                     self.run_scan()
@@ -416,6 +592,10 @@ class FIMAgent:
                 # Scheduled scan
                 if time.time() - last_scan > scan_interval:
                     self.run_scan()
+                    last_scan = time.time()
+
+                # Real-time-triggered scan (debounced filesystem events)
+                if self._check_realtime_trigger():
                     last_scan = time.time()
 
                 time.sleep(heartbeat_interval)

@@ -25,6 +25,7 @@ class ScanSubmitRequest(BaseModel):
     timestamp: str
     files: List[Dict]
     total_files: int
+    scan_type: Optional[str] = "full"  # e.g. "full" (scheduled) vs "realtime" (event-triggered)
 
 @router.post("/submit")
 async def submit_scan(raw_request: Request, db: AsyncSession = Depends(get_db)):
@@ -88,7 +89,7 @@ async def submit_scan(raw_request: Request, db: AsyncSession = Depends(get_db)):
     scan = Scan(
         id=uuid.uuid4(),
         agent_id=agent_uuid,
-        scan_type="full",
+        scan_type=request.scan_type or "full",
         status="completed",
         files_scanned=request.total_files,
         files_changed=0,

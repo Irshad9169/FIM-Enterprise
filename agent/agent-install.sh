@@ -33,6 +33,12 @@ if command -v python3 &> /dev/null; then
     python3 -m pip install --quiet pyyaml requests || {
         echo "WARNING: pip install failed. Install manually: pip3 install pyyaml requests"
     }
+    # watchdog enables real-time change detection (in addition to the
+    # scheduled scan) — optional: fim_agent.py falls back to scheduled-scan-
+    # only if this isn't installed, so a failure here doesn't block install.
+    python3 -m pip install --quiet watchdog || {
+        echo "WARNING: watchdog install failed — real-time detection will be disabled, scheduled scans still work. Install manually: pip3 install watchdog"
+    }
 else
     echo "ERROR: Python 3 not found. Please install Python 3.6+"
     exit 1

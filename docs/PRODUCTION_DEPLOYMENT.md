@@ -314,6 +314,11 @@ vi config/agent_config.yaml
 # Set: server.url (https://your-new-hostname), server.api_key, agent.hostname, monitored_paths
 sudo bash scripts/gap9_encrypt_api_keys.sh    # encrypts the API key in place
 
+# Real-time detection (in addition to the scheduled scan) needs watchdog.
+# Optional — the agent falls back to scheduled-scan-only if this isn't
+# installed, so it's safe to skip and add later.
+python3 -m pip install --quiet watchdog
+
 sudo tee /etc/systemd/system/fim-agent.service << 'EOF'
 [Unit]
 Description=FIM Enterprise Agent
@@ -333,6 +338,25 @@ EOF
 systemctl daemon-reload
 systemctl enable fim-agent --now
 ```
+
+**inotify watch limits (real-time detection):** watchdog uses one inotify watch
+per *directory* under each monitored path, not per file, so this scales with
+directory count rather than file count — comfortably below Linux's usual
+default for the directory counts seen so far in this deployment, but confirm
+before relying on it:
+
+```bash
+cat /proc/sys/fs/inotify/max_user_watches
+find /etc /opt /var/www -type d | wc -l   # adjust to your actual monitored paths
+# If the directory count is anywhere close to the limit, raise it:
+echo "fs.inotify.max_user_watches=524288" | sudo tee /etc/sysctl.d/99-fim-agent.conf
+sudo sysctl --system
+```
+
+If a monitored root can't be watched (permission denied, watch limit hit),
+`fim_agent.py` logs a warning for that root specifically and continues
+scanning it on the scheduled interval only — it doesn't affect other roots
+or crash the agent.
 
 ---
 
