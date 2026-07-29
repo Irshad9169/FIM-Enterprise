@@ -62,7 +62,16 @@ class ReportScheduler:
         self.hour = int(os.getenv("REPORT_SCHEDULE_HOUR", str(DEFAULT_SCHEDULE_HOUR)))
         self.minute = int(os.getenv("REPORT_SCHEDULE_MINUTE", str(DEFAULT_SCHEDULE_MINUTE)))
         self._task: asyncio.Task = None
+        self._hourly_task: asyncio.Task = None
         self._running = False
+
+    @staticmethod
+    async def _get_alert_recipients(db) -> list:
+        """Admin/analyst emails — shared by _generate_report and _run_agent_health_check."""
+        result = await db.execute(text(
+            "SELECT email FROM fim.users WHERE role IN ('admin', 'analyst') AND is_active = true"
+        ))
+        return [row.email for row in result.fetchall() if row.email]
 
     async def _run_anomaly_detection(self):
         """GAP #19: Run anomaly detection hourly."""
@@ -87,6 +96,7 @@ class ReportScheduler:
 
         self._running = True
         self._task = asyncio.create_task(self._scheduler_loop())
+        self._hourly_task = asyncio.create_task(self._hourly_loop())
         logger.info(
             f"Report scheduler started — will generate daily reports at "
             f"{self.hour:02d}:{self.minute:02d} IST"
@@ -97,7 +107,62 @@ class ReportScheduler:
         self._running = False
         if self._task:
             self._task.cancel()
-            logger.info("Report scheduler stopped")
+        if self._hourly_task:
+            self._hourly_task.cancel()
+        logger.info("Report scheduler stopped")
+
+    async def _hourly_loop(self):
+        """
+        Independent hourly loop — can't share _scheduler_loop's sleep since
+        that one sleeps for up to ~24h at a stretch waiting for the daily
+        report time. Runs agent health/stale-agent checking every hour.
+        """
+        while self._running:
+            try:
+                await asyncio.sleep(3600)
+                if not self._running:
+                    break
+                await self._run_agent_health_check()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Hourly check error: {e}", exc_info=True)
+                await asyncio.sleep(60)
+
+    async def _run_agent_health_check(self):
+        """
+        Item 12a: AgentHealthMonitor.update_agent_health_status already exists
+        and does the right thing (flips Agent.is_healthy, returns
+        went_offline/came_online transition lists) but previously had zero
+        callers outside the pull-based /api/v1/agent-health/* endpoints —
+        nothing ran it proactively. Emails only the went_offline list, which
+        only contains a hostname at the moment it transitions to stale, not
+        every hour it remains stale (update_agent_health_status already does
+        this transition tracking internally — no new dedup logic needed here).
+        """
+        from app.services.agent_health import AgentHealthMonitor
+        from app.services.email_service import EmailService
+
+        db = db_manager.get_session()
+        try:
+            result = await AgentHealthMonitor.update_agent_health_status(db)
+            went_offline = result.get('went_offline') or []
+            if not went_offline:
+                return
+
+            recipients = await self._get_alert_recipients(db)
+            if not recipients:
+                return
+
+            for hostname in went_offline:
+                EmailService.notify_agent_stale(hostname, recipients)
+        except Exception as e:
+            logger.error(f"Agent health check failed: {e}", exc_info=True)
+        finally:
+            try:
+                await db.close()
+            except Exception:
+                pass
 
     async def _scheduler_loop(self):
         """
@@ -249,11 +314,7 @@ class ReportScheduler:
             # Send email notification
             try:
                 from app.services.email_service import EmailService
-                # Get analyst emails from DB
-                email_result = await db.execute(text(
-                    "SELECT email FROM fim.users WHERE role IN ('admin', 'analyst') AND is_active = true"
-                ))
-                recipients = [row.email for row in email_result.fetchall() if row.email]
+                recipients = await self._get_alert_recipients(db)
                 if recipients:
                     EmailService.notify_report_generated(
                         str(report_date), len(agents), len(alerts), recipients

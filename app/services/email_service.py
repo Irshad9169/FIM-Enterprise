@@ -97,6 +97,27 @@ This is an automated notification from FIM Enterprise.
         return EmailService.send_email(recipients, subject, body)
 
     @staticmethod
+    def notify_agent_stale(hostname: str, recipients: List[str]):
+        """Notify when an agent transitions to stale/offline (not repeated every hour it stays down)."""
+        subject = f"[FIM] Agent offline — {hostname}"
+        body = f"""FIM Agent Went Offline
+======================
+
+Host      : {hostname}
+Detected  : {datetime.now().strftime('%Y-%m-%d %H:%M IST')}
+
+This agent has stopped sending heartbeats within its expected interval.
+No further scans or real-time detection are happening on this host until
+it reconnects.
+
+Dashboard: http://test06.hyd.int.untd.com/agents
+
+---
+This is an automated notification from FIM Enterprise.
+"""
+        return EmailService.send_email(recipients, subject, body)
+
+    @staticmethod
     def notify_baseline_integrity_failure(agent_hostname: str, baseline_id: str, recipients: List[str]):
         """Notify on baseline integrity verification failure."""
         subject = f"[FIM SECURITY] Baseline Integrity Failure — {agent_hostname}"

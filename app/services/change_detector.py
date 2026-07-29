@@ -10,7 +10,7 @@ Security features:
     database row from silently affecting change detection.
 """
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc
+from sqlalchemy import select, and_, desc, text
 from typing import List, Dict, Tuple, Set, Optional, Dict, List, Optional, Set
 import logging
 import uuid
@@ -202,6 +202,27 @@ class ChangeDetector:
                 )
                 db.add(integrity_alert)
                 await db.commit()
+
+                # Item 12a: this alert already existed before, but the email
+                # notification for it (EmailService.notify_baseline_integrity_failure)
+                # had zero callers anywhere in the codebase — wiring it in now.
+                try:
+                    from app.services.email_service import EmailService
+                    from app.models.models import Agent as AgentModel
+                    agent_row = await db.execute(
+                        select(AgentModel.hostname).where(AgentModel.id == scan.agent_id)
+                    )
+                    hostname = agent_row.scalar_one_or_none() or str(scan.agent_id)
+                    recipients_res = await db.execute(text(
+                        "SELECT email FROM fim.users WHERE role IN ('admin', 'analyst') AND is_active = true"
+                    ))
+                    recipients = [row.email for row in recipients_res.fetchall() if row.email]
+                    if recipients:
+                        EmailService.notify_baseline_integrity_failure(
+                            hostname, str(baseline.id), recipients
+                        )
+                except Exception as email_err:
+                    logger.warning(f"Failed to send baseline-integrity email: {email_err}")
             except Exception as e:
                 logger.error(f"Failed to create integrity alert: {e}")
 
