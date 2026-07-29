@@ -790,6 +790,24 @@ export default function ReportDetailPage() {
     enabled:  !!reportId,
   });
 
+  // These must run on every render, before any early return below — React
+  // requires the same hooks in the same order every render, and `report`
+  // can be undefined here while the query is still loading, so each memo
+  // has to tolerate that rather than being skipped via a conditional call.
+  const agentsByHostname = useMemo(() => {
+    const map: Record<string, ReportAgent> = {};
+    for (const a of report?.report_agents || []) map[a.agent_hostname] = a;
+    return map;
+  }, [report?.report_agents]);
+
+  const { groups: hostGroups, solos: hostSolos } = useMemo(() => {
+    const hasWorkflowNow = (report?.report_agents?.length ?? 0) > 0;
+    if (viewMode !== "grouped" || !hasWorkflowNow || !report) {
+      return { groups: [] as ReturnType<typeof clubHosts>["groups"], solos: [] as HostChanges[] };
+    }
+    return clubHosts(report.report_agents.map(a => ({ hostname: a.agent_hostname, changes: a.changes })));
+  }, [viewMode, report?.report_agents]);
+
   const handleCorrelate = async () => {
     if (!reportId) return;
     setCorrelating(true); setCorrError("");
@@ -845,19 +863,6 @@ export default function ReportDetailPage() {
   const submittedCount = report.agents_submitted;
   const totalCount    = report.agents_total || report.agents.length;
   const pct           = totalCount > 0 ? Math.round((submittedCount / totalCount) * 100) : 0;
-
-  const agentsByHostname = useMemo(() => {
-    const map: Record<string, ReportAgent> = {};
-    for (const a of report.report_agents || []) map[a.agent_hostname] = a;
-    return map;
-  }, [report.report_agents]);
-
-  const { groups: hostGroups, solos: hostSolos } = useMemo(() => {
-    if (viewMode !== "grouped" || !hasWorkflow) {
-      return { groups: [] as ReturnType<typeof clubHosts>["groups"], solos: [] as HostChanges[] };
-    }
-    return clubHosts((report.report_agents || []).map(a => ({ hostname: a.agent_hostname, changes: a.changes })));
-  }, [viewMode, hasWorkflow, report.report_agents]);
 
   return (
     <>
