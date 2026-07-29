@@ -5,6 +5,7 @@ on:
     branches: ["main", "feature/**"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch: {} # lets you manually re-run the frontend build below without a new commit
 
 jobs:
   lint:
@@ -96,3 +97,38 @@ jobs:
 
       - name: Run integration tests
         run: pytest -v -m integration tests/integration
+
+  frontend-build:
+    name: Build frontend (downloadable artifact for deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # This exists because at least one deployment target (test06) has a
+    # system glibc too old for current Rollup's native binary — no version
+    # of the musl workaround got Rollup to actually use it (its platform
+    # detection deterministically reaches for the glibc-linked binary by
+    # name once it detects a glibc host, regardless of what else is
+    # installed). Building here on a current Ubuntu runner sidesteps that
+    # entirely: nginx only needs the resulting static web/ directory, it
+    # doesn't care what machine produced it.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm install --legacy-peer-deps
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Upload web/ as a downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fim-frontend-web
+          path: web/
+          retention-days: 14
