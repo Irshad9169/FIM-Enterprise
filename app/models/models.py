@@ -21,6 +21,11 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_login = Column(DateTime)
+    last_login_ip = Column(String(50))
+    mfa_enabled = Column(Boolean, default=False)
+    mfa_secret = Column(Text)
+    mfa_confirmed = Column(Boolean, default=False)
 
 class Agent(Base):
     __tablename__ = "agents"
@@ -253,4 +258,5 @@ class ScanRequest(Base):
     timeout_at = Column(DateTime)
     error_message = Column(Text)
     scan_id = Column(UUID(as_uuid=True), ForeignKey("fim.scans.id", ondelete="SET NULL"))
+    priority = Column(String(20), default="normal")
     started_at = Column(DateTime)
