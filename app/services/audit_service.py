@@ -2,17 +2,47 @@
 Enhanced Audit Logging Service
 """
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import insert
+from sqlalchemy import insert, select, desc
 from app.models import AuditLog
 from typing import Optional, Dict
 import uuid
+import hashlib
+import json
 from datetime import datetime
+
+GENESIS_HASH = "0" * 64  # matches the existing fim.audit_logs.prev_hash column default
+
 
 class AuditService:
     """
     Centralized audit logging service
     """
-    
+
+    @staticmethod
+    async def _chain_hashes(db: AsyncSession, fields: Dict) -> tuple:
+        """
+        Compute (entry_hash, prev_hash) for a new audit row, chaining from the
+        most recent existing row — the DB already has entry_hash/prev_hash
+        columns plus triggers blocking UPDATE/DELETE on fim.audit_logs (added
+        by a past gap script), but nothing was ever computing the chain
+        itself; this fills that in.
+        NOTE: under concurrent writes this can fork (two rows briefly reading
+        the same "latest" prev_hash) since there's no explicit serialization
+        here — each row's own hash is still independently verifiable against
+        its fields+prev_hash, it just means a fork reads like a gap rather
+        than proof of one. Matches the original gap10 design as-is rather
+        than adding new locking machinery.
+        """
+        result = await db.execute(
+            select(AuditLog.entry_hash)
+            .order_by(desc(AuditLog.timestamp), desc(AuditLog.id))
+            .limit(1)
+        )
+        prev_hash = result.scalar_one_or_none() or GENESIS_HASH
+        canonical = json.dumps(fields, sort_keys=True, separators=(",", ":"), default=str)
+        entry_hash = hashlib.sha256((canonical + prev_hash).encode("utf-8")).hexdigest()
+        return entry_hash, prev_hash
+
     @staticmethod
     async def log(
         db: AsyncSession,
@@ -27,7 +57,7 @@ class AuditService:
     ):
         """
         Log an audit entry
-        
+
         Args:
             db: Database session
             user_id: User UUID
@@ -39,6 +69,19 @@ class AuditService:
             ip_address: Client IP
             user_agent: Client user agent
         """
+        timestamp = datetime.utcnow()
+        entry_hash, prev_hash = await AuditService._chain_hashes(db, {
+            "user_id": str(user_id) if user_id else None,
+            "username": username,
+            "action": action,
+            "resource_type": resource_type,
+            "resource_id": str(resource_id) if resource_id else None,
+            "details": details,
+            "ip_address": ip_address,
+            "user_agent": user_agent,
+            "timestamp": timestamp.isoformat(),
+        })
+
         audit_entry = AuditLog(
             id=uuid.uuid4(),
             user_id=user_id,
@@ -49,9 +92,11 @@ class AuditService:
             details=details,
             ip_address=ip_address,
             user_agent=user_agent,
-            timestamp=datetime.utcnow()
+            timestamp=timestamp,
+            entry_hash=entry_hash,
+            prev_hash=prev_hash,
         )
-        
+
         db.add(audit_entry)
         # Note: Caller is responsible for commit
     

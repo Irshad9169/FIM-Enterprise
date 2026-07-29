@@ -58,11 +58,17 @@ async def snapshot_baseline(db: AsyncSession,
     """
     try:
         # Fetch baseline with agent info
+        # NOTE: the real fim.baselines table has `file_count` (singular) and
+        # no `justification` column at all — this query previously selected
+        # `files_count`/`justification`, neither of which exist, so every
+        # call has been raising and getting swallowed by the except below
+        # (silently failing on every baseline approval). `notes` is the
+        # closest existing column to what "justification" was meant to be.
         result = await db.execute(text("""
             SELECT
                 b.id, b.agent_id, b.status, b.approved_at,
-                b.approved_by, b.files_count, b.checksum,
-                b.baseline_data, b.justification,
+                b.approved_by, b.file_count, b.checksum,
+                b.baseline_data, b.notes AS justification,
                 a.hostname as agent_hostname
             FROM fim.baselines b
             JOIN fim.agents a ON b.agent_id = a.id
@@ -82,7 +88,7 @@ async def snapshot_baseline(db: AsyncSession,
             "status":        baseline.status,
             "approved_at":   str(baseline.approved_at) if baseline.approved_at else None,
             "approved_by":   str(baseline.approved_by) if baseline.approved_by else None,
-            "files_count":   baseline.files_count,
+            "files_count":   baseline.file_count,
             "checksum":      baseline.checksum,
             "justification": baseline.justification,
             "snapshot_at":   datetime.now(timezone.utc).isoformat(),
@@ -120,7 +126,7 @@ async def snapshot_baseline(db: AsyncSession,
         commit_msg = (
             f"Baseline snapshot: {baseline.agent_hostname}\n\n"
             f"Baseline ID : {baseline_id}\n"
-            f"Files       : {baseline.files_count}\n"
+            f"Files       : {baseline.file_count}\n"
             f"Checksum    : {baseline.checksum}\n"
             f"Approved by : {baseline.approved_by}\n"
             f"Snapshot SHA: {snapshot_checksum}"

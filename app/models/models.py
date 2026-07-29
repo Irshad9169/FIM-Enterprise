@@ -1,7 +1,7 @@
 """
 Database Models - Complete Comprehensive Version
 """
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, BigInteger, UUID, ForeignKey
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, BigInteger, UUID, ForeignKey, TIMESTAMP
 from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -77,6 +77,8 @@ class Alert(Base):
     whitelist_rule_id = Column(UUID(as_uuid=True), ForeignKey("fim.whitelist_rules.id"))
     triggered_by_rule = Column(UUID(as_uuid=True), ForeignKey("fim.alert_rules.id"))
     acknowledged_by = Column(UUID(as_uuid=True), ForeignKey("fim.users.id"))
+    alert_group_id = Column(UUID(as_uuid=True))
+    occurrence_count = Column(Integer, default=1)
 
 class Baseline(Base):
     __tablename__ = "baselines"
@@ -96,6 +98,11 @@ class Baseline(Base):
     approved_at = Column(DateTime)
     created_by = Column(UUID(as_uuid=True), ForeignKey("fim.users.id"))
     notes = Column(Text)
+    git_hash = Column(String(40))
+    snapshot_path = Column(Text)
+    diff_signature = Column(String(64))
+    diff_generated_at = Column(TIMESTAMP(timezone=True))
+    diff_sig_algorithm = Column(String(20), default='HMAC-SHA256')
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -110,6 +117,8 @@ class AuditLog(Base):
     ip_address = Column(String(50))
     user_agent = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
+    entry_hash = Column(String(64))
+    prev_hash = Column(String(64), default='0' * 64)
 
 class AlertRule(Base):
     __tablename__ = "alert_rules"
