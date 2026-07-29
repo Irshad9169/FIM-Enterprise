@@ -579,18 +579,20 @@ function HostGroupCard({ hostnames, changes, agentsByHostname, report }: {
     <div className="bg-slate-900 border border-violet-800/40 rounded-lg overflow-hidden mb-3">
       <div className="p-3 bg-violet-900/10 border-b border-violet-800/30 cursor-pointer hover:bg-violet-900/20 transition-colors"
         onClick={() => setExpanded(p => !p)}>
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-col gap-1.5">
             <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
               Identical changes · {hostnames.length} hosts
             </span>
-            {hostnames.map(h => (
-              <span key={h} className="font-mono text-xs font-bold text-white bg-slate-950/50 border border-violet-800/40 rounded px-2 py-0.5">
-                {h}
-              </span>
-            ))}
+            <div className="flex flex-col gap-1 items-start">
+              {hostnames.map(h => (
+                <span key={h} className="font-mono text-xs font-bold text-white bg-slate-950/50 border border-violet-800/40 rounded px-2 py-0.5">
+                  {h}
+                </span>
+              ))}
+            </div>
           </div>
-          {expanded ? <ChevronUp size={15} className="text-slate-500" /> : <ChevronDown size={15} className="text-slate-500" />}
+          {expanded ? <ChevronUp size={15} className="text-slate-500 shrink-0" /> : <ChevronDown size={15} className="text-slate-500 shrink-0" />}
         </div>
       </div>
 
