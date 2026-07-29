@@ -139,7 +139,7 @@ class FIMClient:
         })
         self.logger = logging.getLogger('FIMAgent.Client')
 
-    def register_agent(self, hostname: str, ip_address: str) -> Optional[str]:
+    def register_agent(self, hostname: str, ip_address: str, script_hash: Optional[str] = None) -> Optional[str]:
         """Register agent with server"""
         try:
             data = {
@@ -149,6 +149,8 @@ class FIMClient:
                 'os_version': platform.release(),
                 'agent_version': '1.0.0'
             }
+            if script_hash:
+                data['script_hash'] = script_hash
 
             response = self.session.post(
                 f'{self.server_url}/api/v1/agents/register',
@@ -167,7 +169,7 @@ class FIMClient:
             self.logger.error(f"Registration failed: {e}")
             return None
 
-    def send_heartbeat(self, agent_id: str, hostname: str):
+    def send_heartbeat(self, agent_id: str, hostname: str, script_hash: Optional[str] = None):
         """Send heartbeat to server"""
         try:
             data = {
@@ -175,6 +177,8 @@ class FIMClient:
                 'hostname': hostname,
                 'timestamp': datetime.utcnow().isoformat()
             }
+            if script_hash:
+                data['script_hash'] = script_hash
 
             response = self.session.post(
                 f'{self.server_url}/api/v1/agents/heartbeat',
@@ -524,6 +528,19 @@ class FIMAgent:
         self.agent_id = self.config['agent'].get('id')
         self.running = True
 
+        # Self-integrity: hash our own running script once at startup and
+        # report it on every register/heartbeat. Server remembers the first
+        # hash it sees as "known good" and alerts on a later mismatch — this
+        # catches an accidentally-reverted or tampered script, not a
+        # sophisticated attacker who also patches this reporting code.
+        # Best-effort: a read failure here must never stop the agent.
+        self.script_hash = None
+        try:
+            with open(os.path.abspath(__file__), 'rb') as f:
+                self.script_hash = hashlib.sha256(f.read()).hexdigest()
+        except Exception as e:
+            self.logger.warning(f"Could not hash own script for self-integrity check: {e}")
+
         # Real-time watching state — additive to the scheduled scan, not a
         # replacement (see _RealtimeChangeHandler docstring). scan_lock
         # prevents a realtime-triggered scan from overlapping a scheduled one.
@@ -599,7 +616,7 @@ class FIMAgent:
     def register(self):
         """Register agent with server"""
         self.logger.info("Registering agent...")
-        self.agent_id = self.client.register_agent(self.hostname, self.ip_address)
+        self.agent_id = self.client.register_agent(self.hostname, self.ip_address, self.script_hash)
         
         if self.agent_id:
             # Save agent_id to config
@@ -649,7 +666,7 @@ class FIMAgent:
         while self.running:
             try:
                 # Heartbeat
-                result = self.client.send_heartbeat(self.agent_id, self.hostname)
+                result = self.client.send_heartbeat(self.agent_id, self.hostname, self.script_hash)
 
                 # Check if scan requested
                 if result == "SCAN_REQUIRED":

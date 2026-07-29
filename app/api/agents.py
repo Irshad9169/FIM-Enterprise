@@ -20,11 +20,13 @@ class AgentRegisterRequest(BaseModel):
     os_version: Optional[str] = None
     agent_version: Optional[str] = None
     tags: Optional[dict] = None
+    script_hash: Optional[str] = None
 
 class AgentHeartbeatRequest(BaseModel):
     agent_id: str
     hostname: str
     timestamp: Optional[str] = None
+    script_hash: Optional[str] = None
 
 @router.get("")
 async def list_agents(
@@ -54,6 +56,11 @@ async def register_agent(
         agent.status = 'online'
         if request.tags:
             agent.tags = request.tags
+        # Trust-on-first-registration: only set if not already established —
+        # re-registering an existing agent must not silently reset the
+        # known-good hash (that would defeat the whole point).
+        if request.script_hash and not agent.binary_hash:
+            agent.binary_hash = request.script_hash
     else:
         agent = Agent(
             id=uuid.uuid4(),
@@ -64,10 +71,11 @@ async def register_agent(
             agent_version=request.agent_version,
             status='online',
             last_heartbeat=datetime.now(),
-            tags=request.tags or {}
+            tags=request.tags or {},
+            binary_hash=request.script_hash,
         )
         db.add(agent)
-    
+
     await db.commit()
     return {"agent_id": str(agent.id), "status": "registered"}
 
@@ -92,7 +100,27 @@ async def agent_heartbeat(
     agent.last_heartbeat = datetime.now()
     agent.status = 'online'
     agent.is_healthy = True
-    
+
+    # Self-integrity: alert once per NEW mismatch (binary_hash_mismatch_since
+    # gates it), not every heartbeat while it stays mismatched — mirrors the
+    # transition-based approach used for stale-agent alerting.
+    if request.script_hash and agent.binary_hash and request.script_hash != agent.binary_hash:
+        agent.pending_binary_hash = request.script_hash
+        if agent.binary_hash_mismatch_since is None:
+            agent.binary_hash_mismatch_since = datetime.utcnow()
+            try:
+                from app.services.email_service import EmailService
+                recipients_res = await db.execute(text(
+                    "SELECT email FROM fim.users WHERE role IN ('admin', 'analyst') AND is_active = true"
+                ))
+                recipients = [row.email for row in recipients_res.fetchall() if row.email]
+                if recipients:
+                    EmailService.notify_critical_alert(
+                        agent.hostname, "agent/fim_agent.py", "agent_binary_hash_mismatch", recipients
+                    )
+            except Exception:
+                pass  # never let a notification failure affect heartbeat processing
+
     # Check for pending scan requests
     scan_result = await db.execute(
         text("""
@@ -125,6 +153,39 @@ async def agent_heartbeat(
         "scan_id": scan_id,
         "message": "Heartbeat received"
     }
+
+@router.post("/{agent_id}/accept-binary-hash")
+async def accept_agent_binary_hash(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(analyst_plus)
+):
+    """
+    Accept the agent's currently-reported script hash as the new known-good
+    baseline — used after reviewing a legitimate agent code update that
+    triggered a self-integrity mismatch alert.
+    """
+    try:
+        agent_uuid = uuid.UUID(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    result = await db.execute(select(Agent).where(Agent.id == agent_uuid))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if not agent.binary_hash_mismatch_since or not agent.pending_binary_hash:
+        raise HTTPException(status_code=400, detail="No pending binary hash mismatch for this agent")
+
+    accepted_hash = agent.pending_binary_hash
+    agent.binary_hash = accepted_hash
+    agent.pending_binary_hash = None
+    agent.binary_hash_mismatch_since = None
+    await db.commit()
+
+    return {"message": "Binary hash accepted as new baseline", "binary_hash": accepted_hash}
+
 
 @router.post("/{agent_id}/scan")
 async def trigger_agent_scan(

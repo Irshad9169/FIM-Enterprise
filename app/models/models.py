@@ -47,6 +47,9 @@ class Agent(Base):
     last_heartbeat_alert = Column(DateTime)
     last_scan_at = Column(DateTime)
     scan_count = Column(Integer, default=0)
+    binary_hash = Column(String(64))
+    binary_hash_mismatch_since = Column(DateTime)
+    pending_binary_hash = Column(String(64))
 
 class Policy(Base):
     __tablename__ = "policies"
