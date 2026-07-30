@@ -329,8 +329,11 @@ vi config/agent_config.yaml
 # Set: server.url (https://your-new-hostname), server.api_key, agent.hostname, monitored_paths
 sudo bash scripts/gap9_encrypt_api_keys.sh    # encrypts the API key in place
 
-# Base dependencies (required):
-python3 -m pip install --quiet requests pyyaml
+# Base dependencies (required — cryptography is needed to decrypt the
+# gap9-encrypted api_key above; fim_agent.py imports it lazily only when
+# it actually sees a "+ENC++" value, but the encrypt step above means
+# every real deployment needs it):
+python3 -m pip install --quiet requests pyyaml cryptography
 # Real-time detection (in addition to the scheduled scan) needs watchdog.
 # Optional — the agent falls back to scheduled-scan-only if this isn't
 # installed, so it's safe to skip and add later.

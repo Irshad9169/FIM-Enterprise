@@ -111,6 +111,25 @@ def _send_single(session, url, headers, agent_id, scan_type,
 
 # ── End chunked scan helper ──────────────────────────────────────
 
+# GAP #9: agent_config.yaml's server.api_key may be Fernet-encrypted at rest
+# (see scripts/gap9_encrypt_api_keys.sh), stored as "+ENC++<ciphertext>". The
+# decryption key lives separately at ENC_KEY_FILE, never alongside the config
+# it protects. Decrypt here so the real plaintext key is what actually gets
+# sent as X-API-Key — sending the ciphertext as-is (the previous behavior)
+# silently defeated the whole point of encrypting it: whoever reads the
+# "encrypted" config file could authenticate with that string directly,
+# without ever needing the key file.
+ENC_PREFIX = "+ENC++"
+ENC_KEY_FILE = "/etc/fim/agent-encrypt.key"
+
+def _decrypt_api_key(value: str) -> str:
+    if not value or not value.startswith(ENC_PREFIX):
+        return value  # plaintext — used as-is (e.g. before gap9 encryption is run)
+    from cryptography.fernet import Fernet
+    with open(ENC_KEY_FILE, 'rb') as kf:
+        cipher = Fernet(kf.read().strip())
+    return cipher.decrypt(value[len(ENC_PREFIX):].encode()).decode()
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -656,7 +675,7 @@ class FIMAgent:
 
         self.client = FIMClient(
             self.config['server']['url'],
-            self.config['server']['api_key']
+            _decrypt_api_key(self.config['server']['api_key'])
         )
         
         cache_path = os.path.join(
