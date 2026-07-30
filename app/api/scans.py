@@ -8,12 +8,11 @@ from sqlalchemy import select, desc, text
 from pydantic import BaseModel
 from typing import List, Dict, Tuple, Set, Optional, List, Optional, Dict
 import uuid
-import hmac
-import hashlib
 import json
 import logging
 
 from app.core.database import get_db
+from app.core.agent_auth import check_agent_key
 from app.models.models import Agent, Scan
 from app.services.change_detector import ChangeDetector
 
@@ -49,28 +48,14 @@ async def submit_scan(raw_request: Request, db: AsyncSession = Depends(get_db)):
             status_code=400,
             detail="Too many files in scan (max 200,000)"
         )
-    # Parse body and verify signature
+    # Parse body
     try:
         raw_body = await raw_request.body()
         body = json.loads(raw_body)
         request = ScanSubmitRequest(**body)
     except Exception as e:
         raise HTTPException(400, f"Invalid request body: {e}")
-    # Verify HMAC signature if present
-    signature = raw_request.headers.get("x-scan-signature", "")
-    api_key = raw_request.headers.get("x-api-key", "")
-    if signature:
-        try:
-            canonical = json.dumps(body, sort_keys=True, separators=(',', ':'))
-            expected = hmac.new(api_key.encode(), canonical.encode(), hashlib.sha256).hexdigest()
-        except Exception:
-            raise HTTPException(400, "Signature verification error")
-        if not hmac.compare_digest(signature.replace("hmac-sha256=", ""), expected):
-            logger.error(f"SCAN SIGNATURE MISMATCH agent={request.agent_id}")
-            raise HTTPException(403, "Scan signature failed - possible tampering")
-        logger.info(f"Scan signature verified OK for agent {request.agent_id}")
-    else:
-        logger.warning(f"Scan WITHOUT signature from agent {request.agent_id}")
+
     try:
         agent_uuid = uuid.UUID(request.agent_id)
     except ValueError:
@@ -79,6 +64,15 @@ async def submit_scan(raw_request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Agent).where(Agent.id == agent_uuid))
     agent = result.scalar_one_or_none()
     if not agent: raise HTTPException(404, "Agent not found")
+
+    # Real per-agent key check — this used to "verify" an HMAC signature
+    # computed from the X-API-Key header of this SAME request (a
+    # self-consistency check, not authentication; any caller could invent
+    # their own key and sign with it). Now looks up the agent's actual
+    # established key (see app/core/agent_auth.py) instead.
+    if not check_agent_key(agent, raw_request.headers.get("x-api-key", "")):
+        raise HTTPException(403, "Invalid or missing API key")
+    await db.commit()
 
     try:
         timestamp_str = request.timestamp.replace('Z', '+00:00')

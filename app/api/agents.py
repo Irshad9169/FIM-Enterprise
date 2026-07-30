@@ -8,11 +8,36 @@ from datetime import datetime
 import uuid
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, SECRET_KEY, ALGORITHM, TOKEN_ISSUER
+from app.core.agent_auth import check_agent_key, hash_agent_key
 from app.services.audit_service import AuditService
 from app.models.models import User, Agent, ScanRequest
+from jose import jwt, JWTError
 
 router = APIRouter()
+
+
+def _has_valid_jwt(http_request: Request) -> bool:
+    """
+    Lightweight check for GET /{agent_id}/config, which two different
+    callers legitimately use: the agent itself (X-API-Key) pulling a
+    pushed config, and a logged-in admin (JWT bearer) viewing/editing it
+    in the UI. Doesn't do the full get_current_user round trip (session-
+    revocation lookup, active-user check) — this is a read-only, non-
+    sensitive endpoint (paths/patterns, no secrets), so confirming a
+    signature-valid, non-expired, correctly-issued token is enough here.
+    """
+    auth = http_request.headers.get("authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    try:
+        payload = jwt.decode(
+            auth[len("Bearer "):], SECRET_KEY, algorithms=[ALGORITHM],
+            options={"require_exp": True},
+        )
+        return payload.get("iss") == TOKEN_ISSUER
+    except JWTError:
+        return False
 
 
 def _client_ip(request: Request) -> str:
@@ -62,13 +87,20 @@ async def list_agents(
 @router.post("/register")
 async def register_agent(
     request: AgentRegisterRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """Register a new agent"""
+    provided_key = http_request.headers.get("x-api-key", "")
     result = await db.execute(select(Agent).where(Agent.hostname == request.hostname))
     agent = result.scalar_one_or_none()
-    
+
     if agent:
+        # Re-registering an EXISTING agent must prove it holds the already-
+        # established key — otherwise anyone could overwrite a real agent's
+        # ip_address/metadata with no proof of identity at all.
+        if not check_agent_key(agent, provided_key):
+            raise HTTPException(status_code=403, detail="Invalid or missing API key")
         agent.ip_address = request.ip_address
         agent.os_type = request.os_type
         agent.os_version = request.os_version
@@ -85,6 +117,11 @@ async def register_agent(
         if request.current_config:
             agent.reported_config = request.current_config
     else:
+        # Brand-new hostname: no secret established yet — this is the one
+        # trust-on-first-contact moment, same concession Agent.binary_hash
+        # already makes. Requires a key be presented at all, at least.
+        if not provided_key:
+            raise HTTPException(status_code=400, detail="X-API-Key header is required to register")
         agent = Agent(
             id=uuid.uuid4(),
             hostname=request.hostname,
@@ -97,6 +134,7 @@ async def register_agent(
             tags=request.tags or {},
             binary_hash=request.script_hash,
             reported_config=request.current_config,
+            api_key_hash=hash_agent_key(provided_key),
         )
         db.add(agent)
 
@@ -106,6 +144,7 @@ async def register_agent(
 @router.post("/heartbeat")
 async def agent_heartbeat(
     request: AgentHeartbeatRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """Process agent heartbeat and check for commands"""
@@ -113,13 +152,16 @@ async def agent_heartbeat(
         agent_uuid = uuid.UUID(request.agent_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid agent ID")
-        
+
     result = await db.execute(select(Agent).where(Agent.id == agent_uuid))
     agent = result.scalar_one_or_none()
-    
+
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    
+
+    if not check_agent_key(agent, http_request.headers.get("x-api-key", "")):
+        raise HTTPException(status_code=403, detail="Invalid or missing API key")
+
     # Update heartbeat
     agent.last_heartbeat = datetime.now()
     agent.status = 'online'
@@ -191,6 +233,46 @@ async def agent_heartbeat(
         "config_version": agent.desired_config_version,
         "message": "Heartbeat received"
     }
+
+@router.post("/{agent_id}/rotate-key")
+async def rotate_agent_key(
+    agent_id: str,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(analyst_plus)
+):
+    """
+    Clears the agent's established api_key_hash, forcing re-establishment
+    on its next contact (same trust-on-first-contact bootstrap as a brand
+    new agent). On its own this accomplishes nothing — the agent will just
+    keep sending the same key it always has, and it'll get re-accepted.
+    Real rotation is: generate a new key, update the agent's own
+    agent_config.yaml with it, redeploy, THEN call this so the new key
+    gets accepted instead of rejected as a mismatch against the old one.
+    """
+    try:
+        agent_uuid = uuid.UUID(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    result = await db.execute(select(Agent).where(Agent.id == agent_uuid))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.api_key_hash = None
+    await db.commit()
+
+    await AuditService.log(
+        db, current_user.id, current_user.username, "AGENT_KEY_ROTATED",
+        resource_type="agent", resource_id=agent.id,
+        details={"hostname": agent.hostname},
+        ip_address=_client_ip(http_request),
+    )
+    await db.commit()
+
+    return {"message": "API key cleared — will be re-established from the agent's next request"}
+
 
 @router.post("/{agent_id}/accept-binary-hash")
 async def accept_agent_binary_hash(
@@ -288,13 +370,14 @@ async def push_agent_config(
 @router.get("/{agent_id}/config")
 async def get_agent_config(
     agent_id: str,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Current desired config for an agent — used by both the frontend editor
-    and the agent's own pull. No get_current_user dependency: the agent
-    authenticates via X-API-Key (like /register and /heartbeat), not a JWT
-    bearer token, so it can't satisfy that dependency.
+    (JWT bearer, via _has_valid_jwt) and the agent's own pull (X-API-Key,
+    via check_agent_key). Accepts either; no get_current_user dependency
+    since that would reject the agent's own calls outright.
     """
     try:
         agent_uuid = uuid.UUID(agent_id)
@@ -305,6 +388,10 @@ async def get_agent_config(
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+    if not (_has_valid_jwt(http_request) or check_agent_key(agent, http_request.headers.get("x-api-key", ""))):
+        raise HTTPException(status_code=403, detail="Invalid or missing credentials")
+    await db.commit()
 
     return {
         "desired_config": agent.desired_config,
@@ -322,6 +409,7 @@ async def get_agent_config(
 async def ack_agent_config(
     agent_id: str,
     request: AgentConfigAckRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """Agent confirms it has applied a given config version."""
@@ -334,6 +422,9 @@ async def ack_agent_config(
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+    if not check_agent_key(agent, http_request.headers.get("x-api-key", "")):
+        raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
     agent.applied_config_version = request.version
     await db.commit()

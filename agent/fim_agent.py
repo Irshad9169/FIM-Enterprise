@@ -8,7 +8,6 @@ import time
 import json
 import yaml
 import hashlib
-import hmac
 import fnmatch
 import logging
 import platform
@@ -243,7 +242,17 @@ class FIMClient:
             return False
 
     def send_scan_results(self, agent_id: str, scan_data: List[Dict], scan_type: str = 'full'):
-        """Send scan results to server"""
+        """
+        Send scan results to server. The server used to "verify" an
+        HMAC-SHA256 signature computed from this same request's own
+        X-API-Key header — a self-consistency check, not real
+        authentication (any caller could invent a key and sign with it).
+        Now that the server checks the real, established per-agent key
+        (see app/core/agent_auth.py), that signing added complexity with
+        no security benefit — X-API-Key is already sent on every request
+        via this session's persistent headers (see __init__), so nothing
+        else is needed here.
+        """
         try:
             data = {
                 'agent_id': agent_id,
@@ -252,22 +261,13 @@ class FIMClient:
                 'total_files': len(scan_data),
                 'scan_type': scan_type
             }
-
-            # Sign payload with HMAC-SHA256
-            canonical = json.dumps(data, sort_keys=True, separators=(',', ':'))
-            sig = 'hmac-sha256=' + hmac.new(
-                self.api_key.encode('utf-8'),
-                canonical.encode('utf-8'),
-                hashlib.sha256
-            ).hexdigest()
             response = self.session.post(
                 f'{self.server_url}/api/v1/scans/submit',
                 json=data,
-                headers={'X-Scan-Signature': sig},
                 timeout=30
             )
             response.raise_for_status()
-            self.logger.info(f"Scan results sent: {len(scan_data)} files (signed)")
+            self.logger.info(f"Scan results sent: {len(scan_data)} files")
             return True
 
         except Exception as e:

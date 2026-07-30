@@ -54,6 +54,7 @@ class Agent(Base):
     desired_config_version = Column(Integer, default=0)
     applied_config_version = Column(Integer, default=0)
     reported_config = Column(JSONB)
+    api_key_hash = Column(String(64))
 
 class Policy(Base):
     __tablename__ = "policies"
