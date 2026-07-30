@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { fetchReports, generateReport, deleteReport, generateComplianceReport, archiveReports } from "../api/dashboard";
+import { fetchReports, generateReport, deleteReport, generateComplianceReport, generateSoxComplianceReport, archiveReports } from "../api/dashboard";
 import type { DailyReport } from "../types";
 import { Eye, Trash2, RefreshCw, Plus, Calendar, CheckCircle, Send, FileDown, Archive } from "lucide-react";
 import { format, parseISO } from "date-fns";
@@ -93,6 +93,11 @@ export default function ReportsPage() {
           <button onClick={() => generateComplianceReport(30)}
             className="px-3 py-2 bg-purple-700 text-white text-xs font-medium rounded hover:bg-purple-600 flex items-center gap-1.5">
             <FileDown size={14} /> PCI-DSS Report
+          </button>
+
+          <button onClick={() => generateSoxComplianceReport(30)}
+            className="px-3 py-2 bg-indigo-700 text-white text-xs font-medium rounded hover:bg-indigo-600 flex items-center gap-1.5">
+            <FileDown size={14} /> SOX Report
           </button>
 
           <button onClick={async () => {

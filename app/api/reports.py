@@ -886,16 +886,8 @@ async def unarchive_report(
     return {"message": "Report unarchived"}
 
 
-@router.get("/compliance/pci-dss")
-async def generate_pci_compliance_report(
-    days: int = 30,
-    request: Request = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Generate PCI-DSS 11.5 compliance report PDF."""
-    from app.services.compliance_report import ComplianceReportService
-    from fastapi.responses import Response
+async def _gather_compliance_data(db: AsyncSession, days: int, username: str) -> dict:
+    """Shared data-gathering for every compliance report (PCI-DSS, SOX, ...) — same underlying facts, different framing/PDF per framework."""
     from datetime import timedelta
 
     end_date = datetime.now().date()
@@ -927,18 +919,51 @@ async def generate_pci_compliance_report(
     reports_r = await db.execute(text("SELECT COUNT(*) FROM fim.reports WHERE report_date >= :start"), {"start": start_date})
     total_reports = reports_r.scalar() or 0
 
-    data = {
+    return {
         "start_date": str(start_date), "end_date": str(end_date),
-        "generated_by": current_user.username,
+        "generated_by": username,
         "total_agents": len(agents), "agents": agents,
         "total_alerts": al.total, "total_scans": total_scans,
         "total_reports": total_reports,
         "severity_breakdown": {"critical": al.critical, "high": al.high, "medium": al.medium, "low": al.low},
     }
 
+
+@router.get("/compliance/pci-dss")
+async def generate_pci_compliance_report(
+    days: int = 30,
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate PCI-DSS 11.5 compliance report PDF."""
+    from app.services.compliance_report import ComplianceReportService
+    from fastapi.responses import Response
+
+    data = await _gather_compliance_data(db, days, current_user.username)
     pdf_bytes = ComplianceReportService.generate_pci_dss_report(data)
 
     return Response(
         content=pdf_bytes, media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=FIM-PCI-DSS-Compliance-{end_date}.pdf"}
+        headers={"Content-Disposition": f"attachment; filename=FIM-PCI-DSS-Compliance-{data['end_date']}.pdf"}
+    )
+
+
+@router.get("/compliance/sox")
+async def generate_sox_compliance_report(
+    days: int = 30,
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate SOX IT General Controls (Change Management) compliance report PDF."""
+    from app.services.compliance_report import ComplianceReportService
+    from fastapi.responses import Response
+
+    data = await _gather_compliance_data(db, days, current_user.username)
+    pdf_bytes = ComplianceReportService.generate_sox_report(data)
+
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=FIM-SOX-Compliance-{data['end_date']}.pdf"}
     )

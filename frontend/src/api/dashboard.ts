@@ -266,6 +266,18 @@ export const generateComplianceReport = async (days = 30) => {
   URL.revokeObjectURL(url);
 };
 
+export const generateSoxComplianceReport = async (days = 30) => {
+  const token = localStorage.getItem("fim_token");
+  const res = await fetch(`/api/v1/reports/compliance/sox?days=${days}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `FIM-SOX-Compliance.pdf`; a.click();
+  URL.revokeObjectURL(url);
+};
+
 export const fetchAgentDetails = () =>
   apiCall(`/api/v1/dashboard/agents/details`);
 
