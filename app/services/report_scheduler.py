@@ -283,6 +283,7 @@ class ReportScheduler:
                         audit_uid=a.audit_uid,
                         audit_process=a.audit_process,
                         audit_command=a.audit_command,
+                        content_diff=c.get("content_diff"),
                     )
                     db.add(change)
                 except Exception:

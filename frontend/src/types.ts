@@ -96,6 +96,11 @@ export interface ReportChangeDetail {
   audit_uid:                string | null;
   audit_process:            string | null;
   audit_command:            string | null;
+
+  // Content diffing — populated only for changed config-extension files
+  // with a previous local shadow copy to diff against (see
+  // agent/fim_agent.py's _diff_content), null otherwise
+  content_diff:             string | null;
 }
 
 export interface ReportTicket {

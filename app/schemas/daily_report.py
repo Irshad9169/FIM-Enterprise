@@ -46,6 +46,9 @@ class ReportChangeDetail(BaseModel):
     audit_process:            Optional[str] = None
     audit_command:            Optional[str] = None
 
+    # Content diffing (optional — see agent/fim_agent.py's _diff_content)
+    content_diff:             Optional[str] = None
+
 
 class ReportTicketSchema(BaseModel):
     id:             Optional[str] = None

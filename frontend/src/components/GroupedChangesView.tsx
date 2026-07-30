@@ -111,6 +111,11 @@ export function GroupedChangesView({ changes: rawChanges }: { changes: ReportCha
                     {c.audit_uid ? `, uid ${c.audit_uid}` : ""}
                   </div>
                 )}
+                {c.content_diff && (
+                  <pre className="mt-1 ml-4 p-2 bg-slate-950/60 border border-slate-800/60 rounded text-[11px] text-slate-300 overflow-x-auto whitespace-pre">
+                    {c.content_diff}
+                  </pre>
+                )}
               </div>
             ))}
           </div>

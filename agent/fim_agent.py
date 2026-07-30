@@ -15,11 +15,19 @@ import socket
 import threading
 import subprocess
 import re
+import difflib
 import requests
 import argparse
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+
+# Extensions worth diffing on change — mirrors
+# frontend/src/lib/reportGrouping.ts's DEFAULT_DETAIL_EXTENSIONS. Kept as two
+# short, independently-maintained constants rather than a shared-config
+# mechanism; update both if this list ever changes.
+DETAIL_EXTENSIONS = ('.conf', '.cfg', '.yaml', '.yml', '.ini', '.json')
+CONTENT_DIFF_MAX_LINES = 200
 
 # Real-time filesystem watching (complements the scheduled full scan — see
 # FIMAgent._check_realtime_trigger). Optional dependency: if watchdog isn't
@@ -277,7 +285,8 @@ class FIMClient:
 class FileScanner:
     def __init__(self, paths: List[Union[str, Dict]], hash_algo: str = 'sha256',
                  cache_path: Optional[str] = None,
-                 audit_critical_paths: Optional[set] = None):
+                 audit_critical_paths: Optional[set] = None,
+                 content_shadow_dir: Optional[str] = None):
         # Normalize paths: each monitored path keeps its own exclude_patterns
         # (config['monitoring']['paths'] entries look like
         #  {path: /opt, recursive: true, exclude_patterns: [...]}).
@@ -315,6 +324,14 @@ class FileScanner:
         # changed since our own last scan (see _process_file) — not on
         # first sight, and not for every scan of an unchanged file.
         self.audit_critical_paths = set(audit_critical_paths or [])
+
+        # Content diffing: local-only shadow copies of config-extension files
+        # (DETAIL_EXTENSIONS) so a real unified diff can be computed on the
+        # next change — never sent to the server, only the resulting diff
+        # text is. Measured ~1MB/122 files across a real deployment's
+        # monitored paths (/etc, /var/www, /opt), so scoped broadly (every
+        # matching file, not just the auditd critical-path list) is fine.
+        self.content_shadow_dir = content_shadow_dir
 
     def _load_cache(self) -> Dict[str, Dict]:
         if not self.cache_path or not os.path.exists(self.cache_path):
@@ -435,18 +452,21 @@ class FileScanner:
 
             cached = self._prev_cache.get(file_path)
             audit_info = None
+            content_diff = None
             if cached and cached.get('mtime') == mtime and cached.get('size') == size:
                 file_hash = cached['hash']
                 self.hashes_skipped += 1
             else:
                 file_hash = self.calculate_hash(file_path)
                 self.hashes_computed += 1
+                changed_since_last_seen = bool(cached and cached.get('hash') != file_hash)
                 # Only correlate for a real, locally-detected content change
                 # on a critical path — not the first time we've ever seen
                 # this file (no local baseline to compare against yet).
-                if (file_path in self.audit_critical_paths
-                        and cached and cached.get('hash') != file_hash):
+                if file_path in self.audit_critical_paths and changed_since_last_seen:
                     audit_info = self._correlate_auditd(file_path)
+                if file_path.endswith(DETAIL_EXTENSIONS):
+                    content_diff = self._diff_content(file_path, changed_since_last_seen)
 
             self._new_cache[file_path] = {'mtime': mtime, 'size': size, 'hash': file_hash}
 
@@ -461,6 +481,8 @@ class FileScanner:
             }
             if audit_info:
                 result.update(audit_info)
+            if content_diff:
+                result['content_diff'] = content_diff
             return result
         except Exception as e:
             self.logger.warning(f"Error processing {file_path}: {e}")
@@ -511,6 +533,64 @@ class FileScanner:
             self.logger.warning(f"auditd correlation failed for {file_path}: {e}")
             return None
 
+    def _shadow_path(self, file_path: str) -> Optional[str]:
+        """Where this file's local content shadow copy lives, mirroring its real path."""
+        if not self.content_shadow_dir:
+            return None
+        rel = file_path.lstrip(os.sep)
+        if os.altsep:
+            rel = rel.lstrip(os.altsep)
+        return os.path.join(self.content_shadow_dir, rel)
+
+    def _diff_content(self, file_path: str, changed_since_last_seen: bool) -> Optional[str]:
+        """
+        Best-effort unified diff against a local shadow copy of this file's
+        previous content (never sent anywhere — only the diff text is).
+        Always refreshes the shadow copy so the next change has something
+        to diff against; only returns a diff when there's a previous copy
+        AND this is a real, locally-detected change, not the first time
+        we've ever seen the file. Never raises — a diff failure (binary
+        content, permission issue, whatever) must never break the scan;
+        the file is still hashed and reported normally either way.
+        """
+        shadow_path = self._shadow_path(file_path)
+        if not shadow_path:
+            return None
+
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='strict') as f:
+                new_content = f.read()
+        except Exception:
+            return None  # binary/non-utf8/unreadable — skip diffing, hash-only is fine
+
+        diff_text = None
+        if changed_since_last_seen and os.path.exists(shadow_path):
+            try:
+                with open(shadow_path, 'r', encoding='utf-8', errors='strict') as f:
+                    old_content = f.read()
+                diff_lines = list(difflib.unified_diff(
+                    old_content.splitlines(keepends=True),
+                    new_content.splitlines(keepends=True),
+                    fromfile='baseline', tofile='current',
+                ))
+                if diff_lines:
+                    if len(diff_lines) > CONTENT_DIFF_MAX_LINES:
+                        truncated = len(diff_lines) - CONTENT_DIFF_MAX_LINES
+                        diff_lines = diff_lines[:CONTENT_DIFF_MAX_LINES]
+                        diff_lines.append(f"... {truncated} more lines truncated ...\n")
+                    diff_text = ''.join(diff_lines)
+            except Exception as e:
+                self.logger.warning(f"Content diff failed for {file_path}: {e}")
+
+        try:
+            os.makedirs(os.path.dirname(shadow_path), exist_ok=True)
+            with open(shadow_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+        except Exception as e:
+            self.logger.warning(f"Failed to update content shadow copy for {file_path}: {e}")
+
+        return diff_text
+
 class _RealtimeChangeHandler(FileSystemEventHandler):
     """
     watchdog event handler for one monitored root. Doesn't scan or hash
@@ -555,13 +635,22 @@ class FIMAgent:
         cache_path = os.path.join(
             os.path.dirname(os.path.abspath(config_file)), '.scan_cache.json'
         )
+        content_shadow_dir = os.path.join(
+            os.path.dirname(os.path.abspath(config_file)), '.content_shadow'
+        )
+        try:
+            os.makedirs(content_shadow_dir, mode=0o700, exist_ok=True)
+        except Exception as e:
+            self.logger.warning(f"Could not create content shadow dir, content diffing disabled: {e}")
+            content_shadow_dir = None
         self.scanner = FileScanner(
             self.monitored_paths,
             self.config['monitoring'].get('hash_algorithm', 'sha256'),
             cache_path=cache_path,
             audit_critical_paths=self.config['monitoring'].get('audit_critical_paths'),
+            content_shadow_dir=content_shadow_dir,
         )
-        
+
         self.hostname = socket.gethostname()
         self.ip_address = socket.gethostbyname(self.hostname)
         self.agent_id = self.config['agent'].get('id')
@@ -731,6 +820,7 @@ class FIMAgent:
                 self.config['monitoring'].get('hash_algorithm', 'sha256'),
                 cache_path=cache_path,
                 audit_critical_paths=self.config['monitoring'].get('audit_critical_paths'),
+                content_shadow_dir=self.scanner.content_shadow_dir,
             )
 
             # Real-time watcher was watching the OLD paths — restart it.

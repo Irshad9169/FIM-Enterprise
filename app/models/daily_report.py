@@ -142,6 +142,11 @@ class ReportChange(Base):
     audit_process           = Column(Text)
     audit_command           = Column(Text)
 
+    # Content diffing (optional — see agent/fim_agent.py's _diff_content).
+    # Null unless this was a changed config-extension file with a previous
+    # local shadow copy to diff against.
+    content_diff            = Column(Text)
+
     # Relationships
     report                  = relationship("DailyReport", back_populates="changes")
 

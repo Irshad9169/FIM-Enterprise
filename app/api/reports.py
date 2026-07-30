@@ -83,6 +83,7 @@ def _change_to_schema(c: ReportChange) -> ReportChangeDetail:
         audit_uid=c.audit_uid,
         audit_process=c.audit_process,
         audit_command=c.audit_command,
+        content_diff=c.content_diff,
     )
 
 
@@ -252,6 +253,7 @@ async def generate_daily_report(
                     audit_uid=a.audit_uid,
                     audit_process=a.audit_process,
                     audit_command=a.audit_command,
+                    content_diff=c.get("content_diff"),
                 )
                 db.add(change)
             except Exception:
