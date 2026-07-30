@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchAgents, triggerScan, updateAgentTags, fetchAgentConfig, pushAgentConfig } from "../api/dashboard";
-import { Tag, X, Settings } from "lucide-react";
+import { fetchAgents, triggerScan, updateAgentTags, fetchAgentConfig, pushAgentConfig, pauseAgentScan, resumeAgentScan } from "../api/dashboard";
+import { Tag, X, Settings, Pause, Play } from "lucide-react";
 
 type ConfigPathRow = { path: string; exclude_patterns: string };
 
@@ -149,6 +149,25 @@ export default function AgentsPage() {
 
   const handleScan = (agentId: string) => { setScanningAgent(agentId); scanMutation.mutate({ agentId, force: false }); };
 
+  const pauseMutation = useMutation({
+    mutationFn: (agentId: string) => pauseAgentScan(agentId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agents"] }),
+    onError: (error: any) => alert(error?.message || "Failed to pause scan"),
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: (agentId: string) => resumeAgentScan(agentId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agents"] }),
+    onError: (error: any) => alert(error?.message || "Failed to resume scan"),
+  });
+
+  const scanProgressLabel = (a: any): string | null => {
+    const { scan_status, scan_progress_processed: p, scan_progress_total: t } = a;
+    if (scan_status === "running") return `Scanning… ${(p ?? 0).toLocaleString()}${t ? `/${t.toLocaleString()}` : ""}`;
+    if (scan_status === "paused") return `Paused at ${(p ?? 0).toLocaleString()}${t ? `/${t.toLocaleString()}` : ""}`;
+    return null;
+  };
+
   const handleSaveTags = async (agentId: string, currentTags: string[]) => {
     const newTag = tagInput.trim();
     if (newTag && !currentTags.includes(newTag)) {
@@ -248,16 +267,34 @@ export default function AgentsPage() {
                   </td>
                   <td className="px-3 py-2 text-slate-300 text-xs text-center">{a.last_heartbeat ? new Date(a.last_heartbeat).toLocaleString() : "-"}</td>
                   <td className="px-3 py-2 text-center">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <button onClick={() => handleScan(a.id)} disabled={scanningAgent === a.id}
-                        className="px-3 py-1 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 rounded text-xs font-medium transition-colors">
-                        {scanningAgent === a.id ? "⏳ Scanning..." : "🔍 Scan Now"}
-                      </button>
-                      <button onClick={() => setConfigEditorAgent({ id: a.id, hostname: a.hostname })}
-                        title="Edit monitored paths"
-                        className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">
-                        <Settings size={13} />
-                      </button>
+                    <div className="flex flex-col items-center gap-1">
+                      {scanProgressLabel(a) && (
+                        <div className={`text-[10px] font-mono ${a.scan_status === "paused" ? "text-amber-400" : "text-sky-400"}`}>
+                          {scanProgressLabel(a)}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button onClick={() => handleScan(a.id)} disabled={scanningAgent === a.id}
+                          className="px-3 py-1 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 rounded text-xs font-medium transition-colors">
+                          {scanningAgent === a.id ? "⏳ Scanning..." : "🔍 Scan Now"}
+                        </button>
+                        {a.scan_pause_requested ? (
+                          <button onClick={() => resumeMutation.mutate(a.id)} disabled={resumeMutation.isPending}
+                            title="Resume scan" className="p-1.5 rounded bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-700">
+                            <Play size={13} />
+                          </button>
+                        ) : (
+                          <button onClick={() => pauseMutation.mutate(a.id)} disabled={pauseMutation.isPending}
+                            title="Pause scan" className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">
+                            <Pause size={13} />
+                          </button>
+                        )}
+                        <button onClick={() => setConfigEditorAgent({ id: a.id, hostname: a.hostname })}
+                          title="Edit monitored paths"
+                          className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">
+                          <Settings size={13} />
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>

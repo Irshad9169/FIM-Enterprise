@@ -265,3 +265,102 @@ async def test_approve_nonexistent_baseline_returns_404(client, db_session):
     )
 
     assert resp.status_code == 404
+
+
+# ── Scan pause/resume ────────────────────────────────────────────────────────
+
+async def test_pause_scan_flag_reaches_next_heartbeat(client, db_session):
+    """
+    pause-scan sets a desired-state flag on the Agent row; the agent's own
+    heartbeat call is how it actually learns about it (see
+    agent/fim_agent.py's run_daemon, which reads scan_pause_requested back
+    from the heartbeat response every cycle).
+    """
+    admin = await _create_user(db_session, role="admin", username="admin3")
+    agent = Agent(id=uuid.uuid4(), hostname="test-agent-06", status="online")
+    db_session.add(agent)
+    await db_session.commit()
+
+    pause_resp = await client.post(
+        f"/api/v1/agents/{agent.id}/pause-scan",
+        headers=await _auth_headers(db_session, admin),
+    )
+    assert pause_resp.status_code == 200
+
+    hb_resp = await client.post(
+        "/api/v1/agents/heartbeat",
+        json={"agent_id": str(agent.id), "hostname": agent.hostname},
+        headers={"X-API-Key": "test-agent-06-key"},
+    )
+    assert hb_resp.status_code == 200
+    assert hb_resp.json()["scan_pause_requested"] is True
+
+
+async def test_resume_scan_clears_flag_and_queues_immediate_scan(client, db_session):
+    """
+    resume-scan must both clear the pause flag AND queue an on-demand scan
+    (reusing the existing fim.scan_requests channel trigger_agent_scan uses)
+    so the agent resumes on its very next heartbeat rather than waiting for
+    the next scheduled interval (up to scan_interval, e.g. an hour).
+    """
+    admin = await _create_user(db_session, role="admin", username="admin4")
+    agent = Agent(id=uuid.uuid4(), hostname="test-agent-07", status="online")
+    db_session.add(agent)
+    await db_session.commit()
+
+    await client.post(
+        f"/api/v1/agents/{agent.id}/pause-scan",
+        headers=await _auth_headers(db_session, admin),
+    )
+    resume_resp = await client.post(
+        f"/api/v1/agents/{agent.id}/resume-scan",
+        headers=await _auth_headers(db_session, admin),
+    )
+    assert resume_resp.status_code == 200
+
+    hb_resp = await client.post(
+        "/api/v1/agents/heartbeat",
+        json={"agent_id": str(agent.id), "hostname": agent.hostname},
+        headers={"X-API-Key": "test-agent-07-key"},
+    )
+    body = hb_resp.json()
+    assert body["scan_pause_requested"] is False
+    assert body["scan_required"] is True
+
+
+async def test_trainee_cannot_pause_scan(client, db_session):
+    """Matches the pattern in test_trainee_cannot_approve_baseline — pause/resume are analyst_plus, not any authenticated user."""
+    trainee = await _create_user(db_session, role="trainee", username="trainee2")
+    agent = Agent(id=uuid.uuid4(), hostname="test-agent-08", status="online")
+    db_session.add(agent)
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/v1/agents/{agent.id}/pause-scan",
+        headers=await _auth_headers(db_session, trainee),
+    )
+
+    assert resp.status_code == 403
+
+
+async def test_heartbeat_persists_reported_scan_progress(client, db_session):
+    """The agent reports scan_status/scan_progress every heartbeat, decoupled from scan completion — confirm it lands on the Agent row."""
+    agent = Agent(id=uuid.uuid4(), hostname="test-agent-09", status="online")
+    db_session.add(agent)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/v1/agents/heartbeat",
+        json={
+            "agent_id": str(agent.id), "hostname": agent.hostname,
+            "scan_status": "running",
+            "scan_progress": {"processed": 42, "total": 100},
+        },
+        headers={"X-API-Key": "test-agent-09-key"},
+    )
+    assert resp.status_code == 200
+
+    await db_session.refresh(agent)
+    assert agent.scan_status == "running"
+    assert agent.scan_progress_processed == 42
+    assert agent.scan_progress_total == 100

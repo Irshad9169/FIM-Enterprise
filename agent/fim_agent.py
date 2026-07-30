@@ -20,7 +20,7 @@ import requests
 import argparse
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 # Extensions worth diffing on change — mirrors
 # frontend/src/lib/reportGrouping.ts's DEFAULT_DETAIL_EXTENSIONS. Kept as two
@@ -28,6 +28,12 @@ from typing import Dict, List, Optional, Union
 # mechanism; update both if this list ever changes.
 DETAIL_EXTENSIONS = ('.conf', '.cfg', '.yaml', '.yml', '.ini', '.json')
 CONTENT_DIFF_MAX_LINES = 200
+
+# Pause/resume: how often an in-progress scan checkpoints its incremental
+# cache (merged, not final) so a paused/interrupted scan can resume without
+# re-hashing everything it already did. Whichever threshold hits first.
+CHECKPOINT_EVERY_FILES = 200
+CHECKPOINT_EVERY_SECONDS = 30
 
 # Real-time filesystem watching (complements the scheduled full scan — see
 # FIMAgent._check_realtime_trigger). Optional dependency: if watchdog isn't
@@ -199,12 +205,16 @@ class FIMClient:
             return None
 
     def send_heartbeat(self, agent_id: str, hostname: str, script_hash: Optional[str] = None,
-                       current_config: Optional[Dict] = None) -> Dict:
+                       current_config: Optional[Dict] = None, scan_status: Optional[str] = None,
+                       scan_progress: Optional[Dict] = None) -> Dict:
         """
         Send heartbeat to server. Returns a dict always (rather than the
-        previous bool/"SCAN_REQUIRED" sentinel mix) since there are now two
-        independent signals to carry back: scan_required and config_version.
-        {'ok': bool, 'scan_required': bool, 'config_version': Optional[int]}
+        previous bool/"SCAN_REQUIRED" sentinel mix) since there are several
+        independent signals to carry back: scan_required, config_version,
+        and scan_pause_requested (the server's desired pause/resume state,
+        checked periodically by an in-progress scan — see FIMAgent.run_scan).
+        {'ok': bool, 'scan_required': bool, 'config_version': Optional[int],
+         'scan_pause_requested': bool}
         """
         try:
             data = {
@@ -216,6 +226,10 @@ class FIMClient:
                 data['script_hash'] = script_hash
             if current_config:
                 data['current_config'] = current_config
+            if scan_status:
+                data['scan_status'] = scan_status
+            if scan_progress:
+                data['scan_progress'] = scan_progress
 
             response = self.session.post(
                 f'{self.server_url}/api/v1/agents/heartbeat',
@@ -226,22 +240,30 @@ class FIMClient:
 
             scan_required = False
             config_version = None
+            scan_pause_requested = False
             try:
                 resp_data = response.json()
                 if isinstance(resp_data, dict):
                     scan_required = bool(resp_data.get('scan_required'))
                     config_version = resp_data.get('config_version')
+                    scan_pause_requested = bool(resp_data.get('scan_pause_requested'))
                     if scan_required:
                         self.logger.info("Received on-demand scan request from server")
             except Exception as json_err:
                 self.logger.warning(f"Failed to parse heartbeat response: {json_err}")
 
             self.logger.debug("Heartbeat sent")
-            return {'ok': True, 'scan_required': scan_required, 'config_version': config_version}
+            return {
+                'ok': True, 'scan_required': scan_required, 'config_version': config_version,
+                'scan_pause_requested': scan_pause_requested,
+            }
 
         except Exception as e:
             self.logger.error(f"Heartbeat failed: {e}")
-            return {'ok': False, 'scan_required': False, 'config_version': None}
+            return {
+                'ok': False, 'scan_required': False, 'config_version': None,
+                'scan_pause_requested': False,
+            }
 
     def fetch_agent_config(self, agent_id: str) -> Optional[Dict]:
         """GET the server's desired config for this agent. None on any failure — caller keeps running current config."""
@@ -362,13 +384,26 @@ class FileScanner:
             self.logger.warning(f"Failed to load scan cache, starting fresh: {e}")
             return {}
 
-    def _save_cache(self):
+    def _save_cache(self, final: bool = True):
+        """
+        final=True (end of a completed scan): write self._new_cache alone,
+        so files that no longer exist drop out of the cache instead of
+        lingering forever.
+
+        final=False (mid-scan checkpoint, for pause/resume): merge
+        self._prev_cache under self._new_cache instead. self._new_cache only
+        holds entries for files reached so far this pass — writing it alone
+        would make every not-yet-reached file look uncached on a resume,
+        forcing a full re-hash of the entire remaining tree instead of just
+        the files that actually still need it.
+        """
         if not self.cache_path:
             return
+        data = self._new_cache if final else {**self._prev_cache, **self._new_cache}
         try:
             tmp_path = self.cache_path + '.tmp'
             with open(tmp_path, 'w') as f:
-                json.dump(self._new_cache, f)
+                json.dump(data, f)
             os.replace(tmp_path, self.cache_path)
             try:
                 os.chmod(self.cache_path, 0o600)
@@ -414,17 +449,94 @@ class FileScanner:
             for suffix in suffixes
         )
 
-    def scan(self) -> List[Dict]:
-        """Scan all monitored paths, honoring each path's own exclude_patterns"""
+    def _count_files(self) -> int:
+        """
+        Cheap pre-pass: count eligible files (respecting exclude_patterns)
+        without reading or hashing anything — just the same directory-prune
+        walk the real pass does, minus _process_file. Powers an accurate
+        progress total instead of a stale guess from the last scan.
+        """
+        total = 0
+        for path_config in self.path_configs:
+            path = path_config['path']
+            exclude_patterns = path_config['exclude_patterns']
+            if not path or not os.path.exists(path):
+                continue
+            if os.path.isfile(path):
+                if not self._is_excluded(path, path, exclude_patterns):
+                    total += 1
+            else:
+                for root, dirs, files in os.walk(path):
+                    dirs[:] = [
+                        d for d in dirs
+                        if not self._is_excluded(os.path.join(root, d), path, exclude_patterns)
+                    ]
+                    total += sum(
+                        1 for file in files
+                        if not self._is_excluded(os.path.join(root, file), path, exclude_patterns)
+                    )
+        return total
+
+    def scan(self, progress_fn=None, pause_requested_fn=None,
+             accurate_total: bool = True) -> Tuple[List[Dict], bool]:
+        """
+        Scan all monitored paths, honoring each path's own exclude_patterns.
+
+        progress_fn(processed, total), if given, is called periodically as
+        the scan proceeds. pause_requested_fn(), if given, is checked before
+        every file — when it returns True, the scan checkpoints immediately
+        and stops early instead of continuing, leaving the remaining files
+        for the next trigger to pick up (see _save_cache's final=False mode).
+
+        accurate_total controls how the progress total is computed: True
+        (typically a scheduled/manual full scan, where accurate progress
+        actually matters) does a real _count_files() pre-pass; False
+        (typically a realtime-triggered rescan, usually near-instant) uses
+        len(self._prev_cache) as a cheap estimate instead of walking the
+        whole tree twice for a scan that doesn't need a progress bar anyway.
+
+        Returns (results, paused) — paused is True if pause_requested_fn cut
+        the scan short.
+        """
         results = []
         self.logger.info(f"Starting scan of {len(self.path_configs)} paths")
         # Rebuilt fresh each cycle (not merged) so files that no longer exist
-        # don't linger in the cache forever.
+        # don't linger in the cache forever — final _save_cache() still does
+        # this; only the periodic mid-scan checkpoints merge with _prev_cache.
         self._new_cache = {}
         self.hashes_skipped = 0
         self.hashes_computed = 0
 
+        total = 0
+        if progress_fn:
+            total = self._count_files() if accurate_total else len(self._prev_cache)
+
+        processed = 0
+        last_checkpoint_count = 0
+        last_checkpoint_time = time.time()
+        paused = False
+
+        def _checkpoint(force: bool = False):
+            nonlocal last_checkpoint_count, last_checkpoint_time
+            if force or (processed - last_checkpoint_count >= CHECKPOINT_EVERY_FILES
+                         or time.time() - last_checkpoint_time >= CHECKPOINT_EVERY_SECONDS):
+                self._save_cache(final=False)
+                last_checkpoint_count = processed
+                last_checkpoint_time = time.time()
+            if progress_fn:
+                progress_fn(processed, total)
+
+        def _process_one(file_path: str):
+            nonlocal processed
+            file_info = self._process_file(file_path)
+            if file_info:
+                results.append(file_info)
+            processed += 1
+            _checkpoint()
+
         for path_config in self.path_configs:
+            if paused:
+                break
             path = path_config['path']
             exclude_patterns = path_config['exclude_patterns']
 
@@ -433,11 +545,12 @@ class FileScanner:
                 continue
 
             if os.path.isfile(path):
+                if pause_requested_fn and pause_requested_fn():
+                    paused = True
+                    break
                 if self._is_excluded(path, path, exclude_patterns):
                     continue
-                file_info = self._process_file(path)
-                if file_info:
-                    results.append(file_info)
+                _process_one(path)
             else:
                 for root, dirs, files in os.walk(path):
                     # Prune excluded directories in place so os.walk never
@@ -449,19 +562,32 @@ class FileScanner:
                         if not self._is_excluded(os.path.join(root, d), path, exclude_patterns)
                     ]
                     for file in files:
+                        if pause_requested_fn and pause_requested_fn():
+                            paused = True
+                            break
                         file_path = os.path.join(root, file)
                         if self._is_excluded(file_path, path, exclude_patterns):
                             continue
-                        file_info = self._process_file(file_path)
-                        if file_info:
-                            results.append(file_info)
+                        _process_one(file_path)
+                    if paused:
+                        break
 
-        self._save_cache()
-        self.logger.info(
-            f"Scan complete: {len(results)} files scanned "
-            f"({self.hashes_computed} hashed, {self.hashes_skipped} unchanged/skipped)"
-        )
-        return results
+        if paused:
+            _checkpoint(force=True)
+            self.logger.info(
+                f"Scan paused: {processed}/{total or '?'} files processed "
+                f"({self.hashes_computed} hashed, {self.hashes_skipped} unchanged/skipped) "
+                f"— will resume on next trigger"
+            )
+        else:
+            self._save_cache(final=True)
+            if progress_fn:
+                progress_fn(processed, total)
+            self.logger.info(
+                f"Scan complete: {len(results)} files scanned "
+                f"({self.hashes_computed} hashed, {self.hashes_skipped} unchanged/skipped)"
+            )
+        return results, paused
 
     def _process_file(self, file_path: str) -> Optional[Dict]:
         try:
@@ -733,6 +859,18 @@ class FIMAgent:
         )
         self._observer = None
 
+        # Scan pause/resume + progress reporting. Decoupled from the
+        # heartbeat loop (see trigger_scan/run_daemon) so a long scan no
+        # longer blocks heartbeats for its entire duration. _scan_state is
+        # reported every heartbeat; _pause_requested is the server's
+        # last-known desired state, read back from each heartbeat response
+        # and checked periodically by an in-progress scan.
+        self._scan_thread = None
+        self._scan_state_lock = threading.Lock()
+        self._scan_state = {"status": "idle", "processed": 0, "total": 0}
+        self._pause_lock = threading.Lock()
+        self._pause_requested = False
+
     def start_realtime_watch(self):
         """
         Start watching monitored directories for filesystem events. Purely
@@ -790,7 +928,7 @@ class FIMAgent:
             self._realtime_pending = False
 
         self.logger.info("Real-time change detected — triggering rescan")
-        self.run_scan(scan_type='realtime')
+        self.trigger_scan(scan_type='realtime')
         return True
 
     def _current_config_payload(self) -> Dict:
@@ -888,11 +1026,58 @@ class FIMAgent:
         except Exception as e:
             self.logger.error(f"Failed to apply pushed config: {e}")
 
+    def _set_scan_state(self, status: str, processed: int, total: int):
+        with self._scan_state_lock:
+            self._scan_state = {"status": status, "processed": processed, "total": total}
+
+    def trigger_scan(self, scan_type: str = 'full'):
+        """
+        Non-blocking: spawns the scan on its own thread instead of blocking
+        the caller — the heartbeat loop calls this instead of run_scan()
+        directly so a long scan can never delay a heartbeat.
+        """
+        with self._pause_lock:
+            if self._pause_requested:
+                self.logger.debug(f"Scan trigger ({scan_type}) ignored — paused")
+                return
+        if self._scan_thread and self._scan_thread.is_alive():
+            self.logger.debug(f"Scan trigger ({scan_type}) ignored — a scan is already running")
+            return
+        self._scan_thread = threading.Thread(target=self.run_scan, args=(scan_type,), daemon=True)
+        self._scan_thread.start()
+
     def run_scan(self, scan_type: str = 'full'):
-        """Execute file integrity scan"""
+        """
+        Execute file integrity scan. Expected to run on its own thread (see
+        trigger_scan) — everything here can safely take a long time without
+        affecting heartbeats.
+        """
         with self._scan_lock:
+            with self._pause_lock:
+                if self._pause_requested:
+                    self.logger.info(f"Scan ({scan_type}) not started — pause requested")
+                    return
+
             self.logger.info(f"Starting file integrity scan (scan_type={scan_type})")
-            scan_results = self.scanner.scan()
+            self._set_scan_state("running", 0, 0)
+
+            def _progress(processed, total):
+                self._set_scan_state("running", processed, total)
+
+            def _pause_requested_fn():
+                with self._pause_lock:
+                    return self._pause_requested
+
+            scan_results, paused = self.scanner.scan(
+                progress_fn=_progress,
+                pause_requested_fn=_pause_requested_fn,
+                accurate_total=(scan_type == 'full'),
+            )
+
+            with self._scan_state_lock:
+                processed, total = self._scan_state["processed"], self._scan_state["total"]
+            self._set_scan_state("paused" if paused else "idle", processed, total)
+
             if scan_results:
                 self.client.send_scan_results(self.agent_id, scan_results, scan_type=scan_type)
 
@@ -906,8 +1091,10 @@ class FIMAgent:
         self.logger.info("Starting heartbeat loop")
         self.logger.info("============================================================")
 
-        # Initial scan
-        self.run_scan()
+        # Initial scan — non-blocking, so start_realtime_watch() and the
+        # heartbeat loop below both start immediately rather than waiting
+        # for a potentially long first scan to finish.
+        self.trigger_scan('full')
         self.start_realtime_watch()
 
         last_scan = time.time()
@@ -916,14 +1103,26 @@ class FIMAgent:
 
         while self.running:
             try:
-                # Heartbeat
+                with self._scan_state_lock:
+                    scan_status = self._scan_state["status"]
+                    scan_progress = {
+                        "processed": self._scan_state["processed"],
+                        "total": self._scan_state["total"],
+                    }
+
+                # Heartbeat — always sent on schedule regardless of whether
+                # a scan is currently running (see trigger_scan/run_scan).
                 result = self.client.send_heartbeat(
-                    self.agent_id, self.hostname, self.script_hash, self._current_config_payload()
+                    self.agent_id, self.hostname, self.script_hash, self._current_config_payload(),
+                    scan_status=scan_status, scan_progress=scan_progress,
                 )
+
+                with self._pause_lock:
+                    self._pause_requested = bool(result.get('scan_pause_requested'))
 
                 # Check if scan requested
                 if result.get('scan_required'):
-                    self.run_scan()
+                    self.trigger_scan('full')
                     last_scan = time.time()  # Reset scheduled scan timer
 
                 # Check if a newer config was pushed
@@ -933,7 +1132,7 @@ class FIMAgent:
 
                 # Scheduled scan
                 if time.time() - last_scan > scan_interval:
-                    self.run_scan()
+                    self.trigger_scan('full')
                     last_scan = time.time()
 
                 # Real-time-triggered scan (debounced filesystem events)

@@ -281,6 +281,13 @@ export const generateSoxComplianceReport = async (days = 30) => {
 export const fetchAgentDetails = () =>
   apiCall(`/api/v1/dashboard/agents/details`);
 
+// ── Scan pause/resume ─────────────────────────────────────────────────────────
+export const pauseAgentScan = (agentId: string) =>
+  apiCall(`/api/v1/agents/${agentId}/pause-scan`, { method: "POST" });
+
+export const resumeAgentScan = (agentId: string) =>
+  apiCall(`/api/v1/agents/${agentId}/resume-scan`, { method: "POST" });
+
 // ── Fleet config push ─────────────────────────────────────────────────────────
 export const fetchAgentConfig = (agentId: string) =>
   apiCall(`/api/v1/agents/${agentId}/config`);

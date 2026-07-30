@@ -55,6 +55,16 @@ class Agent(Base):
     applied_config_version = Column(Integer, default=0)
     reported_config = Column(JSONB)
     api_key_hash = Column(String(64))
+    # Scan pause/resume: scan_pause_requested is the desired state (admin-set
+    # via the pause-scan/resume-scan endpoints); the rest are reported by the
+    # agent every heartbeat, decoupled from scan completion (see
+    # agent/fim_agent.py's run_daemon) so the UI shows live progress even
+    # mid-scan.
+    scan_pause_requested = Column(Boolean, default=False)
+    scan_status = Column(String(20), default="idle")
+    scan_progress_total = Column(Integer)
+    scan_progress_processed = Column(Integer)
+    scan_progress_updated_at = Column(DateTime)
 
 class Policy(Base):
     __tablename__ = "policies"

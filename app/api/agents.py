@@ -63,6 +63,8 @@ class AgentHeartbeatRequest(BaseModel):
     timestamp: Optional[str] = None
     script_hash: Optional[str] = None
     current_config: Optional[dict] = None
+    scan_status: Optional[str] = None
+    scan_progress: Optional[dict] = None
 
 class AgentConfigPathEntry(BaseModel):
     path: str
@@ -169,6 +171,17 @@ async def agent_heartbeat(
     if request.current_config:
         agent.reported_config = request.current_config
 
+    # Scan pause/resume: reported state, decoupled from scan completion (the
+    # agent's scan now runs on its own thread — see agent/fim_agent.py's
+    # trigger_scan/run_scan) so the UI can show live progress mid-scan
+    # instead of only learning about a scan after it finishes.
+    if request.scan_status:
+        agent.scan_status = request.scan_status
+        progress = request.scan_progress or {}
+        agent.scan_progress_processed = progress.get("processed")
+        agent.scan_progress_total = progress.get("total")
+        agent.scan_progress_updated_at = datetime.now()
+
     # Self-integrity: seed the trust-on-first-sight baseline here too, not
     # just in register_agent() — an agent that already had a saved agent_id
     # before this feature existed will never call /register again, so
@@ -231,6 +244,10 @@ async def agent_heartbeat(
         # in its agent_config.yaml) and fetches new config only if newer —
         # same shape as scan_required's "act now" signal, not a new channel.
         "config_version": agent.desired_config_version,
+        # Desired state set by pause_agent_scan/resume_agent_scan — the agent
+        # checks this on every heartbeat and periodically while a scan is
+        # actively running (see agent/fim_agent.py's run_scan).
+        "scan_pause_requested": bool(agent.scan_pause_requested),
         "message": "Heartbeat received"
     }
 
@@ -272,6 +289,91 @@ async def rotate_agent_key(
     await db.commit()
 
     return {"message": "API key cleared — will be re-established from the agent's next request"}
+
+
+@router.post("/{agent_id}/pause-scan")
+async def pause_agent_scan(
+    agent_id: str,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(analyst_plus)
+):
+    """
+    Request that this agent pause any in-progress/future scan. Purely a
+    desired-state flag — the agent picks it up on its next heartbeat (up to
+    heartbeat_interval seconds later) and, if a scan is actively running,
+    checkpoints and stops at the next file boundary rather than continuing;
+    see agent/fim_agent.py's run_scan/FileScanner.scan.
+    """
+    try:
+        agent_uuid = uuid.UUID(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    result = await db.execute(select(Agent).where(Agent.id == agent_uuid))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.scan_pause_requested = True
+    await db.commit()
+
+    await AuditService.log(
+        db, current_user.id, current_user.username, "AGENT_SCAN_PAUSE_REQUESTED",
+        resource_type="agent", resource_id=agent.id,
+        details={"hostname": agent.hostname},
+        ip_address=_client_ip(http_request),
+    )
+    await db.commit()
+
+    return {"message": "Pause requested — the agent will stop at its next checkpoint"}
+
+
+@router.post("/{agent_id}/resume-scan")
+async def resume_agent_scan(
+    agent_id: str,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(analyst_plus)
+):
+    """
+    Clear a pause request and immediately queue an on-demand scan (same
+    fim.scan_requests channel trigger_agent_scan uses) so the agent resumes
+    on its very next heartbeat instead of waiting for the next scheduled
+    interval. Resuming a scan that checkpointed mid-way re-walks the tree
+    but skips re-hashing anything already checkpointed (see FileScanner's
+    incremental cache) — it picks up near where it left off, not from
+    file #1.
+    """
+    try:
+        agent_uuid = uuid.UUID(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    result = await db.execute(select(Agent).where(Agent.id == agent_uuid))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.scan_pause_requested = False
+    scan_request = ScanRequest(
+        id=uuid.uuid4(),
+        agent_id=agent_uuid,
+        requested_by=current_user.id,
+        status='pending'
+    )
+    db.add(scan_request)
+    await db.commit()
+
+    await AuditService.log(
+        db, current_user.id, current_user.username, "AGENT_SCAN_RESUME_REQUESTED",
+        resource_type="agent", resource_id=agent.id,
+        details={"hostname": agent.hostname},
+        ip_address=_client_ip(http_request),
+    )
+    await db.commit()
+
+    return {"message": "Resume requested — the agent will scan again on its next heartbeat"}
 
 
 @router.post("/{agent_id}/accept-binary-hash")
