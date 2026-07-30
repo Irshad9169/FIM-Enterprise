@@ -608,12 +608,31 @@ class _RealtimeChangeHandler(FileSystemEventHandler):
         self.exclude_patterns = exclude_patterns
         self.mark_dirty = mark_dirty
 
-    def on_any_event(self, event):
+    def _handle(self, event):
         if event.is_directory:
             return
         if FileScanner._is_excluded(event.src_path, self.base_path, self.exclude_patterns):
             return
         self.mark_dirty()
+
+    # Only these four correspond to an actual content/inventory change.
+    # watchdog's inotify backend also emits FileOpenedEvent/FileClosedEvent
+    # for every read of a watched file (including our own scanner hashing
+    # files, or unrelated processes just opening e.g. /etc/hosts every few
+    # seconds) — reacting to those via on_any_event kept resetting the
+    # debounce timer from background noise, so the "quiet period" needed to
+    # actually trigger a rescan never arrived.
+    def on_created(self, event):
+        self._handle(event)
+
+    def on_modified(self, event):
+        self._handle(event)
+
+    def on_deleted(self, event):
+        self._handle(event)
+
+    def on_moved(self, event):
+        self._handle(event)
 
 
 class FIMAgent:

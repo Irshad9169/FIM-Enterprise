@@ -32,6 +32,13 @@ class ComplianceReportService:
         h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=13, spaceBefore=12, spaceAfter=6)
         normal = styles["Normal"]
         small = ParagraphStyle("Small", parent=normal, fontSize=8, textColor=colors.HexColor("#64748b"))
+        cell_style = ParagraphStyle("Cell", parent=normal, fontSize=8, leading=10)
+
+        def cell(text):
+            # Plain strings in a reportlab Table don't wrap — they overflow
+            # into neighboring cells/rows once the text exceeds the column
+            # width. Wrapping in a Paragraph makes it wrap properly.
+            return Paragraph(str(text), cell_style)
 
         elements = []
 
@@ -72,21 +79,21 @@ class ComplianceReportService:
 
         compliance_items = [
             ["Control", "Status", "Evidence"],
-            ["FIM agents deployed on critical systems",
+            [cell("FIM agents deployed on critical systems"),
              "COMPLIANT" if data.get("total_agents", 0) > 0 else "NON-COMPLIANT",
-             f"{data.get('total_agents', 0)} agents active"],
-            ["Automated file integrity scans",
+             cell(f"{data.get('total_agents', 0)} agents active")],
+            [cell("Automated file integrity scans"),
              "COMPLIANT" if data.get("total_scans", 0) > 0 else "NON-COMPLIANT",
-             f"{data.get('total_scans', 0)} scans in period (daily)"],
-            ["Alert generation on file changes",
+             cell(f"{data.get('total_scans', 0)} scans in period (daily)")],
+            [cell("Alert generation on file changes"),
              "COMPLIANT" if data.get("total_alerts", 0) >= 0 else "NON-COMPLIANT",
-             f"{data.get('total_alerts', 0)} alerts generated"],
-            ["Daily review of changes",
+             cell(f"{data.get('total_alerts', 0)} alerts generated")],
+            [cell("Daily review of changes"),
              "COMPLIANT" if data.get("total_reports", 0) > 0 else "NON-COMPLIANT",
-             f"{data.get('total_reports', 0)} daily reports"],
-            ["Change tracking with audit trail",
+             cell(f"{data.get('total_reports', 0)} daily reports")],
+            [cell("Change tracking with audit trail"),
              "COMPLIANT",
-             "All changes logged with timestamps and user attribution"],
+             cell("All changes logged with timestamps and user attribution")],
         ]
         ct = Table(compliance_items, colWidths=[180, 90, 220])
         ct.setStyle(TableStyle([
@@ -175,6 +182,10 @@ class ComplianceReportService:
         h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=13, spaceBefore=12, spaceAfter=6)
         normal = styles["Normal"]
         small = ParagraphStyle("Small", parent=normal, fontSize=8, textColor=colors.HexColor("#64748b"))
+        cell_style = ParagraphStyle("Cell", parent=normal, fontSize=8, leading=10)
+
+        def cell(text):
+            return Paragraph(str(text), cell_style)
 
         elements = []
 
@@ -215,24 +226,24 @@ class ComplianceReportService:
 
         compliance_items = [
             ["Control", "Status", "Evidence"],
-            ["Continuous monitoring for unauthorized changes",
+            [cell("Continuous monitoring for unauthorized changes"),
              "COMPLIANT" if data.get("total_agents", 0) > 0 else "NON-COMPLIANT",
-             f"{data.get('total_agents', 0)} agents actively monitored"],
-            ["Automated detection of file/configuration changes",
+             cell(f"{data.get('total_agents', 0)} agents actively monitored")],
+            [cell("Automated detection of file/configuration changes"),
              "COMPLIANT" if data.get("total_scans", 0) > 0 else "NON-COMPLIANT",
-             f"{data.get('total_scans', 0)} scans in period"],
-            ["Change events logged with timestamp and detail",
+             cell(f"{data.get('total_scans', 0)} scans in period")],
+            [cell("Change events logged with timestamp and detail"),
              "COMPLIANT",
-             f"{data.get('total_alerts', 0)} change events recorded"],
-            ["Analyst review of detected changes",
+             cell(f"{data.get('total_alerts', 0)} change events recorded")],
+            [cell("Analyst review of detected changes"),
              "COMPLIANT" if data.get("total_reports", 0) > 0 else "NON-COMPLIANT",
-             f"{data.get('total_reports', 0)} daily reports reviewed"],
-            ["Tamper-evident audit trail of change records",
+             cell(f"{data.get('total_reports', 0)} daily reports reviewed")],
+            [cell("Tamper-evident audit trail of change records"),
              "COMPLIANT",
-             "Change records hash-chained (SHA-256) and append-only at the database level"],
-            ["Segregation of duties (detection vs. remediation)",
+             cell("Change records hash-chained (SHA-256) and append-only at the database level")],
+            [cell("Segregation of duties (detection vs. remediation)"),
              "COMPLIANT",
-             "Role-based access separates analyst review from system administration"],
+             cell("Role-based access separates analyst review from system administration")],
         ]
         ct = Table(compliance_items, colWidths=[190, 90, 210])
         ct.setStyle(TableStyle([
