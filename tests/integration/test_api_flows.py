@@ -114,6 +114,7 @@ async def test_scan_submission_creates_initial_baseline(client, db_session):
             }],
             "total_files": 1,
         },
+        headers={"X-API-Key": "test-agent-01-key"},
     )
 
     assert resp.status_code == 200
@@ -153,6 +154,7 @@ async def test_scan_submission_detects_modified_file_and_creates_alert(client, d
             }],
             "total_files": 1,
         },
+        headers={"X-API-Key": "test-agent-02-key"},
     )
 
     assert resp.status_code == 200
