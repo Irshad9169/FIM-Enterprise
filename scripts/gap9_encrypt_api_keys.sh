@@ -30,18 +30,21 @@ python3 -c "from cryptography.fernet import Fernet" 2>/dev/null || {
 }
 echo "   ✅ cryptography library available"
 
-# Check FIM directory
-if [ ! -d "$FIM_DIR" ]; then
-    echo "   ❌ FIM directory not found: $FIM_DIR"
-    exit 1
+# $FIM_DIR only exists on a combined backend+agent host (e.g. test06). A
+# dedicated agent-only host (no backend installed at all) won't have it —
+# that's not an error, just a different, equally valid layout. Don't hard
+# exit; just widen the search below to cover both.
+if [ -d "$FIM_DIR" ]; then
+    echo "   ✅ FIM directory: $FIM_DIR"
+else
+    echo "   ℹ️  $FIM_DIR not present — assuming an agent-only host, searching known agent install paths instead"
 fi
-echo "   ✅ FIM directory: $FIM_DIR"
 
 # ── Step 1: Locate all agent_config.yaml files ───────────────────
 echo ""
 echo "▶ Step 1: Locating agent_config.yaml files..."
 
-mapfile -t CONFIG_FILES < <(find "$FIM_DIR" /opt/fim -name "agent_config.yaml" 2>/dev/null | sort -u)
+mapfile -t CONFIG_FILES < <(find "$FIM_DIR" /opt/fim /opt/fim-agent -name "agent_config.yaml" 2>/dev/null | sort -u)
 
 if [ ${#CONFIG_FILES[@]} -eq 0 ]; then
     echo "   ⚠️  No agent_config.yaml found under $FIM_DIR or /opt/fim"
@@ -329,21 +332,33 @@ else
 fi
 
 # ── Step 7: Restart backend and test ────────────────────────────
+# Only applicable on a combined backend+agent host. A dedicated agent-only
+# host (no fim-backend* unit at all) has nothing to restart or health-check
+# here — skip cleanly instead of failing on a service that was never
+# supposed to exist on this box.
+HAS_BACKEND=false
+if systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -q '^fim-backend'; then
+    HAS_BACKEND=true
+fi
+
 echo ""
-echo "▶ Step 7: Restarting FIM backend..."
+if [ "$HAS_BACKEND" = true ]; then
+    echo "▶ Step 7: Restarting FIM backend..."
+    find "$FIM_APP" -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    systemctl restart fim-backend
+    echo "   Waiting for backend to fully start..."
+    sleep 8
 
-find "$FIM_APP" -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-systemctl restart fim-backend
-echo "   Waiting for backend to fully start..."
-sleep 8
-
-BACKEND_STATUS=$(systemctl is-active fim-backend)
-if [ "$BACKEND_STATUS" = "active" ]; then
-    echo "   ✅ fim-backend is running"
+    BACKEND_STATUS=$(systemctl is-active fim-backend)
+    if [ "$BACKEND_STATUS" = "active" ]; then
+        echo "   ✅ fim-backend is running"
+    else
+        echo "   ❌ fim-backend failed to start. Logs:"
+        journalctl -u fim-backend -n 30 --no-pager
+        exit 1
+    fi
 else
-    echo "   ❌ fim-backend failed to start. Logs:"
-    journalctl -u fim-backend -n 30 --no-pager
-    exit 1
+    echo "▶ Step 7: No fim-backend* service on this host — agent-only deployment, nothing to restart. Skipping."
 fi
 
 # ── Step 8: Tests ────────────────────────────────────────────────
@@ -354,32 +369,37 @@ echo ""
 PASS=0
 FAIL=0
 
-# Test 1: Health check
-echo "--- Test 1: Backend health ---"
-HEALTH=$(curl -s --max-time 5 http://localhost:8000/api/v1/health 2>/dev/null || echo "")
-if echo "$HEALTH" | grep -q "healthy"; then
-    echo "   ✅ PASS — $HEALTH"
-    PASS=$((PASS+1))
-else
-    echo "   ❌ FAIL — $HEALTH"
-    FAIL=$((FAIL+1))
-fi
-echo ""
+if [ "$HAS_BACKEND" = true ]; then
+    # Test 1: Health check
+    echo "--- Test 1: Backend health ---"
+    HEALTH=$(curl -s --max-time 5 http://localhost:8000/api/v1/health 2>/dev/null || echo "")
+    if echo "$HEALTH" | grep -q "healthy"; then
+        echo "   ✅ PASS — $HEALTH"
+        PASS=$((PASS+1))
+    else
+        echo "   ❌ FAIL — $HEALTH"
+        FAIL=$((FAIL+1))
+    fi
+    echo ""
 
-# Test 2: Login
-echo "--- Test 2: Login ---"
-HTTP_CODE=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
-    -X POST http://localhost:8000/api/v1/auth/login \
-    -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"FIMAdmin@2024!"}' 2>/dev/null || echo "000")
-if [ "$HTTP_CODE" = "200" ]; then
-    echo "   ✅ PASS — HTTP $HTTP_CODE"
-    PASS=$((PASS+1))
+    # Test 2: Login
+    echo "--- Test 2: Login ---"
+    HTTP_CODE=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
+        -X POST http://localhost:8000/api/v1/auth/login \
+        -H "Content-Type: application/json" \
+        -d '{"username":"admin","password":"FIMAdmin@2024!"}' 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo "   ✅ PASS — HTTP $HTTP_CODE"
+        PASS=$((PASS+1))
+    else
+        echo "   ⚠️  HTTP $HTTP_CODE"
+        FAIL=$((FAIL+1))
+    fi
+    echo ""
 else
-    echo "   ⚠️  HTTP $HTTP_CODE"
-    FAIL=$((FAIL+1))
+    echo "--- Tests 1-2: Backend health/login — skipped (agent-only host) ---"
+    echo ""
 fi
-echo ""
 
 # Test 3: Verify config files no longer contain plaintext key
 echo "--- Test 3: No plaintext api_key in config files ---"
@@ -437,18 +457,23 @@ if found == 0:
 PYEOF
 echo ""
 
-# Test 5: Backend logs — no new errors
-echo "--- Test 5: Backend logs ---"
-ERROR_LINES=$(journalctl -u fim-backend -n 20 --no-pager 2>/dev/null \
-    | grep -iE "error|exception|traceback|decrypt" || true)
-if [ -n "$ERROR_LINES" ]; then
-    echo "   Log lines of interest:"
-    echo "$ERROR_LINES" | sed 's/^/      /'
+if [ "$HAS_BACKEND" = true ]; then
+    # Test 5: Backend logs — no new errors
+    echo "--- Test 5: Backend logs ---"
+    ERROR_LINES=$(journalctl -u fim-backend -n 20 --no-pager 2>/dev/null \
+        | grep -iE "error|exception|traceback|decrypt" || true)
+    if [ -n "$ERROR_LINES" ]; then
+        echo "   Log lines of interest:"
+        echo "$ERROR_LINES" | sed 's/^/      /'
+    else
+        echo "   ✅ No errors in recent logs"
+        PASS=$((PASS+1))
+    fi
+    echo ""
 else
-    echo "   ✅ No errors in recent logs"
-    PASS=$((PASS+1))
+    echo "--- Test 5: Backend logs — skipped (agent-only host) ---"
+    echo ""
 fi
-echo ""
 
 # ── Summary ──────────────────────────────────────────────────────
 echo "============================================================"
