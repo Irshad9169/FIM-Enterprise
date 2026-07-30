@@ -456,6 +456,14 @@ class FileScanner:
             if cached and cached.get('mtime') == mtime and cached.get('size') == size:
                 file_hash = cached['hash']
                 self.hashes_skipped += 1
+                # Still establish/refresh the shadow copy for a matching file
+                # even though nothing changed — otherwise the shadow only
+                # ever gets written lazily on a file's first observed change,
+                # meaning that very first edit after deployment always comes
+                # back diff-less (nothing to diff against yet) and only the
+                # second edit onward produces a real diff.
+                if file_path.endswith(DETAIL_EXTENSIONS):
+                    self._diff_content(file_path, changed_since_last_seen=False)
             else:
                 file_hash = self.calculate_hash(file_path)
                 self.hashes_computed += 1
