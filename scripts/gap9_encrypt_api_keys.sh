@@ -149,7 +149,13 @@ for config_path in config_files:
         changes += 1
         masked = value[:6] + "..." + value[-4:]
         print(f"   ✅ Encrypted api_key: {masked}  →  {enc_prefix}<ciphertext>")
-        return f'{indent}api_key: "{enc_prefix}{encrypted}"'
+        # group(1) already captured through "api_key:<ws>" (misleadingly
+        # named indent) -- re-adding "api_key: " here used to double it,
+        # writing "api_key: api_key: \"+ENC++...\"" to the file. That
+        # corrupted the value: it no longer starts with the +ENC++ prefix
+        # at the position _decrypt_api_key checks, so the agent would send
+        # this whole broken string as its key instead of decrypting it.
+        return f'{indent}"{enc_prefix}{encrypted}"'
 
     pattern = r'^(\s*api_key\s*:\s*)(.+)$'
     content = re.sub(pattern, encrypt_match, content, flags=re.MULTILINE)
