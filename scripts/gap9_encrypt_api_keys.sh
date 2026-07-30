@@ -107,7 +107,7 @@ echo ""
 echo "▶ Step 3: Encrypting API keys in config files..."
 
 python3 << PYEOF
-import re, sys
+import re, sys, os
 from cryptography.fernet import Fernet
 
 key_file  = "$KEY_FILE"
@@ -126,11 +126,21 @@ for config_path in config_files:
         print(f"   ❌ Cannot read {config_path}: {e}")
         continue
 
-    # Backup
+    # Backup -- only if one doesn't already exist. Overwriting it
+    # unconditionally on every run meant a second invocation (even a
+    # no-op one, e.g. because it thought the key was "already encrypted")
+    # would clobber the last known-good backup with whatever the file
+    # currently looks like -- including an already-corrupted version,
+    # destroying the only real recovery path. This is exactly what
+    # happened deploying to a real host: a corrupted first run's backup
+    # got overwritten with the same corruption on the next run.
     backup_path = config_path + ".bak.gap9"
-    with open(backup_path, 'w') as f:
-        f.write(content)
-    print(f"   Backup saved: {backup_path}")
+    if os.path.exists(backup_path):
+        print(f"   ℹ️  Backup already exists, leaving it alone: {backup_path}")
+    else:
+        with open(backup_path, 'w') as f:
+            f.write(content)
+        print(f"   Backup saved: {backup_path}")
 
     original = content
     changes  = 0
