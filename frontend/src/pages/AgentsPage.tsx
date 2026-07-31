@@ -283,12 +283,16 @@ export default function AgentsPage() {
                             title="Resume scan" className="p-1.5 rounded bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-700">
                             <Play size={13} />
                           </button>
-                        ) : (
+                        ) : a.scan_status === "running" ? (
+                          // Only offer Pause while a scan is actually in progress —
+                          // showing it unconditionally risked an accidental click
+                          // silently pausing an agent that wasn't due to scan again
+                          // until someone happened to notice.
                           <button onClick={() => pauseMutation.mutate(a.id)} disabled={pauseMutation.isPending}
                             title="Pause scan" className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">
                             <Pause size={13} />
                           </button>
-                        )}
+                        ) : null}
                         <button onClick={() => setConfigEditorAgent({ id: a.id, hostname: a.hostname })}
                           title="Edit monitored paths"
                           className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">
