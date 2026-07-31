@@ -76,9 +76,17 @@ async def submit_scan(raw_request: Request, db: AsyncSession = Depends(get_db)):
 
     try:
         timestamp_str = request.timestamp.replace('Z', '+00:00')
-        dt_aware = datetime.fromisoformat(timestamp_str)
-        dt_utc = dt_aware.astimezone(timezone.utc).replace(tzinfo=None)
-    except: dt_utc = datetime.utcnow()
+        dt_parsed = datetime.fromisoformat(timestamp_str)
+        # The agent sends datetime.utcnow().isoformat() -- a naive string
+        # with no offset, but semantically already UTC. datetime.astimezone()
+        # on a naive value assumes it's in the *server's local* timezone
+        # first, then converts -- silently mis-shifting an already-UTC value
+        # by the server's UTC offset (e.g. ~5:30 for IST). Attach UTC
+        # explicitly for naive input instead of letting astimezone guess.
+        if dt_parsed.tzinfo is None:
+            dt_parsed = dt_parsed.replace(tzinfo=timezone.utc)
+        dt_utc = dt_parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    except Exception: dt_utc = datetime.utcnow()
 
     scan = Scan(
         id=uuid.uuid4(),
@@ -142,6 +150,7 @@ async def list_scans(
         
         scans_with_health = []
         for r in scans:
+            hours_since = None
             if not r.started_at:
                 scan_health = "never_scanned"
             else:
@@ -154,7 +163,7 @@ async def list_scans(
                     scan_health = "warning"
                 else:
                     scan_health = "critical"
-            
+
             scans_with_health.append({
                 "id": str(r.id),
                 "agent_id": str(r.agent_id),
@@ -165,7 +174,10 @@ async def list_scans(
                 "files_changed": r.files_changed,
                 "started_at": str(r.started_at),
                 "completed_at": str(r.completed_at),
-                "scan_health": scan_health
+                "scan_health": scan_health,
+                # Frontend's Age column (ScansPage.tsx) reads this directly —
+                # was never actually sent, so Age was always blank.
+                "hours_since_scan": round(hours_since, 1) if hours_since is not None else None,
             })
         
         # Calculate summary counts
