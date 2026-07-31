@@ -10,6 +10,7 @@ import yaml
 import hashlib
 import fnmatch
 import logging
+import stat as stat_mod
 import platform
 import socket
 import threading
@@ -592,6 +593,19 @@ class FileScanner:
     def _process_file(self, file_path: str) -> Optional[Dict]:
         try:
             stat = os.stat(file_path)
+
+            # Refuse to hash anything but a regular file. A character
+            # device (e.g. something under a monitored tree that resolves
+            # to /dev/urandom or similar) never reaches EOF, so
+            # calculate_hash's read loop would spin forever -- hashing 100%
+            # CPU, never returning, permanently blocking every future scan
+            # (trigger_scan treats a still-alive scan thread as "already
+            # running"). FIFOs/sockets have similar failure modes. Found
+            # live: a scan wedged for over a day hashing exactly this.
+            if not stat_mod.S_ISREG(stat.st_mode):
+                self.logger.warning(f"Skipping non-regular file (device/FIFO/socket): {file_path}")
+                return None
+
             size = stat.st_size
             mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
 
