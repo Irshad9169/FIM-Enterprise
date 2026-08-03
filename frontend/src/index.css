@@ -5,3 +5,17 @@
 body {
   @apply bg-slate-950 text-slate-100;
 }
+
+/* Attention indicators (sidebar badges, critical scan status) — Tailwind's
+   built-in animate-pulse doesn't honor prefers-reduced-motion, so this is a
+   small custom class that does. */
+.fim-attn-pulse {
+  animation: fim-pulse 1.8s ease-in-out infinite;
+}
+@keyframes fim-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fim-attn-pulse { animation: none; }
+}

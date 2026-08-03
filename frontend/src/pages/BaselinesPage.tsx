@@ -61,8 +61,10 @@ export default function BaselinesPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
-            {baselines.map((b: any) => (
-              <tr key={b.id} className="hover:bg-slate-800/50">
+            {baselines.map((b: any) => {
+              const needsApproval = !["approved", "integrity_failed", "superseded", "replaced"].includes(b.status);
+              return (
+              <tr key={b.id} className={`hover:bg-slate-800/50 ${needsApproval ? "border-l-2 border-l-yellow-500 bg-yellow-900/10" : ""}`}>
                 <td className="px-6 py-4">
                   <div className="text-white text-xs font-medium">{b.agent_hostname}</div>
                   <div className="text-slate-500 text-[10px] font-mono">{b.agent_id.slice(0, 8)}...</div>
@@ -134,7 +136,8 @@ export default function BaselinesPage() {
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {baselines.length === 0 && (
               <tr><td colSpan={7} className="px-6 py-8 text-center text-slate-500">No baselines found</td></tr>
             )}

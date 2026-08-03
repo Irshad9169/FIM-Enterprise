@@ -1,10 +1,23 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { logout } from "../api/auth";
+import { fetchBaselines, fetchScans } from "../api/dashboard";
 import {
   LayoutDashboard, Server, Bell, FileCheck, Scan, FileText, Shield,
   Users, History, LogOut, ShieldAlert, Sun, Moon, Monitor
 } from "lucide-react";
+
+const PENDING_BASELINE_STATUSES_EXCLUDED = ["approved", "integrity_failed", "superseded", "replaced"];
+
+function NavBadge({ count, color }: { count: number; color: string }) {
+  if (count <= 0) return null;
+  return (
+    <span className={`fim-attn-pulse ml-auto text-[10px] font-bold text-slate-950 rounded-full px-1.5 py-0.5 ${color}`}>
+      {count}
+    </span>
+  );
+}
 
 export const ThemeContext = createContext<{ dark: boolean; toggle: () => void }>({
   dark: true, toggle: () => {}
@@ -28,6 +41,26 @@ export default function DashboardLayout() {
 
   const toggle = () => setDark(d => !d);
   const handleLogout = () => { logout(); navigate("/login"); };
+
+  // Ambient attention indicators — visible from any page, not just when an
+  // analyst happens to already be on Baselines/Scans. Independent cache keys
+  // from the pages themselves (BaselinesPage also uses ["baselines"], which
+  // is fine — same data; ScansPage uses ["scans", debouncedSearch], which
+  // must NOT be shared since a search term there shouldn't affect this
+  // sidebar-wide count).
+  const { data: baselinesData } = useQuery({
+    queryKey: ["baselines"], queryFn: fetchBaselines, refetchInterval: 60_000,
+  });
+  const pendingBaselines = (baselinesData?.baselines || []).filter(
+    (b: any) => !PENDING_BASELINE_STATUSES_EXCLUDED.includes(b.status)
+  ).length;
+
+  const { data: scansData } = useQuery({
+    queryKey: ["scans-summary"], queryFn: fetchScans, refetchInterval: 60_000,
+  });
+  const scanSummary = scansData?.summary || {};
+  const staleScans = (scanSummary.stale || 0) + (scanSummary.warning || 0) +
+    (scanSummary.critical || 0) + (scanSummary.never_scanned || 0);
 
   const bg = dark ? "bg-slate-950" : "bg-gray-50";
   const sidebarBg = dark ? "bg-slate-950 border-slate-800" : "bg-white border-gray-200";
@@ -66,8 +99,14 @@ export default function DashboardLayout() {
             <NavLink to="/alerts" className={navItemClass}><Bell size={18} /> Alerts</NavLink>
 
             <div className={`text-xs font-semibold ${textMuted} uppercase tracking-wider mt-6 mb-2 px-4`}>Operations</div>
-            <NavLink to="/baselines" className={navItemClass}><FileCheck size={18} /> Baselines</NavLink>
-            <NavLink to="/scans" className={navItemClass}><Scan size={18} /> Scans</NavLink>
+            <NavLink to="/baselines" className={navItemClass}>
+              <FileCheck size={18} /> Baselines
+              <NavBadge count={pendingBaselines} color="bg-yellow-500" />
+            </NavLink>
+            <NavLink to="/scans" className={navItemClass}>
+              <Scan size={18} /> Scans
+              <NavBadge count={staleScans} color="bg-red-500" />
+            </NavLink>
             <NavLink to="/reports" className={navItemClass}><FileText size={18} /> Daily Reports</NavLink>
             <NavLink to="/exclusions" className={navItemClass}><Shield size={18} /> Exclusions</NavLink>
 

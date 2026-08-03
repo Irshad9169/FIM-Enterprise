@@ -32,7 +32,7 @@ const healthConfig: Record<Health, { label: string; badge: string; row: string; 
   healthy:      { label: "Healthy",       badge: "text-green-400 border-green-800 bg-green-900/20",    row: "",                    icon: CheckCircle  },
   stale:        { label: ">24h",          badge: "text-yellow-400 border-yellow-800 bg-yellow-900/20", row: "bg-yellow-900/10",    icon: AlertCircle  },
   warning:      { label: ">48h",          badge: "text-orange-400 border-orange-800 bg-orange-900/20", row: "bg-orange-900/10",    icon: AlertTriangle },
-  critical:     { label: ">72h",          badge: "text-red-400 border-red-800 bg-red-900/20",          row: "bg-red-900/10",       icon: XCircle      },
+  critical:     { label: ">72h",          badge: "text-red-400 border-red-800 bg-red-900/20 fim-attn-pulse", row: "bg-red-900/10", icon: XCircle      },
   never_scanned:{ label: "Never Scanned", badge: "text-slate-400 border-slate-700 bg-slate-800/40",   row: "bg-slate-800/20",     icon: XCircle      },
 };
 
