@@ -43,7 +43,7 @@ async def run_anomaly_detection(db: AsyncSession) -> List[Dict]:
         agents_result = await db.execute(text("""
             SELECT id, hostname
             FROM fim.agents
-            WHERE status = 'active' OR last_seen > NOW() - INTERVAL '24 hours'
+            WHERE status = 'online' OR last_heartbeat > NOW() - INTERVAL '24 hours'
         """))
         agents = agents_result.fetchall()
 
