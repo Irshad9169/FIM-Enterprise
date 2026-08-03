@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
-  fetchDashboardStats, fetchAlertStats, fetchHealthSummary, fetchTrends
+  fetchDashboardStats, fetchAlertStats, fetchHealthSummary, fetchTrends,
+  fetchBaselines, fetchScans
 } from "../api/dashboard";
 import {
-  ShieldAlert, Activity, Server, FileText, CheckCircle, Clock, TrendingUp
+  ShieldAlert, Activity, Server, FileText, CheckCircle, Clock, TrendingUp,
+  FileCheck, Scan
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -35,6 +37,19 @@ export default function DashboardPage() {
   const { data: reportStats } = useQuery({ queryKey: ["reportStats"], queryFn: fetchReportStats });
   const { data: trends } = useQuery({ queryKey: ["trends"], queryFn: () => fetchTrends(30), refetchInterval: 60000 });
 
+  // Shares a cache key with the sidebar's own queries (DashboardLayout.tsx),
+  // so react-query dedupes these — no extra network round trip just because
+  // both are mounted at once.
+  const { data: baselinesData } = useQuery({ queryKey: ["baselines"], queryFn: fetchBaselines, refetchInterval: 60_000 });
+  const pendingBaselines = (baselinesData?.baselines || []).filter((b: any) =>
+    !["approved", "integrity_failed", "superseded", "replaced"].includes(b.status)
+  ).length;
+
+  const { data: scansSummaryData } = useQuery({ queryKey: ["scans-summary"], queryFn: fetchScans, refetchInterval: 60_000 });
+  const scanSummary = scansSummaryData?.summary || {};
+  const staleScans = (scanSummary.stale || 0) + (scanSummary.warning || 0) +
+    (scanSummary.critical || 0) + (scanSummary.never_scanned || 0);
+
   // Format day labels for charts
   const alertTrend = (trends?.alerts_by_day || []).map((d: any) => ({
     ...d, label: d.day.slice(5) // "MM-DD"
@@ -47,6 +62,20 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Needs Attention — only visually "loud" (pulsing) when count > 0;
+          shown at 0 too, styled neutrally, so "nothing pending" is still
+          visible reassurance rather than the section just disappearing. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <AttentionCard
+          label="Pending Baseline Approvals" value={pendingBaselines}
+          icon={<FileCheck size={24} />} color="yellow" onClick={() => navigate('/baselines')}
+        />
+        <AttentionCard
+          label="Stale Scans" value={staleScans}
+          icon={<Scan size={24} />} color="red" onClick={() => navigate('/scans')}
+        />
+      </div>
+
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard label="Total Alerts" value={stats?.alerts.total || 0}
@@ -206,6 +235,31 @@ export default function DashboardPage() {
             <HealthCard label="Stale" value={health?.stale_agents || 0} icon={<Clock size={20} />} color="text-slate-500" />
             <HealthCard label="Total" value={health?.total_agents || 0} icon={<Server size={20} />} color="text-blue-500" />
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AttentionCard({ label, value, icon, color, onClick }: any) {
+  const active = value > 0;
+  const theme: Record<string, { border: string; iconBg: string; icon: string; value: string }> = {
+    yellow: { border: "border-yellow-700/60", iconBg: "bg-yellow-900/30", icon: "text-yellow-500", value: "text-yellow-400" },
+    red:    { border: "border-red-700/60",    iconBg: "bg-red-900/30",    icon: "text-red-500",    value: "text-red-400" },
+  };
+  const t = theme[color];
+  return (
+    <div onClick={onClick}
+      className={`bg-slate-900 p-6 rounded-lg border cursor-pointer transition-colors hover:border-sky-600 ${
+        active ? `${t.border} border-l-4` : "border-slate-800"
+      }`}>
+      <div className="flex justify-between items-start">
+        <div>
+          <p className="text-slate-400 text-sm font-medium">{label}</p>
+          <h3 className={`text-3xl font-bold mt-2 ${active ? t.value : "text-white"}`}>{value}</h3>
+        </div>
+        <div className={`p-2 rounded-lg ${active ? `${t.iconBg} fim-attn-pulse` : "bg-slate-800"}`}>
+          <span className={active ? t.icon : "text-slate-500"}>{icon}</span>
         </div>
       </div>
     </div>
