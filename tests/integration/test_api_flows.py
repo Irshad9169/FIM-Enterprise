@@ -20,10 +20,10 @@ from datetime import datetime, timedelta
 
 import pytest
 from jose import jwt as jose_jwt
-from sqlalchemy import text
+from sqlalchemy import text, select
 
 from app.core.security import create_access_token, get_password_hash, SECRET_KEY, ALGORITHM
-from app.models.models import Agent, Baseline, User
+from app.models.models import Agent, Baseline, User, Alert
 
 pytestmark = pytest.mark.integration
 
@@ -364,3 +364,78 @@ async def test_heartbeat_persists_reported_scan_progress(client, db_session):
     assert agent.scan_status == "running"
     assert agent.scan_progress_processed == 42
     assert agent.scan_progress_total == 100
+
+
+# ── Change detection dedup — reviewed state shouldn't re-alert ─────────────
+
+async def test_closed_alert_does_not_rebounce_for_the_same_reviewed_value(client, db_session):
+    """
+    Real bug found live this session: ChangeDetector always diffs against
+    the (unchanged) approved baseline, never the previous scan, so a file
+    that settled into a new, already-reviewed value kept generating a
+    fresh alert on every single scan forever -- the old dedup only
+    checked for a currently-OPEN alert on (path, type), so the moment an
+    analyst closed it (acknowledged/resolved/false_positive), the very
+    next scan (still seeing current != stale baseline) created a
+    brand-new alert for the identical value. The only fix was manually
+    re-baselining the whole host, which doesn't scale past a handful of
+    servers. Now dedup checks ANY alert ever created for this exact
+    (path, type, hash), open or already closed.
+    """
+    from app.services.change_detector import ChangeDetector
+
+    agent = Agent(id=uuid.uuid4(), hostname="test-agent-10", status="online")
+    db_session.add(agent)
+    await db_session.commit()
+
+    baseline_data = {"files": [{
+        "path": "/etc/shadow", "hash": "original",
+        "permissions": "600", "owner": "root", "group": "root", "size": 100,
+    }]}
+    baseline = Baseline(
+        id=uuid.uuid4(), agent_id=agent.id, baseline_name="b-reviewed-state",
+        baseline_data=baseline_data, file_count=1, total_size_bytes=100,
+        checksum=ChangeDetector.compute_baseline_checksum(baseline_data),
+        is_active=True, status="approved",
+    )
+    db_session.add(baseline)
+    await db_session.commit()
+
+    async def submit(file_hash: str):
+        return await client.post(
+            "/api/v1/scans/submit",
+            json={
+                "agent_id": str(agent.id),
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "files": [{
+                    "path": "/etc/shadow", "hash": file_hash,
+                    "permissions": "600", "owner": "root", "group": "root", "size": 100,
+                }],
+                "total_files": 1,
+            },
+            headers={"X-API-Key": "test-agent-10-key"},
+        )
+
+    # First scan: hash differs from baseline -- a real, new alert.
+    resp1 = await submit("changed-v1")
+    assert resp1.json()["change_detection"]["alerts_created"] == 1
+
+    # Close that alert out, same as an analyst reviewing and clearing it.
+    result = await db_session.execute(
+        select(Alert).where(Alert.agent_id == agent.id, Alert.file_path == "/etc/shadow")
+    )
+    alert = result.scalar_one()
+    alert.status = "acknowledged"
+    await db_session.commit()
+
+    # Second scan: SAME hash as before -- nothing genuinely changed since
+    # it was reviewed. Must NOT create a new alert, even though it still
+    # differs from the (unchanged) baseline.
+    resp2 = await submit("changed-v1")
+    body2 = resp2.json()["change_detection"]
+    assert body2["alerts_created"] == 0
+    assert body2["skipped_duplicates"] == 1
+
+    # Third scan: a genuinely new hash -- must still create a fresh alert.
+    resp3 = await submit("changed-v2")
+    assert resp3.json()["change_detection"]["alerts_created"] == 1

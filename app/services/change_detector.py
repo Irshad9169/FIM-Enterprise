@@ -250,13 +250,48 @@ class ChangeDetector:
         )
         whitelist_rules = whitelist_query.scalars().all()
 
-        # 5. FETCH EXISTING OPEN ALERTS (Deduplication)
-        open_alerts_query = await db.execute(
-            select(Alert.file_path, Alert.alert_type)
-            .where(and_(Alert.agent_id == scan.agent_id, Alert.status == 'open'))
+        # 5. FETCH DEDUPLICATION STATE
+        # _compare_files always diffs against the (unchanged) approved
+        # baseline, never the previous scan -- so a file that settles into
+        # a new, already-reviewed value kept re-alerting on every single
+        # scan forever, because the old dedup here only checked for a
+        # currently-OPEN alert on (file_path, alert_type): the moment an
+        # analyst acknowledged/resolved/false-positived it, the alert was
+        # no longer "open," and the very next scan (still seeing current
+        # != stale baseline) created a brand-new alert for the identical
+        # state. The only way to stop it was re-baselining the whole host,
+        # which doesn't scale past a handful of servers.
+        #
+        # Fix: for modified/created changes (which carry a real content
+        # hash), dedupe against ANY alert ever created for this exact
+        # (path, type, hash) -- open or already closed -- not just
+        # currently-open ones. A file that changes to a value that's
+        # already been reviewed (whatever status that review left it in)
+        # doesn't get a new alert; a file that changes to a genuinely new,
+        # never-before-seen value still does. Deletion alerts keep the
+        # old open-only dedup for now -- "still deleted" vs. "deleted
+        # again after reappearing" needs different handling than a simple
+        # content-hash comparison, and isn't the problem being fixed here.
+        open_deleted_query = await db.execute(
+            select(Alert.file_path)
+            .where(and_(
+                Alert.agent_id == scan.agent_id,
+                Alert.status == 'open',
+                Alert.alert_type == 'file_deleted',
+            ))
         )
-        existing_alerts: Set[tuple] = {
-            (row.file_path, row.alert_type) for row in open_alerts_query.fetchall()
+        open_deleted_paths: Set[str] = {row.file_path for row in open_deleted_query.fetchall()}
+
+        seen_states_query = await db.execute(
+            select(Alert.file_path, Alert.alert_type, Alert.current_state)
+            .where(and_(
+                Alert.agent_id == scan.agent_id,
+                Alert.alert_type.in_(['file_modified', 'file_created']),
+            ))
+        )
+        seen_states: Set[Tuple[str, str, Optional[str]]] = {
+            (row.file_path, row.alert_type, (row.current_state or {}).get('hash'))
+            for row in seen_states_query.fetchall()
         }
 
         # 6. CREATE ALERTS (Filtered by Whitelist and Duplicates)
@@ -269,9 +304,15 @@ class ChangeDetector:
             path = change['path']
 
             # Check if duplicated
-            if (path, alert_type) in existing_alerts:
-                skipped_duplicates += 1
-                continue
+            if change['type'] == 'deleted':
+                if path in open_deleted_paths:
+                    skipped_duplicates += 1
+                    continue
+            else:
+                current_hash = (change.get('current_state') or {}).get('hash')
+                if (path, alert_type, current_hash) in seen_states:
+                    skipped_duplicates += 1
+                    continue
 
             # Check if whitelisted (EXCLUSIONS)
             is_excluded = False
