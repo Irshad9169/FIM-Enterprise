@@ -450,6 +450,25 @@ class FileScanner:
             for suffix in suffixes
         )
 
+    def _is_shadow_path(self, path: str) -> bool:
+        """
+        True if `path` is the content-shadow directory itself or lives
+        under it. Checked independently of user-configured exclude_patterns:
+        the shadow dir typically lives inside the agent's own config
+        directory, which can itself sit under a monitored path (e.g. /opt)
+        without an exclude pattern that happens to catch it. If it's ever
+        walked, the shadow copies it holds (real files matching
+        DETAIL_EXTENSIONS) get treated as new scan targets, which get
+        shadow-copied *again* one path segment deeper -- forever, until
+        hitting ENAMETOOLONG. Found live: a scan's file count exploding
+        from ~86K to 160K+ this way.
+        """
+        if not self.content_shadow_dir:
+            return False
+        shadow = os.path.abspath(self.content_shadow_dir)
+        target = os.path.abspath(path)
+        return target == shadow or target.startswith(shadow + os.sep)
+
     def _count_files(self) -> int:
         """
         Cheap pre-pass: count eligible files (respecting exclude_patterns)
@@ -464,13 +483,17 @@ class FileScanner:
             if not path or not os.path.exists(path):
                 continue
             if os.path.isfile(path):
-                if not self._is_excluded(path, path, exclude_patterns):
+                if not self._is_excluded(path, path, exclude_patterns) and not self._is_shadow_path(path):
                     total += 1
             else:
                 for root, dirs, files in os.walk(path):
+                    if self._is_shadow_path(root):
+                        dirs[:] = []
+                        continue
                     dirs[:] = [
                         d for d in dirs
                         if not self._is_excluded(os.path.join(root, d), path, exclude_patterns)
+                        and not self._is_shadow_path(os.path.join(root, d))
                     ]
                     total += sum(
                         1 for file in files
@@ -549,18 +572,24 @@ class FileScanner:
                 if pause_requested_fn and pause_requested_fn():
                     paused = True
                     break
-                if self._is_excluded(path, path, exclude_patterns):
+                if self._is_excluded(path, path, exclude_patterns) or self._is_shadow_path(path):
                     continue
                 _process_one(path)
             else:
                 for root, dirs, files in os.walk(path):
+                    if self._is_shadow_path(root):
+                        dirs[:] = []
+                        continue
                     # Prune excluded directories in place so os.walk never
                     # descends into them at all (not just filters after the
                     # fact) — this is what actually stops /opt/IBM/* from
                     # being scanned, instead of just discarding the results.
+                    # Also always prunes the content-shadow dir itself,
+                    # independent of exclude_patterns (see _is_shadow_path).
                     dirs[:] = [
                         d for d in dirs
                         if not self._is_excluded(os.path.join(root, d), path, exclude_patterns)
+                        and not self._is_shadow_path(os.path.join(root, d))
                     ]
                     for file in files:
                         if pause_requested_fn and pause_requested_fn():

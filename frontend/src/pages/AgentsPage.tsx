@@ -163,8 +163,13 @@ export default function AgentsPage() {
 
   const scanProgressLabel = (a: any): string | null => {
     const { scan_status, scan_progress_processed: p, scan_progress_total: t } = a;
-    if (scan_status === "running") return `Scanning… ${(p ?? 0).toLocaleString()}${t ? `/${t.toLocaleString()}` : ""}`;
-    if (scan_status === "paused") return `Paused at ${(p ?? 0).toLocaleString()}${t ? `/${t.toLocaleString()}` : ""}`;
+    // A realtime-triggered scan uses a cheap cached total (see
+    // agent/fim_agent.py's scan(accurate_total=False)) that can go stale —
+    // only show "/total" when it's still a sane upper bound, otherwise just
+    // show the processed count rather than a nonsensical "106,878/200".
+    const suffix = t && t >= (p ?? 0) ? `/${t.toLocaleString()}` : "";
+    if (scan_status === "running") return `Scanning… ${(p ?? 0).toLocaleString()}${suffix}`;
+    if (scan_status === "paused") return `Paused at ${(p ?? 0).toLocaleString()}${suffix}`;
     return null;
   };
 
