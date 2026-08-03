@@ -36,6 +36,15 @@ CONTENT_DIFF_MAX_LINES = 200
 CHECKPOINT_EVERY_FILES = 200
 CHECKPOINT_EVERY_SECONDS = 30
 
+# Content diffing: skip anything above this size entirely -- no shadow
+# copy, no diff. A unified diff of a multi-MB file isn't useful for human
+# review anyway, and without a cap, this feature's disk footprint is
+# unbounded: it scales with however large "config-shaped" (.conf/.yaml/
+# .json/etc) files happen to get on a given host, which varies wildly
+# (a large JSON/YAML data file under /opt, not just small system configs
+# under /etc). Found live: 2GB of shadow copies on one real host.
+CONTENT_DIFF_MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
+
 # Real-time filesystem watching (complements the scheduled full scan — see
 # FIMAgent._check_realtime_trigger). Optional dependency: if watchdog isn't
 # installed, the agent falls back to scheduled-scan-only, same as before.
@@ -450,7 +459,8 @@ class FileScanner:
             for suffix in suffixes
         )
 
-    def _is_shadow_path(self, path: str) -> bool:
+    @staticmethod
+    def _is_shadow_path(path: str, content_shadow_dir: Optional[str]) -> bool:
         """
         True if `path` is the content-shadow directory itself or lives
         under it. Checked independently of user-configured exclude_patterns:
@@ -462,10 +472,21 @@ class FileScanner:
         shadow-copied *again* one path segment deeper -- forever, until
         hitting ENAMETOOLONG. Found live: a scan's file count exploding
         from ~86K to 160K+ this way.
+
+        Static (rather than an instance method reading self.content_shadow_dir)
+        so _RealtimeChangeHandler can reuse the exact same check -- the
+        real-time watcher has its own, separate path into the filesystem
+        (inotify events, not FileScanner's os.walk) and needs this exclusion
+        just as much: without it, the agent's own shadow-copy writes (every
+        scan refreshes them) look like real file changes to the watcher,
+        which marks itself dirty and triggers another scan immediately,
+        which refreshes the shadow copies again, forever. Found live: an
+        agent starting a new scan within seconds of the previous one
+        finishing, indefinitely, with nothing external actually changing.
         """
-        if not self.content_shadow_dir:
+        if not content_shadow_dir:
             return False
-        shadow = os.path.abspath(self.content_shadow_dir)
+        shadow = os.path.abspath(content_shadow_dir)
         target = os.path.abspath(path)
         return target == shadow or target.startswith(shadow + os.sep)
 
@@ -483,17 +504,17 @@ class FileScanner:
             if not path or not os.path.exists(path):
                 continue
             if os.path.isfile(path):
-                if not self._is_excluded(path, path, exclude_patterns) and not self._is_shadow_path(path):
+                if not self._is_excluded(path, path, exclude_patterns) and not self._is_shadow_path(path, self.content_shadow_dir):
                     total += 1
             else:
                 for root, dirs, files in os.walk(path):
-                    if self._is_shadow_path(root):
+                    if self._is_shadow_path(root, self.content_shadow_dir):
                         dirs[:] = []
                         continue
                     dirs[:] = [
                         d for d in dirs
                         if not self._is_excluded(os.path.join(root, d), path, exclude_patterns)
-                        and not self._is_shadow_path(os.path.join(root, d))
+                        and not self._is_shadow_path(os.path.join(root, d), self.content_shadow_dir)
                     ]
                     total += sum(
                         1 for file in files
@@ -572,12 +593,12 @@ class FileScanner:
                 if pause_requested_fn and pause_requested_fn():
                     paused = True
                     break
-                if self._is_excluded(path, path, exclude_patterns) or self._is_shadow_path(path):
+                if self._is_excluded(path, path, exclude_patterns) or self._is_shadow_path(path, self.content_shadow_dir):
                     continue
                 _process_one(path)
             else:
                 for root, dirs, files in os.walk(path):
-                    if self._is_shadow_path(root):
+                    if self._is_shadow_path(root, self.content_shadow_dir):
                         dirs[:] = []
                         continue
                     # Prune excluded directories in place so os.walk never
@@ -589,7 +610,7 @@ class FileScanner:
                     dirs[:] = [
                         d for d in dirs
                         if not self._is_excluded(os.path.join(root, d), path, exclude_patterns)
-                        and not self._is_shadow_path(os.path.join(root, d))
+                        and not self._is_shadow_path(os.path.join(root, d), self.content_shadow_dir)
                     ]
                     for file in files:
                         if pause_requested_fn and pause_requested_fn():
@@ -650,7 +671,7 @@ class FileScanner:
                 # meaning that very first edit after deployment always comes
                 # back diff-less (nothing to diff against yet) and only the
                 # second edit onward produces a real diff.
-                if file_path.endswith(DETAIL_EXTENSIONS):
+                if file_path.endswith(DETAIL_EXTENSIONS) and size <= CONTENT_DIFF_MAX_FILE_SIZE:
                     self._diff_content(file_path, changed_since_last_seen=False)
             else:
                 file_hash = self.calculate_hash(file_path)
@@ -661,7 +682,7 @@ class FileScanner:
                 # this file (no local baseline to compare against yet).
                 if file_path in self.audit_critical_paths and changed_since_last_seen:
                     audit_info = self._correlate_auditd(file_path)
-                if file_path.endswith(DETAIL_EXTENSIONS):
+                if file_path.endswith(DETAIL_EXTENSIONS) and size <= CONTENT_DIFF_MAX_FILE_SIZE:
                     content_diff = self._diff_content(file_path, changed_since_last_seen)
 
             self._new_cache[file_path] = {'mtime': mtime, 'size': size, 'hash': file_hash}
@@ -799,15 +820,28 @@ class _RealtimeChangeHandler(FileSystemEventHandler):
     make every other file look "deleted", so real-time here means "detect
     fast, then trigger the same full pipeline sooner," not "stream deltas."
     """
-    def __init__(self, base_path: str, exclude_patterns: List[str], mark_dirty):
+    def __init__(self, base_path: str, exclude_patterns: List[str], mark_dirty,
+                 content_shadow_dir: Optional[str] = None):
         self.base_path = base_path
         self.exclude_patterns = exclude_patterns
         self.mark_dirty = mark_dirty
+        self.content_shadow_dir = content_shadow_dir
 
     def _handle(self, event):
         if event.is_directory:
             return
         if FileScanner._is_excluded(event.src_path, self.base_path, self.exclude_patterns):
+            return
+        # Without this, the agent's own shadow-copy writes (every scan
+        # refreshes them -- see FileScanner._diff_content) look like real
+        # file changes to this watcher, which marks itself dirty and
+        # triggers another scan within seconds, which refreshes the shadow
+        # copies again, forever -- a scan starting again moments after the
+        # last one finished, indefinitely, with nothing external actually
+        # changing. FileScanner's own directory walk already excludes this
+        # path; the real-time watcher has a separate path into the
+        # filesystem (inotify events) and needs the same exclusion.
+        if FileScanner._is_shadow_path(event.src_path, self.content_shadow_dir):
             return
         self.mark_dirty()
 
@@ -936,7 +970,8 @@ class FIMAgent:
                 continue  # single-file paths: covered by scheduled scan only
             try:
                 handler = _RealtimeChangeHandler(
-                    path, path_config['exclude_patterns'], self._mark_realtime_dirty
+                    path, path_config['exclude_patterns'], self._mark_realtime_dirty,
+                    content_shadow_dir=self.scanner.content_shadow_dir,
                 )
                 observer.schedule(handler, path, recursive=True)
                 watched_count += 1
