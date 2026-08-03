@@ -13,7 +13,8 @@ import logging
 
 from app.core.database import get_db
 from app.core.agent_auth import check_agent_key
-from app.models.models import Agent, Scan
+from app.core.security import get_current_user
+from app.models.models import Agent, Scan, User
 from app.services.change_detector import ChangeDetector
 
 logger = logging.getLogger(__name__)
@@ -118,7 +119,8 @@ async def submit_scan(raw_request: Request, db: AsyncSession = Depends(get_db)):
 async def list_scans(
     search: Optional[str] = None,
     limit: int = 100,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """List latest scan for each agent"""
     try:
@@ -198,7 +200,11 @@ async def list_scans(
         logger.error(f"List scans error: {e}")
         return {"scans": [], "total": 0}
 @router.get("/{scan_id}")
-async def get_scan(scan_id: str, db: AsyncSession = Depends(get_db)):
+async def get_scan(
+    scan_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     # ... (Keep existing get_scan) ...
     try:
         result = await db.execute(select(Scan).where(Scan.id == uuid.UUID(scan_id)))
