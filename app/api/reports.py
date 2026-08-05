@@ -200,7 +200,7 @@ async def generate_daily_report(
                    ag.hostname, ag.ip_address
             FROM fim.alerts a
             LEFT JOIN fim.agents ag ON a.agent_id = ag.id
-            WHERE DATE(a.detected_at) = :d
+            WHERE DATE(a.detected_at) = :d AND a.status != 'false_positive'
             ORDER BY ag.hostname, a.detected_at
         """), {"d": report_date})
         alerts = res.fetchall()
