@@ -874,7 +874,7 @@ class _RealtimeChangeHandler(FileSystemEventHandler):
         # (inotify events) and needs the same exclusions.
         if FileScanner._is_agent_internal_path(event.src_path, self.content_shadow_dir, self.cache_path):
             return
-        self.mark_dirty()
+        self.mark_dirty(event.src_path)
 
     # Only these four correspond to an actual content/inventory change.
     # watchdog's inotify backend also emits FileOpenedEvent/FileClosedEvent
@@ -962,6 +962,7 @@ class FIMAgent:
         self._realtime_lock = threading.Lock()
         self._realtime_pending = False
         self._realtime_last_event = 0.0
+        self._realtime_last_path: Optional[str] = None
         self._realtime_debounce_seconds = self.config['monitoring'].get(
             'realtime_debounce_seconds', 3
         )
@@ -1018,10 +1019,16 @@ class FIMAgent:
         self._observer = observer
         self.logger.info(f"Real-time watching started on {watched_count} path(s)")
 
-    def _mark_realtime_dirty(self):
+    def _mark_realtime_dirty(self, src_path: Optional[str] = None):
         with self._realtime_lock:
             self._realtime_pending = True
             self._realtime_last_event = time.time()
+            # Diagnostic only -- last event wins if several land inside one
+            # debounce window, which is fine: the goal is identifying at
+            # least one real trigger, not a complete audit trail. Added
+            # after chasing an unexplained ~20-minute-cadence trigger with
+            # no way to tell what was actually causing it.
+            self._realtime_last_path = src_path
 
     def _check_realtime_trigger(self) -> bool:
         """
@@ -1036,8 +1043,9 @@ class FIMAgent:
             if time.time() - self._realtime_last_event < self._realtime_debounce_seconds:
                 return False
             self._realtime_pending = False
+            triggering_path = self._realtime_last_path
 
-        self.logger.info("Real-time change detected — triggering rescan")
+        self.logger.info(f"Real-time change detected (last event: {triggering_path}) — triggering rescan")
         self.trigger_scan(scan_type='realtime')
         return True
 
