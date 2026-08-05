@@ -268,19 +268,30 @@ class ChangeDetector:
         # currently-open ones. A file that changes to a value that's
         # already been reviewed (whatever status that review left it in)
         # doesn't get a new alert; a file that changes to a genuinely new,
-        # never-before-seen value still does. Deletion alerts keep the
-        # old open-only dedup for now -- "still deleted" vs. "deleted
-        # again after reappearing" needs different handling than a simple
-        # content-hash comparison, and isn't the problem being fixed here.
-        open_deleted_query = await db.execute(
-            select(Alert.file_path)
-            .where(and_(
-                Alert.agent_id == scan.agent_id,
-                Alert.status == 'open',
-                Alert.alert_type == 'file_deleted',
-            ))
+        # never-before-seen value still does.
+        #
+        # Deletion alerts had the exact same disease and needed the same
+        # cure, just with a different fingerprint since there's no content
+        # hash for "missing": dedupe on whether the *most recent* alert for
+        # this path was ALSO a deletion. If so, this is the same ongoing
+        # "still deleted" state already reviewed -- skip. If the most
+        # recent alert was something else (modified/created, from when the
+        # file existed again) or there's no prior alert at all, this is a
+        # genuinely new deletion event -- alert. (Known gap: if a file
+        # returns to exactly its baseline value with no alert generated at
+        # all for the return, then gets deleted again, that second
+        # deletion has no history to distinguish it from the first and
+        # gets deduped too -- narrow edge case, and a silent one-time miss
+        # beats the previous constant-noise-every-scan behavior.)
+        latest_alert_per_path_query = await db.execute(
+            select(Alert.file_path, Alert.alert_type)
+            .distinct(Alert.file_path)
+            .where(Alert.agent_id == scan.agent_id)
+            .order_by(Alert.file_path, desc(Alert.detected_at))
         )
-        open_deleted_paths: Set[str] = {row.file_path for row in open_deleted_query.fetchall()}
+        latest_alert_type_by_path: Dict[str, str] = {
+            row.file_path: row.alert_type for row in latest_alert_per_path_query.fetchall()
+        }
 
         seen_states_query = await db.execute(
             select(Alert.file_path, Alert.alert_type, Alert.current_state)
@@ -305,7 +316,7 @@ class ChangeDetector:
 
             # Check if duplicated
             if change['type'] == 'deleted':
-                if path in open_deleted_paths:
+                if latest_alert_type_by_path.get(path) == 'file_deleted':
                     skipped_duplicates += 1
                     continue
             else:

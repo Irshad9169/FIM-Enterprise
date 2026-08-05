@@ -439,3 +439,77 @@ async def test_closed_alert_does_not_rebounce_for_the_same_reviewed_value(client
     # Third scan: a genuinely new hash -- must still create a fresh alert.
     resp3 = await submit("changed-v2")
     assert resp3.json()["change_detection"]["alerts_created"] == 1
+
+
+async def test_closed_deletion_alert_does_not_rebounce_while_still_deleted(client, db_session):
+    """
+    Deletion alerts had the same disease as modified/created ones (see
+    test_closed_alert_does_not_rebounce_for_the_same_reviewed_value) but
+    needed a different fingerprint since there's no content hash for
+    "missing". Dedup now checks whether the most recent alert for a path
+    was ALSO a deletion -- if so, it's the same ongoing "still deleted"
+    state already reviewed, not a new event.
+    """
+    from app.services.change_detector import ChangeDetector
+
+    agent = Agent(id=uuid.uuid4(), hostname="test-agent-11", status="online")
+    db_session.add(agent)
+    await db_session.commit()
+
+    baseline_data = {"files": [{
+        "path": "/etc/important-file", "hash": "original",
+        "permissions": "600", "owner": "root", "group": "root", "size": 100,
+    }]}
+    baseline = Baseline(
+        id=uuid.uuid4(), agent_id=agent.id, baseline_name="b-deletion-state",
+        baseline_data=baseline_data, file_count=1, total_size_bytes=100,
+        checksum=ChangeDetector.compute_baseline_checksum(baseline_data),
+        is_active=True, status="approved",
+    )
+    db_session.add(baseline)
+    await db_session.commit()
+
+    async def submit_files(files: list):
+        return await client.post(
+            "/api/v1/scans/submit",
+            json={
+                "agent_id": str(agent.id),
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "files": files,
+                "total_files": len(files),
+            },
+            headers={"X-API-Key": "test-agent-11-key"},
+        )
+
+    # First scan: file is missing entirely -- a real, new deletion alert.
+    resp1 = await submit_files([])
+    assert resp1.json()["change_detection"]["alerts_created"] == 1
+
+    # Close that alert out, same as an analyst reviewing and clearing it.
+    result = await db_session.execute(
+        select(Alert).where(Alert.agent_id == agent.id, Alert.file_path == "/etc/important-file")
+    )
+    alert = result.scalar_one()
+    alert.status = "resolved"
+    await db_session.commit()
+
+    # Second scan: STILL missing -- nothing new happened since it was
+    # reviewed. Must NOT create a new alert.
+    resp2 = await submit_files([])
+    body2 = resp2.json()["change_detection"]
+    assert body2["alerts_created"] == 0
+    assert body2["skipped_duplicates"] == 1
+
+    # Third scan: the file reappears with different content (a genuinely
+    # new state) -- a fresh 'modified' alert, breaking the deletion chain.
+    resp3 = await submit_files([{
+        "path": "/etc/important-file", "hash": "came-back-different",
+        "permissions": "600", "owner": "root", "group": "root", "size": 100,
+    }])
+    assert resp3.json()["change_detection"]["alerts_created"] == 1
+
+    # Fourth scan: deleted again -- this is a genuinely NEW deletion event
+    # (the most recent alert for this path is now 'file_modified', not
+    # 'file_deleted'), so it must alert again, not be deduped.
+    resp4 = await submit_files([])
+    assert resp4.json()["change_detection"]["alerts_created"] == 1
