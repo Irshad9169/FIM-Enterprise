@@ -3,7 +3,7 @@ import {
 } from "../lib/reportGrouping";
 import type { ReportChangeDetail } from "../types";
 
-const CHANGE_KIND_STYLE: Record<string, { label: string; color: string }> = {
+export const CHANGE_KIND_STYLE: Record<string, { label: string; color: string }> = {
   added:   { label: "▲ Added",   color: "text-green-400" },
   removed: { label: "▼ Removed", color: "text-red-400" },
   changed: { label: "● Changed", color: "text-sky-400" },

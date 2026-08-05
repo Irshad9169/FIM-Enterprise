@@ -14,7 +14,7 @@ import {
   Link as LinkIcon, Search, ChevronDown, ChevronUp, Edit2,
   SkipForward, AlertTriangle, Check, X, ExternalLink, Download, LayoutGrid, List,
 } from "lucide-react";
-import { GroupedChangesView } from "../components/GroupedChangesView";
+import { GroupedChangesView, CHANGE_KIND_STYLE } from "../components/GroupedChangesView";
 import { clubHosts, dedupeByLatestMtime, type HostChanges } from "../lib/reportGrouping";
 
 type ViewMode = "grouped" | "classic";
@@ -277,6 +277,8 @@ function ChangeRow({ change, reportId }: { change: ReportChangeDetail; reportId:
   };
 
   const isLinked = !!(change.external_ticket_id || (change.linked_rt_tickets || []).length > 0);
+  const kindKey = (change.change_type || "").toLowerCase();
+  const kindStyle = CHANGE_KIND_STYLE[kindKey] || { label: change.change_type || "unknown", color: "text-slate-400" };
 
   return (
     <div className={`border-l-2 pl-3 py-1.5 text-xs font-mono ${
@@ -287,7 +289,7 @@ function ChangeRow({ change, reportId }: { change: ReportChangeDetail; reportId:
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
             <SeverityDot severity={change.severity} />
-            <span className="text-slate-500 uppercase text-[10px]">{change.change_type}</span>
+            <span className={`text-[10px] font-bold ${kindStyle.color}`}>{kindStyle.label}</span>
             {change.is_known_change && <span className="text-blue-400 text-[10px] font-bold">KNOWN</span>}
             {change.requires_investigation && <span className="text-red-400 text-[10px] font-bold">INVESTIGATE</span>}
             {change.external_ticket_id && (
@@ -300,7 +302,14 @@ function ChangeRow({ change, reportId }: { change: ReportChangeDetail; reportId:
           <div className="text-pink-400 truncate">{change.file_path}</div>
           {(change.baseline_hash || change.current_hash) && (
             <div className="text-slate-600 text-[10px] mt-0.5">
+              <span className="text-orange-400/80 font-semibold">Hash: </span>
               {change.baseline_hash?.slice(0, 12) || "—"} → {change.current_hash?.slice(0, 12) || "—"}
+            </div>
+          )}
+          {(change.baseline_mtime || change.current_mtime) && (
+            <div className="text-slate-600 text-[10px] mt-0.5">
+              <span className="text-green-400/80 font-semibold">Mtime: </span>
+              {change.baseline_mtime?.slice(0, 19) || "N/A"} → {change.current_mtime?.slice(0, 19) || "N/A"}
             </div>
           )}
           {change.analyst_notes && (
