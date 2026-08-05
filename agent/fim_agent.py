@@ -498,7 +498,14 @@ class FileScanner:
           triggering another scan, which rewrites the cache again,
           forever. Found live: a scan starting again within seconds of
           the previous one finishing, indefinitely, with nothing external
-          actually changing.
+          actually changing. The write to the `.tmp` path that precedes
+          the rename (see _save_cache) needs the same exclusion as the
+          final cache_path itself -- excluding only the final name still
+          let the watcher see (and react to) the intermediate .tmp write,
+          which is what actually fires on every scan (the rename itself
+          doesn't generate its own separate inotify event here). Found
+          live: a rescan starting every ~20 minutes, always logged as
+          triggered by `.scan_cache.json.tmp`.
 
         Static (rather than an instance method reading self.* attributes)
         so _RealtimeChangeHandler can reuse the exact same check -- the
@@ -511,8 +518,10 @@ class FileScanner:
             shadow = os.path.abspath(content_shadow_dir)
             if target == shadow or target.startswith(shadow + os.sep):
                 return True
-        if cache_path and target == os.path.abspath(cache_path):
-            return True
+        if cache_path:
+            abs_cache = os.path.abspath(cache_path)
+            if target == abs_cache or target == abs_cache + '.tmp':
+                return True
         return False
 
     def _count_files(self) -> int:
