@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.models import User, Alert
+from app.models.models import User, Alert, Agent
 
 router = APIRouter()
 
@@ -22,28 +22,36 @@ async def list_alerts(
     current_user: User = Depends(get_current_user)
 ):
     """List alerts with filtering"""
-    
-    query = select(Alert)
-    
+
+    query = select(Alert, Agent.hostname.label("agent_hostname")).join(
+        Agent, Alert.agent_id == Agent.id, isouter=True
+    )
+
     # Filter by date range if days provided
     if days:
         cutoff_date = datetime.now() - timedelta(days=days)
         query = query.where(Alert.created_at >= cutoff_date)
-        
+
     if severity:
         query = query.where(Alert.severity == severity)
-        
+
     if status:
         query = query.where(Alert.status == status)
-        
+
     if agent_id:
         query = query.where(Alert.agent_id == agent_id)
-        
+
     query = query.order_by(desc(Alert.created_at)).offset(skip).limit(limit)
-    
+
     result = await db.execute(query)
-    alerts = result.scalars().all()
-    
+    rows = result.all()
+
+    alerts = []
+    for alert, agent_hostname in rows:
+        alert_dict = {c.name: getattr(alert, c.name) for c in Alert.__table__.columns}
+        alert_dict["agent_hostname"] = agent_hostname
+        alerts.append(alert_dict)
+
     return {"alerts": alerts, "total": len(alerts)}
 
 
