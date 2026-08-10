@@ -14,6 +14,19 @@ WHERE ctid IN (
     LIMIT 100
 );
 
+-- Scans are operational telemetry, not the tamper-evident audit trail
+-- (that's fim.alerts) -- nothing depends on a scan row surviving past its
+-- usefulness, so past 3 months the whole row goes, not just its payload.
+-- scan_requests.scan_id references this via ON DELETE SET NULL, so an old
+-- scan_request just loses its pointer rather than blocking the delete.
+DELETE FROM fim.scans
+WHERE ctid IN (
+    SELECT ctid
+    FROM fim.scans
+    WHERE created_at < NOW() - INTERVAL '3 months'
+    LIMIT 500
+);
+
 -- Nulling scan_data only marks the old TOASTed value dead -- it doesn't
 -- reclaim disk space by itself. Without this, every run of this script
 -- silently grows the table's on-disk size forever, never shrinking it.
