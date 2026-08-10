@@ -12,6 +12,23 @@ MIN_FREE_GB=4
 
 log() { echo "[$DATE] $1" | tee -a "$LOG"; }
 
+# Read thresholds from fim.system_settings (same table the System Health
+# page's sliders write to) so an admin adjusting them in the UI actually
+# changes this script's behavior too, not just the dashboard display.
+# Falls back to the same 85/92 defaults if the DB is unreachable -- this
+# script must still degrade gracefully rather than fail outright, since
+# "the database is having problems" is exactly one situation it needs to
+# keep working in.
+export PGPASSFILE=/opt/fim/.pgpass
+WARN_PCT=$(psql -h localhost -U fim_app -d fim_db -tAc \
+    "SELECT disk_warning_pct FROM fim.system_settings LIMIT 1;" 2>/dev/null | tr -d ' ')
+CRIT_PCT=$(psql -h localhost -U fim_app -d fim_db -tAc \
+    "SELECT disk_critical_pct FROM fim.system_settings LIMIT 1;" 2>/dev/null | tr -d ' ')
+WARN_PCT=${WARN_PCT%.*}
+CRIT_PCT=${CRIT_PCT%.*}
+[ -z "$WARN_PCT" ] && WARN_PCT=85
+[ -z "$CRIT_PCT" ] && CRIT_PCT=92
+
 USED=$(df --output=pcent / | tail -1 | tr -d " %")
 AVAIL_KB=$(df --output=avail / | tail -1 | tr -d " ")
 AVAIL_GB=$((AVAIL_KB / 1024 / 1024))
@@ -27,9 +44,22 @@ rm -f "${BACKUP_DIR}"/*.dump 2>/dev/null
 # ── 2. Always: clean pycache ─────────────────────────────────────
 find /usr/local/opt/fim/app -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
-# ── 3. Warning threshold: 85% ────────────────────────────────────
-if [ "$USED" -gt 85 ]; then
-    log "WARNING: disk at ${USED}% — running additional cleanup"
+# ── 2b. Always: null out old scan_data + vacuum fim.scans ────────
+# Routine hygiene, not threshold-gated -- this is what actually prevents
+# fim.scans from silently regrowing (see migration 0011 and the incident
+# it followed: 27GB of dead TOAST from scan_data being nulled without
+# ever being vacuumed). Runs daily regardless of current disk pressure,
+# same as backup rotation above.
+if [ -x /usr/local/bin/cleanup_scan_data.sh ]; then
+    /usr/local/bin/cleanup_scan_data.sh >> "$LOG" 2>&1
+    log "Ran cleanup_scan_data.sh (scan_data retention + VACUUM)"
+else
+    log "WARNING: /usr/local/bin/cleanup_scan_data.sh not found — scan_data retention skipped"
+fi
+
+# ── 3. Warning threshold ──────────────────────────────────────────
+if [ "$USED" -gt "$WARN_PCT" ]; then
+    log "WARNING: disk at ${USED}% (threshold ${WARN_PCT}%) — running additional cleanup"
 
     # Trim journal to 200MB
     journalctl --vacuum-size=200M >> "$LOG" 2>&1
@@ -41,9 +71,9 @@ if [ "$USED" -gt 85 ]; then
     log "After warning cleanup: $(df --output=pcent / | tail -1 | tr -d ' ') used"
 fi
 
-# ── 4. Critical threshold: 92% ───────────────────────────────────
-if [ "$USED" -gt 92 ]; then
-    log "CRITICAL: disk at ${USED}% — emergency cleanup"
+# ── 4. Critical threshold ─────────────────────────────────────────
+if [ "$USED" -gt "$CRIT_PCT" ]; then
+    log "CRITICAL: disk at ${USED}% (threshold ${CRIT_PCT}%) — emergency cleanup"
 
     # Keep only 1 backup
     ls -t "${BACKUP_DIR}"/*.gpg 2>/dev/null | tail -n +2 | xargs rm -f 2>/dev/null
