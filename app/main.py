@@ -21,7 +21,7 @@ from app.api import (
     health, auth_enhanced as auth, agents, alerts, scans,
     baselines, dashboard, reports, exclusions,
     users, audit, auth_sso,
-    anomalies)
+    anomalies, system)
 
 # Setup specialized logger for routing debug
 logging.basicConfig(level=logging.INFO)
@@ -85,6 +85,7 @@ app.include_router(exclusions.router, prefix="/api/v1/exclusions", tags=["exclus
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(audit.router, prefix="/api/v1/audit", tags=["audit"])
 app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["sessions"])
+app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 
 
 @app.get("/api/debug_routes")

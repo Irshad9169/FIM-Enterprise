@@ -173,6 +173,8 @@ export const publishReport = (reportId: string, force = false) =>
   });
 
 // ── Administration ────────────────────────────────────────────────────────────
+export const fetchDiskHealth = () => apiCall("/api/v1/system/disk-health");
+
 export const fetchUsers  = () => apiCall("/api/v1/users");
 export const createUser  = (data: Record<string, unknown>) =>
   apiCall("/api/v1/users", { method: "POST", body: JSON.stringify(data) });

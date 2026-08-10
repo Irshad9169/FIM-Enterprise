@@ -11,6 +11,7 @@ import ExclusionsPage from "./pages/ExclusionsPage";
 import UsersPage from "./pages/UsersPage";
 import AuditPage from "./pages/AuditPage";
 import SessionsPage from "./pages/SessionsPage";
+import SystemHealthPage from "./pages/SystemHealthPage";
 import LoginPage from "./pages/LoginPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="users" element={<UsersPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="sessions" element={<SessionsPage />} />
+        <Route path="system-health" element={<SystemHealthPage />} />
       </Route>
     </Routes>
   );

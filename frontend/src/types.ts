@@ -171,3 +171,27 @@ export interface PublishResult {
   status_to_set: string;
   message:       string;
 }
+
+// ── System health types ──────────────────────────────────────────────────────
+
+export type DiskHealthStatus = "ok" | "warning" | "critical";
+
+export interface DiskTableSize {
+  name:         string;
+  total_bytes:  number;
+  table_bytes:  number;
+}
+
+export interface DiskHealth {
+  disk: {
+    total_bytes: number;
+    used_bytes:  number;
+    free_bytes:  number;
+    used_pct:    number;
+    status:      DiskHealthStatus;
+  };
+  database: {
+    total_bytes: number;
+    top_tables:  DiskTableSize[];
+  };
+}

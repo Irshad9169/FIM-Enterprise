@@ -2,10 +2,10 @@ import { useState, useEffect, createContext, useContext } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { logout } from "../api/auth";
-import { fetchBaselines, fetchScans } from "../api/dashboard";
+import { fetchBaselines, fetchScans, fetchDiskHealth } from "../api/dashboard";
 import {
   LayoutDashboard, Server, Bell, FileCheck, Scan, FileText, Shield,
-  Users, History, LogOut, ShieldAlert, Sun, Moon, Monitor
+  Users, History, LogOut, ShieldAlert, Sun, Moon, Monitor, HardDrive
 } from "lucide-react";
 
 const PENDING_BASELINE_STATUSES_EXCLUDED = ["approved", "integrity_failed", "superseded", "replaced"];
@@ -61,6 +61,15 @@ export default function DashboardLayout() {
   const scanSummary = scansData?.summary || {};
   const staleScans = (scanSummary.stale || 0) + (scanSummary.warning || 0) +
     (scanSummary.critical || 0) + (scanSummary.never_scanned || 0);
+
+  // fim.scans silently grew to 27GB and took the disk to 0 bytes free with
+  // nobody watching (see app/api/system.py) -- this badge is the ambient
+  // signal that would have caught it before it became an outage.
+  const { data: diskHealthData } = useQuery({
+    queryKey: ["disk-health"], queryFn: fetchDiskHealth, refetchInterval: 60_000,
+  });
+  const diskStatus = diskHealthData?.disk?.status || "ok";
+  const diskUsedPct = Math.round(diskHealthData?.disk?.used_pct || 0);
 
   const bg = dark ? "bg-slate-950" : "bg-gray-50";
   const sidebarBg = dark ? "bg-slate-950 border-slate-800" : "bg-white border-gray-200";
@@ -118,6 +127,13 @@ export default function DashboardLayout() {
                 )}
                 <NavLink to="/audit" className={navItemClass}><History size={18} /> Audit Logs</NavLink>
                 <NavLink to="/sessions" className={navItemClass}><Monitor size={18} /> Sessions</NavLink>
+                {user?.role === 'admin' && (
+                  <NavLink to="/system-health" className={navItemClass}>
+                    <HardDrive size={18} /> System Health
+                    <NavBadge count={diskStatus !== "ok" ? diskUsedPct : 0}
+                      color={diskStatus === "critical" ? "bg-red-500" : "bg-yellow-500"} />
+                  </NavLink>
+                )}
               </>
             )}
           </nav>
