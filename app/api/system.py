@@ -1,21 +1,35 @@
 import shutil
+import uuid
+from datetime import datetime
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import text
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.models import User
+from app.core.rbac import admin_only
+from app.models.models import User, SystemSettings
 
 router = APIRouter()
 
-# Thresholds chosen from this project's own incident: fim-disk-cleanup.sh
-# (OS-level cleanup) already treats 85%/92% as warning/critical for backups,
-# journal, and log trimming -- reusing the same numbers here keeps one
-# mental model for "disk is getting tight" instead of two disagreeing ones.
-DISK_WARNING_PCT = 85
-DISK_CRITICAL_PCT = 92
+# Single settings row -- see migration 0012_system_settings. Simpler than a
+# generic key/value table for the handful of tunables this needs so far.
+SETTINGS_ROW_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+
+async def _get_settings(db: AsyncSession) -> SystemSettings:
+    result = await db.execute(select(SystemSettings).where(SystemSettings.id == SETTINGS_ROW_ID))
+    settings = result.scalar_one_or_none()
+    if settings:
+        return settings
+    # Defensive fallback -- the migration seeds this row, but don't 500 the
+    # whole health check if it's ever missing (e.g. a hand-edited DB).
+    settings = SystemSettings(id=SETTINGS_ROW_ID, disk_warning_pct=85.0, disk_critical_pct=92.0)
+    db.add(settings)
+    await db.commit()
+    return settings
 
 
 @router.get("/disk-health")
@@ -30,14 +44,16 @@ async def get_disk_health(
     VACUUMed, and autovacuum's row-count-based thresholds never noticed)
     and took the disk to 0 bytes free with nobody watching this number
     until Postgres itself crashed. See migration 0011 for the matching
-    autovacuum fix on fim.scans.
+    autovacuum fix on fim.scans, and 0012 for the configurable thresholds.
     """
+    settings = await _get_settings(db)
+
     total, used, free = shutil.disk_usage("/")
     used_pct = round(used / total * 100, 1)
 
-    if used_pct >= DISK_CRITICAL_PCT:
+    if used_pct >= float(settings.disk_critical_pct):
         status = "critical"
-    elif used_pct >= DISK_WARNING_PCT:
+    elif used_pct >= float(settings.disk_warning_pct):
         status = "warning"
     else:
         status = "ok"
@@ -69,9 +85,51 @@ async def get_disk_health(
             "free_bytes": free,
             "used_pct": used_pct,
             "status": status,
+            "warning_pct": float(settings.disk_warning_pct),
+            "critical_pct": float(settings.disk_critical_pct),
         },
         "database": {
             "total_bytes": db_size_bytes,
             "top_tables": top_tables,
         },
+    }
+
+
+@router.get("/settings")
+async def get_system_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    settings = await _get_settings(db)
+    return {
+        "disk_warning_pct": float(settings.disk_warning_pct),
+        "disk_critical_pct": float(settings.disk_critical_pct),
+        "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
+    }
+
+
+class UpdateSystemSettings(BaseModel):
+    disk_warning_pct: float = Field(ge=1, le=99)
+    disk_critical_pct: float = Field(ge=1, le=99)
+
+
+@router.put("/settings")
+async def update_system_settings(
+    body: UpdateSystemSettings,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only),
+):
+    if body.disk_warning_pct >= body.disk_critical_pct:
+        raise HTTPException(400, "Warning threshold must be lower than critical threshold")
+
+    settings = await _get_settings(db)
+    settings.disk_warning_pct = body.disk_warning_pct
+    settings.disk_critical_pct = body.disk_critical_pct
+    settings.updated_at = datetime.utcnow()
+    settings.updated_by = current_user.id
+    await db.commit()
+
+    return {
+        "disk_warning_pct": float(settings.disk_warning_pct),
+        "disk_critical_pct": float(settings.disk_critical_pct),
     }

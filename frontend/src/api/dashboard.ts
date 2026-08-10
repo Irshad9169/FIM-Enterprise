@@ -175,6 +175,11 @@ export const publishReport = (reportId: string, force = false) =>
 // ── Administration ────────────────────────────────────────────────────────────
 export const fetchDiskHealth = () => apiCall("/api/v1/system/disk-health");
 
+export const fetchSystemSettings = () => apiCall("/api/v1/system/settings");
+
+export const updateSystemSettings = (data: { disk_warning_pct: number; disk_critical_pct: number }) =>
+  apiCall("/api/v1/system/settings", { method: "PUT", body: JSON.stringify(data) });
+
 export const fetchUsers  = () => apiCall("/api/v1/users");
 export const createUser  = (data: Record<string, unknown>) =>
   apiCall("/api/v1/users", { method: "POST", body: JSON.stringify(data) });

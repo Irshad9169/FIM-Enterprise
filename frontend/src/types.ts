@@ -182,13 +182,21 @@ export interface DiskTableSize {
   table_bytes:  number;
 }
 
+export interface SystemSettings {
+  disk_warning_pct:  number;
+  disk_critical_pct: number;
+  updated_at?:       string | null;
+}
+
 export interface DiskHealth {
   disk: {
-    total_bytes: number;
-    used_bytes:  number;
-    free_bytes:  number;
-    used_pct:    number;
-    status:      DiskHealthStatus;
+    total_bytes:  number;
+    used_bytes:   number;
+    free_bytes:   number;
+    used_pct:     number;
+    status:       DiskHealthStatus;
+    warning_pct:  number;
+    critical_pct: number;
   };
   database: {
     total_bytes: number;

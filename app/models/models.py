@@ -1,7 +1,7 @@
 """
 Database Models - Complete Comprehensive Version
 """
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, BigInteger, UUID, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, BigInteger, UUID, ForeignKey, TIMESTAMP, Numeric
 from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -283,3 +283,12 @@ class ScanRequest(Base):
     scan_id = Column(UUID(as_uuid=True), ForeignKey("fim.scans.id", ondelete="SET NULL"))
     priority = Column(String(20), default="normal")
     started_at = Column(DateTime)
+
+class SystemSettings(Base):
+    __tablename__ = "system_settings"
+    __table_args__ = {"schema": "fim"}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    disk_warning_pct = Column(Numeric(4, 1), nullable=False, default=85.0)
+    disk_critical_pct = Column(Numeric(4, 1), nullable=False, default=92.0)
+    updated_at = Column(DateTime)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("fim.users.id"))
