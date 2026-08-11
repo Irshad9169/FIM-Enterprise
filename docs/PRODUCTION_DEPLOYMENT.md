@@ -101,6 +101,25 @@ referencing `app/models/models.py`'s SQLAlchemy models against `database/migrati
 `000_initial_schema.sql` via `pg_dump --schema-only` from a working instance as a
 follow-up improvement so future deployments don't hit this gap.
 
+⚠️ **`database/migrations/` (2 old SQL patch files) is not where ongoing schema
+changes live.** The real, actively-maintained migration chain is Alembic, at
+`app/db/migrations/versions/` (currently `0001`–`0012`). After restoring/dumping the
+base schema above, catch up on everything since:
+```bash
+cd /opt/fim
+venv/bin/alembic upgrade head
+```
+Run this after every `git pull` that touched `app/models/models.py` or added a new
+`versions/*.py` file — it's easy to forget since nothing fails loudly if you don't,
+until a feature that depends on the new column/table silently breaks. Also check
+table **ownership** after restoring from a dump made by a different bootstrap process
+— several tables (`fim.scans`, `fim.alerts` seen live) ended up owned by `postgres`
+rather than `fim_app`, which blocks Alembic's `ALTER TABLE` migrations with
+`InsufficientPrivilegeError: must be owner of table`. Fix per-table as found:
+```sql
+ALTER TABLE fim.<table> OWNER TO fim_app;
+```
+
 Enable SSL on the Postgres connection per the README's existing guidance
 (`sslmode=require` in `DATABASE_URL`, TLS cert configured in `postgresql.conf`).
 
@@ -431,13 +450,61 @@ or crash the agent.
 
 ## 13. Backups
 
+⚠️ **This repo has FIVE overlapping backup script variants**, the result of several
+separate "let's fix backups" attempts over time without cleaning up the previous one.
+Found live on a real deployment, none of the older ones actually working:
+
+| Script | Target dir | Auth | Encrypted? | Status found live |
+|---|---|---|---|---|
+| `backup_fim.sh` (repo root) | `/opt/fim/backup/fim` | hardcoded plaintext password | No | Ran once, produced a 20-byte broken dump, never scheduled |
+| `setup_backups.sh` → generates a script into `/opt/fim/fim-backups/scripts/` | `/opt/fim/fim-backups/dumps` | `~/.pgpass` | No | Interactive (`read` prompt) — can't run unattended as written |
+| *(the actual script found live at)* `/opt/fim/fim-backups/scripts/*.sh` — **not in this repo at all** | `/opt/fim/fim-backups/dumps` | hardcoded plaintext password | No | Untracked; unclear if ever scheduled |
+| `backup-complete-fim-local.sh` | `/backup/fim` | `.pgpass` (no hardcoded password — the best-practice one of the five) | No | Not verified scheduled |
+| `gap16_backup_encryption.sh` → generates `/usr/local/bin/fim-backup.sh` | `/opt/fim/fim-backups` | peer auth (`sudo -u postgres`, no password at all) | **Yes — GPG AES-256, verified decrypt roundtrip before deleting plaintext** | Ran once successfully in June, its cron entry (`/etc/cron.d/fim-backup`) had disappeared by August with no explanation found |
+
+**Recommendation: standardize on `gap16_backup_encryption.sh`'s mechanism and retire
+the other four** (or at minimum, stop deploying them to new servers — don't spend
+time debugging `backup_fim.sh`'s hardcoded password or `setup_backups.sh`'s
+interactive prompt, they're superseded). It's the only one that's actually encrypted,
+doesn't need a stored plaintext credential, and self-verifies before deleting the
+unencrypted dump.
+
 ```bash
-sudo bash scripts/setup_backups.sh          # cron + GPG passphrase for encrypted backups
 sudo bash scripts/gap16_backup_encryption.sh
 ```
-Verify the cron entry exists and a manual run succeeds:
+This generates `/usr/local/bin/fim-backup.sh`, creates `/etc/fim/backup-passphrase`
+(back this up off-server immediately — without it, encrypted backups are permanently
+unrecoverable), and installs its own `/etc/cron.d/fim-backup` entry.
+
+⚠️ **Before scheduling it, check real headroom, not just default settings.** The
+script's default `KEEP_BACKUPS=7` assumes there's room for 7 copies of a compressed
+full dump. On a database dominated by `fim.scans` (which can legitimately reach
+double-digit GB — see the disk-full incident in `CHANGELOG.md`), this can exceed a
+small volume's entire free space. A live test on a ~17GB database failed mid-run with
+`gpg: ... write error: No space left on device`, leaving a corrupt partial `.gpg` file
+and a full-size plaintext `.dump` both on disk simultaneously (worst case: the
+script needs room for *both* at once, since the plaintext is only deleted after a
+successful verified encrypt). Check `pg_database_size('fim_db')` and run one real
+backup manually to see its actual compressed size before trusting any `KEEP_BACKUPS`
+value, and confirm free space is comfortably more than `KEEP_BACKUPS × one backup's
+size` before scheduling.
+
+If this environment's convention is a `cronwrap`-style wrapper (check
+`/usr/local/bin/cronwrap` — some deployments use this instead of a bare
+`/etc/cron.d` entry for logging/failure-notification), remove the script's
+self-installed `/etc/cron.d/fim-backup` and add the equivalent line to root's
+personal crontab instead, e.g.:
 ```bash
-sudo bash scripts/backup-complete-fim-local.sh
+rm -f /etc/cron.d/fim-backup
+(crontab -l 2>/dev/null; echo '0 2 * * *  /usr/local/bin/cronwrap /usr/local/bin/fim-backup.sh "fim-backup" <alert-email>') | crontab -
+```
+
+Verify a manual run succeeds and actually restores:
+```bash
+sudo bash /usr/local/bin/fim-backup.sh
+gpg --batch --passphrase-file /etc/fim/backup-passphrase \
+    --decrypt /opt/fim/fim-backups/fim_backup_<timestamp>.dump.gpg \
+    | pg_restore --list   # confirms the archive is real, doesn't touch the live DB
 ```
 
 ---
@@ -455,6 +522,14 @@ sudo bash scripts/backup-complete-fim-local.sh
 - [ ] Confirm `/opt/fim/.env` is not world-readable: `chmod 600 /opt/fim/.env`
 - [ ] Rotate the DB password used in `DATABASE_URL` if it was copied from another
       environment rather than freshly generated (see §4)
+- [ ] Log in as an admin and check **System Health** (Administration → System
+      Health) — confirm disk usage is reported and set the warning/critical
+      thresholds to something sensible for this box's actual disk size, not the
+      85%/92% defaults if this volume is small
+- [ ] Confirm `scripts/fim-disk-cleanup.sh` and `scripts/cleanup_scan_data.sh` are
+      both deployed to `/usr/local/bin/` *and* actually scheduled (`crontab -l` or
+      `/etc/cron.d/`) — both were found written-but-never-scheduled on a real
+      deployment; being present in `/usr/local/bin/` doesn't mean anything runs them
 
 ---
 
@@ -474,3 +549,11 @@ sudo bash scripts/backup-complete-fim-local.sh
   Worth consolidating onto `settings.*` everywhere.
 - `scripts/gap21_baseline_version_control.sh` hardcodes `/opt/fim/baselines-git`
   rather than respecting `FIM_HOME`.
+- Five overlapping backup script variants exist (§13) — worth actually deleting the
+  four superseded ones instead of just documenting around them, so a future
+  deployment doesn't rediscover the same confusion from scratch.
+- `fim.scans` stores each scan's full file listing as JSONB (`scan_data`) with no
+  hard upper bound beyond the 30-day-null / 3-month-delete retention in
+  `cleanup_scan_data.sh` — for a very large monitored fleet this could still
+  legitimately dominate `fim_db`'s size well before the 3-month cutoff. Worth
+  monitoring via System Health rather than assuming the retention alone is enough.

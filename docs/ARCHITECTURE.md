@@ -1,5 +1,15 @@
 # FIM System Architecture
 
+⚠️ **This document is an early design reference and has drifted from reality in
+several places** — most notably the multi-server/load-balanced/HA deployment
+topologies below describe a design that was never built (this runs as a single
+backend instance, optionally two on one box sharing `FIM_HOME` — see
+`docs/PRODUCTION_DEPLOYMENT.md` §6), and Layer 3's "Agents: no agent auth" is now
+false (see the correction just below). For what's actually true today, see
+`docs/PRODUCTION_DEPLOYMENT.md` (actively maintained) and `docs/CHANGELOG.md`
+(what actually changed and why). Treat the diagrams here as directional intent,
+not current fact.
+
 ## 🏗️ High-Level Architecture
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ ENTERPRISE FIM SYSTEM │
@@ -292,20 +302,23 @@ Layer 3: Application Authentication
 ┌──────────────────────────────────────────────────────────────┐
 │ Admin Users: │
 │ • JWT tokens (HS256) │
-│ • 24-hour expiration │
+│ • 8-hour expiration (not 24h — see README) │
 │ • Bcrypt password hashing (12 rounds) │
 │ │
-│ Agents: (Future - Currently no agent auth) │
-│ • Per-agent API keys │
-│ • Token rotation │
+│ Agents: (this is now live, not future — see app/core/agent_auth.py) │
+│ • Per-agent established API key, hmac.compare_digest against a stored hash │
+│ • Trust-on-first-contact at registration, not a shared/global secret │
 └──────────────────────────────────────────────────────────────┘
 ▼
 Layer 4: Authorization
 ┌──────────────────────────────────────────────────────────────┐
 │ • Role-based access control (RBAC) │
-│ - admin: full access │
-│ - analyst: view + acknowledge alerts │
-│ - viewer: read-only │
+│ - Backend enforcement (app/core/rbac.py) is coarser than the UI shows: │
+│ admin_only and analyst_plus (admin+analyst) are the only two real │
+│ backend gates in active use today │
+│ - The UI additionally distinguishes trainee/auditor for NAV VISIBILITY │
+│ (e.g. DashboardLayout.tsx's admin-or-auditor check for Audit Logs), │
+│ but most endpoints underneath don't separately enforce that distinction │
 │ • Endpoint-level permissions │
 └──────────────────────────────────────────────────────────────┘
 ▼

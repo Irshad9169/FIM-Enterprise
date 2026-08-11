@@ -33,7 +33,12 @@ Safe to delete entirely once no longer needed for reference.
   git history).
 - `backup_fim.sh` (root) — contains a hardcoded plaintext DB password. Superseded by
   `scripts/backup-complete-fim-local.sh` (uses `.pgpass`), but left in place pending
-  a decision on rotating the exposed password.
+  a decision on rotating the exposed password. Update 2026-08-11: found this isn't
+  the only superseded variant — `scripts/setup_backups.sh` and an untracked script
+  live at `/opt/fim/fim-backups/scripts/` on a real deployment (also hardcoded
+  password) are two more. Recommend standardizing on `gap16_backup_encryption.sh`'s
+  mechanism instead (real GPG encryption + verified restore, no stored password at
+  all — peer auth). See `docs/PRODUCTION_DEPLOYMENT.md` §13 for the full comparison.
 - `go-agent/fim-agent-go` — a committed compiled binary; kept as-is since it's a
   deploy artifact, not dead code.
 - `load_test.py` (root) — an active dev/test tool.

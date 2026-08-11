@@ -1,78 +1,110 @@
 # FIM Dashboard Quick Reference
 
+⚠️ This file previously described a Next.js app-router frontend and a `fim-server`
+service — neither matches this codebase. The frontend is **Vite + React Router**
+(`frontend/src/pages/*.tsx`, routed in `frontend/src/App.tsx`), and the backend
+service is `fim-backend` (production) or `fim-backend-test` (a second `FIM_HOME`
+instance, if one exists on this box — see `docs/PRODUCTION_DEPLOYMENT.md` §6).
+Rewritten below to match reality.
+
 ## Build & Deploy
+
 ```bash
-# Full deployment (build + restart)
-/opt/fim/scripts/deploy-dashboard.sh
+cd frontend
+npm install                 # first time, or after package.json changes
+                             # (may need --legacy-peer-deps — see PRODUCTION_DEPLOYMENT.md §7)
+npm run build                # outputs to ../web/ (vite.config.ts: build.outDir = '../web')
+```
 
-# Build only (no restart)
-/opt/fim/scripts/build-frontend.sh
+There is no `deploy-dashboard.sh`/`build-frontend.sh` in this repo — `npm run build`
+is the whole build step. The backend serves `../web/` directly as static files
+(`app/main.py`'s `SPAStaticFiles` mount) — **no restart is needed for a frontend-only
+change**, the backend reads whatever's on disk on each request. Only restart the
+backend service if you changed Python code:
 
-# Manual restart
-systemctl restart fim-server
+```bash
+systemctl restart fim-backend          # production
+systemctl restart fim-backend-test     # if this box runs a second FIM_HOME instance
+```
 
 ## Development Mode
-# Run Next.js dev server (port 3000)
-cd /opt/fim/frontend
+
+```bash
+cd frontend
 npm run dev
-# Access: http://test06:3000
+# Vite dev server, default port 5173 (not 3000) — check terminal output for the
+# actual port and confirm it's in app/main.py's CORS allow_origins list (it's
+# hardcoded there, not read from .env — see PRODUCTION_DEPLOYMENT.md §7)
+```
 
-Logs & Monitoring
-# FIM server logs
-journalctl -u fim-server -f
+## Logs & Monitoring
 
-# Build logs
-tail -f /opt/fim/scripts/build.log
+```bash
+journalctl -u fim-backend -f           # application + error logs
+journalctl -u fim-backend-test -f      # if using the second instance
 
-# Check service status
-systemctl status fim-server
+systemctl status fim-backend
+```
 
-Troubleshooting
-Frontend not loading
-# Check if web directory exists
-ls -la /opt/fim/web/
+## Troubleshooting
 
-# Rebuild frontend
-/opt/fim/scripts/build-frontend.sh
+### Frontend not loading / stale after a deploy
+```bash
+# Confirm the build actually landed where the backend serves from
+ls -la web/            # repo root, NOT frontend/dist — vite outputs here directly
 
-# Check FastAPI logs
-journalctl -u fim-server -n 100
+# Rebuild
+cd frontend && npm run build
 
+# Hard-refresh the browser — the backend needs no restart, but the browser may
+# have cached the old JS bundle
+```
 
-API connection errors
-# Check .env.local
-cat /opt/fim/frontend/.env.local
+### API connection / CORS errors
+```bash
+grep -A6 "allow_origins" app/main.py
+```
+CORS origins are a **hardcoded Python list in `app/main.py`**, not read from
+`.env`'s `CORS_ORIGINS` (that setting is currently dead code — see
+`PRODUCTION_DEPLOYMENT.md`'s appendix). If the frontend's actual origin isn't in
+that list, every API call fails silently in the browser console with a CORS error,
+not a clear "add your origin" message. Edit the list directly and restart the
+backend.
 
-# Should match your server IP/hostname
-# Update if needed:
-nano /opt/fim/frontend/.env.local
-# Then rebuild:
-/opt/fim/scripts/build-frontend.sh
+### 500 errors that don't show up in the browser
+```bash
+journalctl -u fim-backend -n 100 --no-pager
+```
+Also check **System Health** in the app itself (Administration → System Health,
+admin-only) — a full disk will crash Postgres with an unhelpful 500 before any
+app-level error message can even form. See `docs/CHANGELOG.md`'s 2026-08-10/11
+entries for a real incident that looked like a generic "Internal Server Error"
+but was actually the disk at 0 bytes free.
 
+## File Locations
 
-CORS errors
-# Check app/core/config.py
-# cors_origins should include your frontend URL
-# Example: cors_origins: List[str] = ["http://test06:8000", "*"]
+| What | Where |
+|---|---|
+| Frontend source | `frontend/src/` |
+| Built static files (served by backend) | `web/` (repo root, not `frontend/dist`) |
+| Backend source | `app/` |
+| Backend entrypoint | `app/main.py` |
 
+## Ports
 
-File Locations
-Frontend source: /opt/fim/frontend/
-Built static files: /opt/fim/web/
-Backend: /opt/fim/app/
-Build script: /opt/fim/scripts/build-frontend.sh
-Deploy script: /opt/fim/scripts/deploy-dashboard.sh
+| Service | Port |
+|---|---|
+| Backend (serves API + built frontend) | 8000 (production) |
+| Second `FIM_HOME` instance, if present | 8803 (this box's actual convention — confirm per-deployment, not universal) |
+| Vite dev server (`npm run dev`) | 5173 (Vite default) |
+| PostgreSQL | 5432 |
 
-Port Information
-FastAPI + Frontend: 8000
-Development frontend: 3000 (if using npm run dev)
-PostgreSQL: 5432
+## Updating the Frontend
 
-Updating Frontend
-cd /opt/fim/frontend
-
-# Make code changes
-nano app/(dashboard)/dashboard/page.tsx
-
-# Rebuild and deploy
-/opt/fim/scripts/deploy-dashboard.sh
+```bash
+cd frontend/src
+# make code changes under pages/, components/, etc.
+cd ..
+npm run build
+# no backend restart needed — hard-refresh the browser
+```
