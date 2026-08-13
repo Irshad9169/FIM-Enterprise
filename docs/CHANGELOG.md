@@ -4,6 +4,50 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-08-13: Second disk-full incident — different root cause this time
+
+Disk hit 0 bytes free again, two days after the incident below was believed fixed.
+This time `/opt` and `pg_wal` were both healthy — the growth was entirely inside
+`/var/lib/pgsql/15/data` (37GB, up from ~27GB two days prior), and the fixes from
+2026-08-10/11 (VACUUM, autovacuum tuning, extended retention) were not the cause of
+the recurrence. No disk resize was available this time, forcing a more careful
+investigation instead of repeating the same fix.
+
+- **Actual root cause: `/var/lib/pgsql/15/data/log/` had grown to ~19GB** across a
+  week of daily log files (5.4G, 5.2G, 4.2G on the three biggest days alone) — not
+  database data, but Postgres's own text logs. `log_duration = 'on'` (set via
+  `ALTER SYSTEM`, so it lived in `postgresql.auto.conf`, not `postgresql.conf` —
+  easy to miss) logs a `duration: X ms` line for **every single statement**,
+  bypassing `log_min_duration_statement`'s 5s threshold entirely. Confirmed live:
+  a freshly-truncated log file regrew to 1.2GB within roughly a minute. Traced the
+  bulk of the volume to `threatos` — an unrelated application sharing this same
+  Postgres instance — running a very high-frequency, low-latency query workload,
+  with every query individually logged.
+- Fixed by `ALTER SYSTEM SET log_duration = 'off'` + `pg_reload_conf()` (no restart
+  needed). Confirmed via a 30-second flat-size check post-fix. Left
+  `log_statement = 'mod'` alone — that's a reasonable audit-logging choice and
+  wasn't the problem.
+- ⚠️ This setting is **instance-wide**, not per-database — the fix affects
+  `threatos`'s logging too, not just `fim_db`'s. It looked like a forgotten debug
+  flag rather than a deliberate choice (logging every sub-millisecond query
+  indefinitely isn't a normal production setting for anyone), but worth a heads-up
+  to whoever owns `threatos` if this instance is meant to be shared long-term.
+- Immediate recovery: deleted the old, clearly-inactive rotated day-of-week log
+  files (`postgresql-Mon.log` etc. — plain `rm -f`, nothing had them open) and
+  truncated (not deleted) the currently-open file in place (`: > postgresql-Thu.log`)
+  so space was reclaimed immediately without needing to wait for a process to
+  release a file handle — same "space isn't freed until every open handle closes"
+  lesson from the first incident, applied correctly this time without needing to
+  hunt for what was holding a handle.
+- **Takeaway for future incidents**: check `/var/lib/pgsql/<ver>/data/log/` size
+  *before* assuming a repeat is the same root cause as last time. This instance's
+  own logs, not `fim.scans`, were the dominant contributor on this occasion.
+- Confirmed after the fact: `fim_db` was still exactly 17GB, unchanged from
+  2026-08-11 — the 2026-08-10/11 `fim.scans` retention fix is holding correctly.
+  Its row count actually grew (2,733 → 4,874 over the same two days) while total
+  size stayed flat, meaning old rows are being pruned at roughly the rate new ones
+  arrive. That fix was not the cause of this recurrence.
+
 ## 2026-08-10 — 2026-08-11: Disk-full incident, System Health page, backup review
 
 - **Root-caused and fixed a full production-adjacent outage**: `fim.scans` grew to
