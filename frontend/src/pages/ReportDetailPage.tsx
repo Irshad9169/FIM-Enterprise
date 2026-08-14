@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, type MouseEvent } from "react";
 import {
   fetchReportDetail, correlateReport, updateReportAgent,
   submitAgent, publishReport, updateReportNotes, updateReportStatus,
@@ -160,6 +160,106 @@ function SubmitAgentModal({ agent, reportId, onClose }: { agent: ReportAgent; re
           <button onClick={doSubmit} disabled={busy} className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-2">
             <Send size={14} />{busy ? "Submitting…" : "Submit"}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bulk-Submit Modal — each agent keeps its own RT #/note (agents in one
+// report frequently belong to different tickets), the "bulk" part is just
+// firing the existing per-hostname submit endpoint for everyone in one pass
+// instead of opening SubmitAgentModal N times.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type BulkRowStatus = "pending" | "busy" | "done" | "error";
+interface BulkRow { hostname: string; rt: string; note: string; status: BulkRowStatus; error: string }
+
+function BulkSubmitModal({ agents, reportId, onClose, onDone }: {
+  agents: ReportAgent[]; reportId: string; onClose: () => void; onDone: () => void;
+}) {
+  const qc = useQueryClient();
+  const [rows, setRows] = useState<BulkRow[]>(() => agents.map(a => ({
+    hostname: a.agent_hostname,
+    rt:       a.manual_rt || a.correlated_rt || "",
+    note:     a.correlation_note || "",
+    status:   "pending",
+    error:    "",
+  })));
+  const [submitting, setSubmitting] = useState(false);
+
+  const updateRow = (hostname: string, patch: Partial<BulkRow>) => {
+    setRows(prev => prev.map(r => r.hostname === hostname ? { ...r, ...patch } : r));
+  };
+
+  const doSubmitAll = async () => {
+    setSubmitting(true);
+    for (const row of rows) {
+      if (row.status === "done") continue;
+      updateRow(row.hostname, { status: "busy", error: "" });
+      try {
+        await submitAgent(reportId, row.hostname, { rt_number: row.rt || undefined, note: row.note || undefined });
+        updateRow(row.hostname, { status: "done" });
+      } catch (e: any) {
+        updateRow(row.hostname, { status: "error", error: e.message || "Submit failed" });
+      }
+    }
+    setSubmitting(false);
+    qc.invalidateQueries({ queryKey: ["report", reportId] });
+  };
+
+  const remaining = rows.filter(r => r.status !== "done").length;
+  const allDone   = remaining === 0;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-2xl shadow-2xl max-h-[85vh] flex flex-col">
+        <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
+          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+            <Send size={14} className="text-green-400" /> Bulk Submit — {rows.length} agent{rows.length === 1 ? "" : "s"}
+          </h3>
+          <button onClick={onClose}><X size={18} className="text-slate-400 hover:text-white" /></button>
+        </div>
+        <div className="p-4 space-y-2.5 overflow-y-auto">
+          <p className="text-xs text-slate-400">
+            Each agent keeps its own RT ticket # and note — pre-filled from correlation where available. Edit any row, then submit all at once.
+          </p>
+          {rows.map(row => (
+            <div key={row.hostname} className={`border rounded p-2.5 space-y-1.5 ${
+              row.status === "done"  ? "border-green-800/50 bg-green-900/10" :
+              row.status === "error" ? "border-red-800/50 bg-red-900/10" : "border-slate-800"
+            }`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono font-bold text-white text-xs">{row.hostname}</span>
+                {row.status === "busy"  && <RotateCcw size={12} className="animate-spin text-slate-400" />}
+                {row.status === "done"  && <span className="text-green-400 text-xs flex items-center gap-1"><Check size={12} /> Submitted</span>}
+                {row.status === "error" && <span className="text-red-400 text-[10px]">{row.error}</span>}
+              </div>
+              {row.status !== "done" && (
+                <div className="flex gap-2">
+                  <input value={row.rt} onChange={e => updateRow(row.hostname, { rt: e.target.value })}
+                    placeholder="RT #" disabled={submitting}
+                    className="w-28 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500 disabled:opacity-50" />
+                  <input value={row.note} onChange={e => updateRow(row.hostname, { note: e.target.value })}
+                    placeholder="Note (optional)" disabled={submitting}
+                    className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500 disabled:opacity-50" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="p-4 border-t border-slate-800 flex justify-end gap-2 shrink-0">
+          <button onClick={() => { if (allDone) onDone(); onClose(); }}
+            className="px-4 py-2 text-sm bg-slate-800 text-slate-300 rounded hover:bg-slate-700">
+            {allDone ? "Close" : "Cancel"}
+          </button>
+          {!allDone && (
+            <button onClick={doSubmitAll} disabled={submitting}
+              className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-2">
+              <Send size={14} />{submitting ? "Submitting…" : `Submit All (${remaining})`}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -352,8 +452,9 @@ function ChangeRow({ change, reportId }: { change: ReportChangeDetail; reportId:
 // Agent Card
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AgentCard({ agent, report, defaultExpanded, viewMode = "classic" }: {
+function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selected = false, onToggleSelect }: {
   agent: ReportAgent; report: DailyReportDetail; defaultExpanded: boolean; viewMode?: ViewMode;
+  selected?: boolean; onToggleSelect?: () => void;
 }) {
   const qc = useQueryClient();
   const [expanded,     setExpanded]     = useState(defaultExpanded);
@@ -392,6 +493,7 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic" }: {
   const cmrTickets  = agent.tickets.filter(t => t.source === "cmr");
   const jiraTickets = agent.tickets.filter(t => t.source === "jira");
   const isSubmittedInReport = (report.submitted_agents || []).includes(agent.agent_hostname);
+  const selectable = agent.status !== "submitted" && agent.status !== "skipped" && !!onToggleSelect;
 
   return (
     <>
@@ -401,12 +503,17 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic" }: {
       <div className={`bg-slate-900 border rounded-lg overflow-hidden mb-3 ${
         agent.status === "submitted" ? "border-green-800/60" :
         agent.status === "skipped"  ? "border-slate-700/40" :
-        agent.status === "correlated" ? "border-blue-800/40" : "border-slate-800"
+        agent.status === "correlated" ? "border-blue-800/40" :
+        selected ? "border-blue-600/70" : "border-slate-800"
       }`}>
         {/* Header */}
         <div className="p-3 bg-slate-800/50 flex items-center justify-between cursor-pointer hover:bg-slate-800 transition-colors"
           onClick={() => setExpanded(p => !p)}>
           <div className="flex items-center gap-2.5 min-w-0">
+            {selectable && (
+              <input type="checkbox" checked={selected} onChange={onToggleSelect} onClick={e => e.stopPropagation()}
+                title="Select for bulk submit" className="accent-green-500 shrink-0" />
+            )}
             <StatusBadge status={agent.status} map={AGENT_STATUS_COLORS} />
             <span className="font-mono font-bold text-white text-sm truncate">{agent.agent_hostname}</span>
             {agent.ip_address && <span className="text-slate-500 text-xs hidden md:block">{agent.ip_address}</span>}
@@ -527,13 +634,16 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic" }: {
 // change list itself is displayed.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function HostActionRow({ agent, report }: { agent: ReportAgent; report: DailyReportDetail }) {
+function HostActionRow({ agent, report, selected = false, onToggleSelect }: {
+  agent: ReportAgent; report: DailyReportDetail; selected?: boolean; onToggleSelect?: () => void;
+}) {
   const qc = useQueryClient();
   const [editModal, setEditModal] = useState(false);
   const [submitModal, setSubmitModal] = useState(false);
   const [searching, setSearching] = useState(false);
 
   const effectiveRt = agent.manual_rt || agent.correlated_rt;
+  const selectable = agent.status !== "submitted" && agent.status !== "skipped" && !!onToggleSelect;
 
   const handleFindTickets = async () => {
     setSearching(true);
@@ -555,6 +665,10 @@ function HostActionRow({ agent, report }: { agent: ReportAgent; report: DailyRep
       {editModal   && <EditAgentModal   agent={agent} reportId={report.id} onClose={() => setEditModal(false)} />}
       {submitModal && <SubmitAgentModal agent={agent} reportId={report.id} onClose={() => setSubmitModal(false)} />}
       <div className="flex items-center gap-2 text-xs py-1 flex-wrap">
+        {selectable && (
+          <input type="checkbox" checked={selected} onChange={onToggleSelect}
+            title="Select for bulk submit" className="accent-green-500 shrink-0" />
+        )}
         <span className="font-mono font-bold text-white min-w-[15ch]">{agent.agent_hostname}</span>
         <StatusBadge status={agent.status} map={AGENT_STATUS_COLORS} />
         {effectiveRt && (
@@ -588,11 +702,27 @@ function HostActionRow({ agent, report }: { agent: ReportAgent; report: DailyRep
   );
 }
 
-function HostGroupCard({ hostnames, changes, agentsByHostname, report }: {
+function HostGroupCard({ hostnames, changes, agentsByHostname, report, selectedAgents, onToggleSelect }: {
   hostnames: string[]; changes: ReportChangeDetail[];
   agentsByHostname: Record<string, ReportAgent>; report: DailyReportDetail;
+  selectedAgents?: Set<string>; onToggleSelect?: (hostname: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
+
+  const selectableHosts = hostnames.filter(h => {
+    const a = agentsByHostname[h];
+    return a && a.status !== "submitted" && a.status !== "skipped";
+  });
+  const allGroupSelected = selectableHosts.length > 0 && selectableHosts.every(h => selectedAgents?.has(h));
+
+  const toggleGroup = (e: MouseEvent) => {
+    e.stopPropagation();
+    if (!onToggleSelect) return;
+    selectableHosts.forEach(h => {
+      const isSelected = !!selectedAgents?.has(h);
+      if (allGroupSelected ? isSelected : !isSelected) onToggleSelect(h);
+    });
+  };
 
   return (
     <div className="bg-slate-900 border border-violet-800/40 rounded-lg overflow-hidden mb-3">
@@ -600,9 +730,15 @@ function HostGroupCard({ hostnames, changes, agentsByHostname, report }: {
         onClick={() => setExpanded(p => !p)}>
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
-              Identical changes · {hostnames.length} hosts
-            </span>
+            <div className="flex items-center gap-2">
+              {selectableHosts.length > 0 && onToggleSelect && (
+                <input type="checkbox" checked={allGroupSelected} onChange={() => {}} onClick={toggleGroup}
+                  title="Select all hosts in this group for bulk submit" className="accent-green-500" />
+              )}
+              <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
+                Identical changes · {hostnames.length} hosts
+              </span>
+            </div>
             <div className="flex flex-col gap-1 items-start">
               {hostnames.map(h => (
                 <span key={h} className="font-mono text-xs font-bold text-white bg-slate-950/50 border border-violet-800/40 rounded px-2 py-0.5">
@@ -619,7 +755,9 @@ function HostGroupCard({ hostnames, changes, agentsByHostname, report }: {
         <>
           <div className="p-3 bg-slate-950/30 border-b border-slate-800 space-y-1">
             {hostnames.map(h => agentsByHostname[h] && (
-              <HostActionRow key={h} agent={agentsByHostname[h]} report={report} />
+              <HostActionRow key={h} agent={agentsByHostname[h]} report={report}
+                selected={!!selectedAgents?.has(h)}
+                onToggleSelect={onToggleSelect ? () => onToggleSelect(h) : undefined} />
             ))}
           </div>
           <GroupedChangesView changes={changes} />
@@ -810,6 +948,18 @@ export default function ReportDetailPage() {
   const [corrError,    setCorrError]    = useState("");
   const [exporting,    setExporting]    = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [selectedAgents, setSelectedAgents] = useState<Set<string>>(new Set());
+  const [bulkSubmitOpen, setBulkSubmitOpen] = useState(false);
+
+  const toggleAgentSelected = (hostname: string) => {
+    setSelectedAgents(prev => {
+      const next = new Set(prev);
+      if (next.has(hostname)) next.delete(hostname); else next.add(hostname);
+      return next;
+    });
+  };
+
+  useEffect(() => { setSelectedAgents(new Set()); }, [reportId]);
   // Defaults to "grouped" (the new categorized/clubbed view) — "classic" is
   // the exact pre-existing flat per-host list, kept fully intact and one
   // click away rather than deleted, precisely so this is trivially
@@ -896,9 +1046,25 @@ export default function ReportDetailPage() {
   const totalCount    = report.agents_total || report.agents.length;
   const pct           = totalCount > 0 ? Math.round((submittedCount / totalCount) * 100) : 0;
 
+  const pendingAgents = report.report_agents.filter(a => a.status !== "submitted" && a.status !== "skipped");
+  const allPendingSelected = pendingAgents.length > 0 && pendingAgents.every(a => selectedAgents.has(a.agent_hostname));
+  const selectedCount = pendingAgents.filter(a => selectedAgents.has(a.agent_hostname)).length;
+
+  const toggleSelectAllPending = () => {
+    setSelectedAgents(allPendingSelected ? new Set() : new Set(pendingAgents.map(a => a.agent_hostname)));
+  };
+
   return (
     <>
       {publishModal && <PublishModal report={report} onClose={() => setPublishModal(false)} />}
+      {bulkSubmitOpen && (
+        <BulkSubmitModal
+          agents={pendingAgents.filter(a => selectedAgents.has(a.agent_hostname))}
+          reportId={report.id}
+          onClose={() => setBulkSubmitOpen(false)}
+          onDone={() => setSelectedAgents(new Set())}
+        />
+      )}
 
       <div className="space-y-5">
         {/* Toolbar */}
@@ -981,19 +1147,46 @@ export default function ReportDetailPage() {
         {/* Agent workflow or pre-correlation */}
         {hasWorkflow ? (
           <div>
-            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-              Agents ({report.report_agents.length})
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Agents ({report.report_agents.length})
+              </h2>
+              {pendingAgents.length > 0 && (
+                <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+                  <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAllPending} className="accent-green-500" />
+                  Select all pending ({pendingAgents.length})
+                </label>
+              )}
+            </div>
+
+            {selectedCount > 0 && (
+              <div className="sticky top-0 z-10 mb-3 bg-blue-900/30 border border-blue-700/50 rounded-lg px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm text-blue-200">{selectedCount} agent{selectedCount === 1 ? "" : "s"} selected</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setSelectedAgents(new Set())}
+                    className="px-3 py-1.5 text-xs bg-slate-800 text-slate-300 rounded hover:bg-slate-700">
+                    Clear
+                  </button>
+                  <button onClick={() => setBulkSubmitOpen(true)}
+                    className="px-3 py-1.5 text-xs bg-green-700 text-white rounded hover:bg-green-600 flex items-center gap-1.5">
+                    <Send size={12} /> Bulk Submit ({selectedCount})
+                  </button>
+                </div>
+              </div>
+            )}
 
             {viewMode === "grouped" && hostGroups.map(g => (
               <HostGroupCard key={g.hostnames.join(",")} hostnames={g.hostnames} changes={g.changes}
-                agentsByHostname={agentsByHostname} report={report} />
+                agentsByHostname={agentsByHostname} report={report}
+                selectedAgents={selectedAgents} onToggleSelect={toggleAgentSelected} />
             ))}
 
             {(viewMode === "grouped" ? hostSolos.map(s => agentsByHostname[s.hostname]).filter(Boolean) : report.report_agents)
               .map(agent => (
                 <AgentCard key={agent.agent_hostname} agent={agent} report={report} viewMode={viewMode}
-                  defaultExpanded={report.report_agents.length <= 3} />
+                  defaultExpanded={report.report_agents.length <= 3}
+                  selected={selectedAgents.has(agent.agent_hostname)}
+                  onToggleSelect={() => toggleAgentSelected(agent.agent_hostname)} />
               ))}
           </div>
         ) : (
