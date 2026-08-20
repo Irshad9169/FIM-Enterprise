@@ -67,44 +67,37 @@ the extra nesting level, or account for it in every path below if you don't.
 
 ---
 
-## 4. Database — `alembic upgrade head` now bootstraps a fresh DB (mostly)
+## 4. Database — `alembic upgrade head` now bootstraps a fresh DB
 
-Update 2026-08-20: a new baseline migration (`0000_initial_schema`) creates the
-`fim` schema and 24 of its 33 real tables from nothing — the `fim` schema and all
-22 tables SQLAlchemy models (generated mechanically from the live ORM metadata,
-not hand-typed) plus 2 of the 11 previously-unmodeled raw-SQL tables
-(`correlation_groups`, `anomaly_scores`, whose DDL already existed verbatim
-elsewhere in-repo). It's inserted as the new root of the Alembic chain
-(`down_revision=None`), so on a genuinely empty database:
+Update 2026-08-20: two new migrations close the from-scratch-schema gap
+completely — all 33 real tables now get created by `alembic upgrade head`
+against a genuinely empty database, no `pg_dump`/`pg_restore` required.
+
+- **`0000_initial_schema`** creates the `fim` schema and 24 tables: all 22
+  SQLAlchemy-modeled tables (generated mechanically from the live ORM
+  metadata, not hand-typed) plus 2 of the 11 previously-unmodeled raw-SQL
+  tables (`correlation_groups`, `anomaly_scores`, whose DDL already existed
+  verbatim elsewhere in-repo). Inserted as the new root of the chain
+  (`down_revision=None`).
+- **`0014_unmanaged_tables_dump`** creates the remaining 9 (`sessions`,
+  `agent_health_events`, `whitelist_matches`, `file_changes`,
+  `baseline_history`, `retention_policies`, `api_keys`,
+  `integration_settings`, `scans_archive`) — these had no CREATE TABLE
+  anywhere in this repo's history at all, so this is a verbatim schema-only
+  `pg_dump` from the live `fim_db` on test06, not a guess. Two things that'd
+  otherwise look like mistakes: `scans_archive` genuinely has no primary key
+  or index in production, and `file_changes.scan_id` has no FK to `fim.scans`
+  despite the name — both faithfully preserved as-is rather than "fixed."
+
 ```bash
 cd /opt/fim
 venv/bin/alembic upgrade head
 ```
-now creates the schema, all 24 tables above, and everything the rest of the chain
-(`0001`–`0013`) adds on top — including the `protect_alert_evidence` and
-`raise_audit_immutable` tamper-evidence triggers. Existing instances (already
-stamped past `0001`) are unaffected — Alembic only walks forward from the current
-revision, so it never attempts to re-run `0000` against a database that already has
-these tables.
-
-⚠️ **Still missing: 9 of the 11 originally-unmodeled tables** (`sessions`,
-`agent_health_events`, `whitelist_matches`, `file_changes`, `baseline_history`,
-`retention_policies`, `api_keys`, `integration_settings`, `scans_archive`) have no
-CREATE TABLE anywhere in this repo's history — not even in a `gapNN_*.sh` script —
-so guessing their DDL would risk silently diverging from the real production
-schema. Pull the real DDL from an existing instance and fold it into a follow-up
-migration:
-```bash
-pg_dump -d fim_db --schema-only --no-owner --no-privileges \
-    -t fim.sessions -t fim.agent_health_events -t fim.whitelist_matches \
-    -t fim.file_changes -t fim.baseline_history -t fim.retention_policies \
-    -t fim.api_keys -t fim.integration_settings -t fim.scans_archive \
-    > nine_unmanaged_tables.sql
-```
-Until that follow-up exists, a fresh install has 24/33 tables and every feature
-that depends only on those works end to end; features touching the remaining 9
-(sessions, agent health tracking, retention policies, etc.) need either that
-follow-up migration or a `pg_restore` from an existing instance (below) first.
+now creates the schema, all 33 tables, and every trigger (`protect_alert_evidence`,
+`raise_audit_immutable`) from nothing. Existing instances (already stamped past
+`0001`) are unaffected either way — Alembic only walks forward from the current
+revision, so it never attempts to re-run `0000` against a database that already
+has these tables, and picks up `0014` as a normal forward step.
 
 **Verified 2026-08-20 on test06** against a genuinely empty `fim_fresh_test`
 database: `alembic upgrade head` ran the full `0000`→`0013` chain cleanly and
@@ -574,12 +567,9 @@ gpg --batch --passphrase-file /etc/fim/backup-passphrase \
 
 ## Appendix: known gaps to fix upstream (not blockers, but worth doing)
 
-- ~~No `000_initial_schema.sql`~~ — fixed 2026-08-20: `0000_initial_schema` now
-  creates the `fim` schema + 24/33 tables from nothing (§4). Remaining gap: 9 of
-  the 11 originally-unmodeled tables still need their DDL pulled from a live
-  instance (`pg_dump -t`, exact command in §4) and folded into a follow-up
-  migration — until then those 9 tables still require provisioning from an
-  existing instance rather than a genuine from-scratch install.
+- ~~No `000_initial_schema.sql`~~ — fixed 2026-08-20: `0000_initial_schema` +
+  `0014_unmanaged_tables_dump` now create all 33/33 real tables from nothing (§4).
+  A genuine from-scratch install no longer needs `pg_dump`/`pg_restore` at all.
 - `CORS_ORIGINS` in `.env`/`config.py` is dead code — either wire `app/main.py` to
   actually read `settings.cors_origins`, or remove the setting from `.env.example`
   to stop it looking configurable.
