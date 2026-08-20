@@ -621,7 +621,7 @@ Uptime: 99.9%+
 │   ├── API.md                     # API docs (next)
 │   └── PERFORMANCE.md             # Tuning guide (next)
 ├── scripts/
-│   └── create_admin.py            # Bootstrap admin user
+│   └── create_first_admin.py      # Bootstrap admin user (added 2026-08-20)
 ├── .env                           # Environment config
 ├── requirements.txt               # Python dependencies
 └── README.md                      # Main documentation

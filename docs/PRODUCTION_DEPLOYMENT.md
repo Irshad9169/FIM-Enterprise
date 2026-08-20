@@ -209,6 +209,27 @@ instead of silently signing tokens with a hardcoded fallback string.
 some other tooling may still expect real process env vars — but it is no longer
 the only thing standing between a working `.env` and a live auth bypass.
 
+### Create the first admin user
+
+Added 2026-08-20 — every path in `app/api/users.py`'s `create_user` requires an
+existing admin (`current_user.role == "admin"`), which is correct day-to-day but
+leaves no way to create the very first user through the API on a genuinely empty
+`fim.users` table. `scripts/create_first_admin.py` exists solely to break that:
+```bash
+cd /opt/fim
+venv/bin/python scripts/create_first_admin.py
+```
+Prompts for username/email/password interactively (password via `getpass`, never
+echoed or left in shell history), validates the password against the same policy
+`create_user` enforces, and refuses to run if an active admin already exists — so
+it's safe to leave in place rather than needing deletion after first use. This
+needs `DATABASE_URL` reachable (i.e. `.env` above already in place) but not the
+backend actually running yet, since it talks to the DB directly rather than
+through the API.
+
+Do **not** use `scripts/create_test_users.py` for this — that one hardcodes weak
+passwords (`admin123`, etc.) for four different roles and is dev/test-only.
+
 ---
 
 ## 6. Runtime support files (`FIM_HOME`)
@@ -248,15 +269,21 @@ despite the version mismatch.
 sudo -u secauto npm run build   # outputs to /opt/fim/web (vite.config.ts: build.outDir = '../web')
 ```
 
-⚠️ **CORS origins are hardcoded in `app/main.py`**, not read from `.env`'s
-`CORS_ORIGINS`:
-```python
-allow_origins=['https://test06.hyd.int.untd.com', 'http://test06.hyd.int.untd.com',
-               'http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'],
+~~⚠️ CORS origins are hardcoded in `app/main.py`~~ — fixed 2026-08-20, see §5:
+set `CORS_ORIGINS` in `.env` instead (no source edit needed anymore).
+
+**Optional: `fim-frontend-build.service`** (`etc/systemd/system/`) wraps the two
+commands above (`npm install`/`npm run build` via `scripts/build-frontend.sh`) as
+a `Type=oneshot` unit, so `systemctl start fim-frontend-build` rebuilds the
+frontend without needing to `cd`/remember the flags. Not part of the flow above
+(that's a plain manual build, which is all you need) — this is just a convenience
+if you'd rather trigger a rebuild via `systemctl` than a shell one-liner:
+```bash
+sudo cp etc/systemd/system/fim-frontend-build.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start fim-frontend-build   # rebuilds now
+sudo systemctl status fim-frontend-build  # oneshot units show "inactive (dead)" once done — that's success, not failure
 ```
-You **must** edit this list in `app/main.py` to include your new server's actual
-hostname(s), or the browser will silently block every API call with a CORS error.
-This is a required manual code edit per deployment, not a config toggle.
 
 ---
 
@@ -485,24 +512,23 @@ or crash the agent.
 
 ## 13. Backups
 
-⚠️ **This repo has FIVE overlapping backup script variants**, the result of several
-separate "let's fix backups" attempts over time without cleaning up the previous one.
-Found live on a real deployment, none of the older ones actually working:
+Update 2026-08-20: this repo used to have **five overlapping backup script
+variants**, the result of several separate "let's fix backups" attempts over time
+without cleaning up the previous one. Three are now retired to `archive/scripts/`
+(kept for history, `git log --follow` still works, not part of the active tree);
+a fourth was never in git at all. `gap16_backup_encryption.sh` is the one kept
+active — standardize on it for any new deployment.
 
 | Script | Target dir | Auth | Encrypted? | Status found live |
 |---|---|---|---|---|
-| `backup_fim.sh` (repo root) | `/opt/fim/backup/fim` | hardcoded plaintext password | No | Ran once, produced a 20-byte broken dump, never scheduled |
-| `setup_backups.sh` → generates a script into `/opt/fim/fim-backups/scripts/` | `/opt/fim/fim-backups/dumps` | `~/.pgpass` | No | Interactive (`read` prompt) — can't run unattended as written |
-| *(the actual script found live at)* `/opt/fim/fim-backups/scripts/*.sh` — **not in this repo at all** | `/opt/fim/fim-backups/dumps` | hardcoded plaintext password | No | Untracked; unclear if ever scheduled |
-| `backup-complete-fim-local.sh` | `/backup/fim` | `.pgpass` (no hardcoded password — the best-practice one of the five) | No | Not verified scheduled |
-| `gap16_backup_encryption.sh` → generates `/usr/local/bin/fim-backup.sh` | `/opt/fim/fim-backups` | peer auth (`sudo -u postgres`, no password at all) | **Yes — GPG AES-256, verified decrypt roundtrip before deleting plaintext** | Ran once successfully in June, its cron entry (`/etc/cron.d/fim-backup`) had disappeared by August with no explanation found |
+| `archive/scripts/backup_fim.sh` (was repo root) | `/opt/fim/backup/fim` | hardcoded plaintext password (already rotated) | No | Ran once, produced a 20-byte broken dump, never scheduled |
+| `archive/scripts/setup_backups.sh` (was `scripts/`) → generates a script into `/opt/fim/fim-backups/scripts/` | `/opt/fim/fim-backups/dumps` | `~/.pgpass` | No | Interactive (`read` prompt) — can't run unattended as written |
+| *(the actual script found live at)* `/opt/fim/fim-backups/scripts/*.sh` — **never in this repo at all** | `/opt/fim/fim-backups/dumps` | hardcoded plaintext password | No | Untracked; unclear if ever scheduled; nothing to retire in git |
+| `archive/scripts/backup-complete-fim-local.sh` (was `scripts/`) | `/backup/fim` | `.pgpass` (no hardcoded password — the best-practice one of the retired four) | No | Not verified scheduled |
+| **`scripts/gap16_backup_encryption.sh`** (active) → generates `/usr/local/bin/fim-backup.sh` | `/opt/fim/fim-backups` | peer auth (`sudo -u postgres`, no password at all) | **Yes — GPG AES-256, verified decrypt roundtrip before deleting plaintext** | Ran once successfully in June, its cron entry (`/etc/cron.d/fim-backup`) had disappeared by August with no explanation found |
 
-**Recommendation: standardize on `gap16_backup_encryption.sh`'s mechanism and retire
-the other four** (or at minimum, stop deploying them to new servers — don't spend
-time debugging `backup_fim.sh`'s hardcoded password or `setup_backups.sh`'s
-interactive prompt, they're superseded). It's the only one that's actually encrypted,
-doesn't need a stored plaintext credential, and self-verifies before deleting the
-unencrypted dump.
+It's the only one that's actually encrypted, doesn't need a stored plaintext
+credential, and self-verifies before deleting the unencrypted dump.
 
 ```bash
 sudo bash scripts/gap16_backup_encryption.sh
@@ -589,15 +615,17 @@ gpg --batch --passphrase-file /etc/fim/backup-passphrase \
   `etc/systemd/system/fim-agent.service` was also fixed to match the `/opt/fim-agent`
   convention that `agent-install.sh`/README/§12 already agreed on (it was the one
   outlier, using `/opt/fim/agent` + a stale venv path).
-- `etc/systemd/system/fim-frontend-build.service` + `scripts/build-frontend.sh` exist
-  but aren't referenced by any documented workflow — the actual documented build step
-  is a manual `cd frontend && npm run build` (§7/README). Not wired up to anything,
-  not wrong, just dead weight unless someone's using it undocumented.
-- `scripts/gap21_baseline_version_control.sh` hardcodes `/opt/fim/baselines-git`
-  rather than respecting `FIM_HOME`.
-- Five overlapping backup script variants exist (§13) — worth actually deleting the
-  four superseded ones instead of just documenting around them, so a future
-  deployment doesn't rediscover the same confusion from scratch.
+- ~~`fim-frontend-build.service` undocumented~~ — fixed 2026-08-20, see §7. It's an
+  optional convenience wrapper around the manual build step, not a required step.
+- ~~`gap21_baseline_version_control.sh` hardcodes `/opt/fim/baselines-git`~~ — fixed
+  2026-08-20: both the script's own `BASELINES_GIT` variable and the
+  `BASELINES_GIT_DIR` constant in the `baseline_version_control.py` service it
+  generates now respect `FIM_HOME` (falling back to `/opt/fim` unchanged).
+- ~~No first-admin-user creation step~~ — fixed 2026-08-20:
+  `scripts/create_first_admin.py`, documented in §5.
+- ~~Five overlapping backup script variants~~ — fixed 2026-08-20, see §13: three
+  retired to `archive/scripts/`, one was never in git, `gap16_backup_encryption.sh`
+  is the one active script now.
 - `fim.scans` stores each scan's full file listing as JSONB (`scan_data`) with no
   hard upper bound beyond the 30-day-null / 3-month-delete retention in
   `cleanup_scan_data.sh` — for a very large monitored fleet this could still

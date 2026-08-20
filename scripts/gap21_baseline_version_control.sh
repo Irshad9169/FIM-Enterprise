@@ -24,7 +24,7 @@ set -e
 
 FIM_DIR="/usr/local/opt/fim"
 FIM_APP="$FIM_DIR/app"
-BASELINES_GIT="/opt/fim/baselines-git"
+BASELINES_GIT="${FIM_HOME:-/opt/fim}/baselines-git"
 PG_OS_USER="postgres"
 GAP_TAG="gap21"
 
@@ -206,7 +206,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
-BASELINES_GIT_DIR = "/opt/fim/baselines-git"
+BASELINES_GIT_DIR = os.environ.get("FIM_HOME", "/opt/fim") + "/baselines-git"
 
 
 def _git(args: list[str], cwd: str = BASELINES_GIT_DIR) -> tuple[int, str]:

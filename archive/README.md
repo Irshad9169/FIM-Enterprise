@@ -20,7 +20,19 @@ Safe to delete entirely once no longer needed for reference.
   has no `next` dependency and `frontend/tsconfig.json` only includes `src`.
 - `frontend-misc/` — stray `tree`-command output dumps (`*.txt`), accidental empty
   files (`ls`, `npm`, `tsc`, `bTime`), a source tarball snapshot, and a stray `.new` file.
-- `scripts/` — a superseded `.sh-bak` script.
+- `scripts/` — a superseded `.sh-bak` script, plus (2026-08-20) three of the five
+  overlapping backup script variants documented in `docs/PRODUCTION_DEPLOYMENT.md`
+  §13: `backup_fim.sh` (hardcoded plaintext DB password — already rotated by the
+  user directly, per [[project-pending-security-cleanup]]/prior session), which
+  used to live at repo root; `setup_backups.sh` (interactive `read` prompt, can't
+  run unattended, references a nonexistent `fim-server` service); and
+  `backup-complete-fim-local.sh` (`.pgpass`-based, no hardcoded password — the
+  best of the four retired ones, but still superseded). `gap16_backup_encryption.sh`
+  is the one kept active — real GPG encryption, peer-auth (no stored password at
+  all), verified decrypt roundtrip before deleting the plaintext dump. A fourth
+  variant (an untracked script at `/opt/fim/fim-backups/scripts/*.sh` on a real
+  deployment) was never in git at all — nothing to archive there, just don't
+  copy it to a new server.
 - `backups/` — the former root-level `backups/` folder, consolidated here.
 - `root/` — old README, a stray `tree` dump, a sample generated report, and an
   unused root-level `package.json`/`package-lock.json` (the real frontend deps live
@@ -45,14 +57,6 @@ Safe to delete entirely once no longer needed for reference.
 - `app/api/token.json` — contains a live JWT. Recommend rotating the signing secret
   and deleting the file rather than archiving it (archiving doesn't remove it from
   git history).
-- `backup_fim.sh` (root) — contains a hardcoded plaintext DB password. Superseded by
-  `scripts/backup-complete-fim-local.sh` (uses `.pgpass`), but left in place pending
-  a decision on rotating the exposed password. Update 2026-08-11: found this isn't
-  the only superseded variant — `scripts/setup_backups.sh` and an untracked script
-  live at `/opt/fim/fim-backups/scripts/` on a real deployment (also hardcoded
-  password) are two more. Recommend standardizing on `gap16_backup_encryption.sh`'s
-  mechanism instead (real GPG encryption + verified restore, no stored password at
-  all — peer auth). See `docs/PRODUCTION_DEPLOYMENT.md` §13 for the full comparison.
 - `go-agent/fim-agent-go` — a committed compiled binary; kept as-is since it's a
   deploy artifact, not dead code.
 - `load_test.py` (root) — an active dev/test tool.
