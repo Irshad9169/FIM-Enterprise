@@ -33,6 +33,7 @@ from datetime import datetime, date, timedelta, time, timezone
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import db_manager
 from app.models.daily_report import DailyReport, ReportChange, ReportAgent
 
@@ -40,10 +41,6 @@ logger = logging.getLogger("report_scheduler")
 
 # IST is UTC+5:30
 IST = timezone(timedelta(hours=5, minutes=30))
-
-# Default: generate report at 09:00 AM IST
-DEFAULT_SCHEDULE_HOUR = 9
-DEFAULT_SCHEDULE_MINUTE = 0
 
 
 class ReportScheduler:
@@ -57,10 +54,11 @@ class ReportScheduler:
     """
 
     def __init__(self):
-        import os
-        self.enabled = os.getenv("REPORT_AUTO_GENERATE", "true").lower() in ("true", "1", "yes")
-        self.hour = int(os.getenv("REPORT_SCHEDULE_HOUR", str(DEFAULT_SCHEDULE_HOUR)))
-        self.minute = int(os.getenv("REPORT_SCHEDULE_MINUTE", str(DEFAULT_SCHEDULE_MINUTE)))
+        # Sourced from Settings (REPORT_* in .env) instead of bare
+        # os.getenv() — see app/core/config.py for why.
+        self.enabled = settings.report_auto_generate
+        self.hour = settings.report_schedule_hour
+        self.minute = settings.report_schedule_minute
         self._task: asyncio.Task = None
         self._hourly_task: asyncio.Task = None
         self._running = False

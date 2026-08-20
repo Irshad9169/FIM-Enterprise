@@ -193,18 +193,19 @@ JIRA_EMAIL=
 JIRA_API_TOKEN=
 ```
 
-⚠️ **`.env` alone is not enough** — several values (`SECRET_KEY`, `JWT_ALGORITHM`,
-`ACCESS_TOKEN_EXPIRE_MINUTES`, `REPORT_AUTO_GENERATE`, `REPORT_SCHEDULE_HOUR`,
-`REPORT_SCHEDULE_MINUTE`) are read via `os.getenv()` directly in `app/core/security.py`
-and `app/services/report_scheduler.py`, bypassing the pydantic `Settings` class that
-actually loads `.env`. Unless `.env` is also loaded as real **process** environment
-variables, these all silently fall back to hardcoded defaults —
-`SECRET_KEY` falls back to the literal string `"your-secret-key-change-in-production"`,
-a live authentication bypass if missed. **The systemd unit must include:**
-```ini
-EnvironmentFile=/opt/fim/.env
-```
-This is non-optional. See §9 for the full unit file with this included.
+~~⚠️ `.env` alone is not enough~~ — fixed 2026-08-20: `SECRET_KEY`, `ALGORITHM`
+(previously misread as the nonexistent `JWT_ALGORITHM` — that naming mismatch is
+also fixed), `ACCESS_TOKEN_EXPIRE_MINUTES`, `REPORT_AUTO_GENERATE`,
+`REPORT_SCHEDULE_HOUR`, and `REPORT_SCHEDULE_MINUTE` now all read from the
+`Settings` object (`app/core/config.py`) instead of bare `os.getenv()` calls in
+`app/core/security.py`/`app/services/report_scheduler.py`. `Settings` loads
+`.env` directly regardless of whether it's also exported as real process
+environment — so a plain `.env` file at `$FIM_HOME/.env` is genuinely sufficient
+now, and a missing `SECRET_KEY` fails loudly at startup (`pydantic.ValidationError`)
+instead of silently signing tokens with a hardcoded fallback string.
+`EnvironmentFile=/opt/fim/.env` in the systemd unit (§9) is still good practice —
+some other tooling may still expect real process env vars — but it is no longer
+the only thing standing between a working `.env` and a live auth bypass.
 
 ---
 
@@ -580,11 +581,8 @@ gpg --batch --passphrase-file /etc/fim/backup-passphrase \
   hardcoded for that instance.
 - `SMTP_*` settings in `.env.example`/`config.py` are dead code for the same reason —
   either wire `email_service.py` to use them as an SMTP fallback, or remove them.
-- `SECRET_KEY`/`JWT_ALGORITHM`/`ACCESS_TOKEN_EXPIRE_MINUTES`/`REPORT_*` reading via
-  `os.getenv()` instead of the `Settings` object is fragile — works today only because
-  `EnvironmentFile=` is now wired into the systemd unit, but a future refactor that
-  forgets this will silently reintroduce the auth bypass this guide had to fix live.
-  Worth consolidating onto `settings.*` everywhere.
+- ~~`SECRET_KEY`/`JWT_ALGORITHM`/`ACCESS_TOKEN_EXPIRE_MINUTES`/`REPORT_*` via
+  `os.getenv()`~~ — fixed 2026-08-20, see §5.
 - `scripts/gap21_baseline_version_control.sh` hardcodes `/opt/fim/baselines-git`
   rather than respecting `FIM_HOME`.
 - Five overlapping backup script variants exist (§13) — worth actually deleting the

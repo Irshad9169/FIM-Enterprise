@@ -19,7 +19,11 @@ class Settings(BaseSettings):
     # Security
     secret_key: str
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 1440
+    # 8h, matching app/core/security.py's long-standing hardened default
+    # (its docstring: "Default expiry reduced to 8 hours") — this field
+    # was previously unused (security.py read its own os.getenv() with
+    # this exact same fallback value), so this isn't a behavior change.
+    access_token_expire_minutes: int = 480
     
     # CORS — dev-server origins by default; production MUST override via
     # .env (a wildcard here would be pointless anyway once combined with
@@ -49,6 +53,14 @@ class Settings(BaseSettings):
     jira_url: str = ""
     jira_email: str = ""
     jira_api_token: str = ""
+
+    # Daily report auto-generation (app/services/report_scheduler.py) —
+    # previously its own os.getenv() calls, same fragility as SECRET_KEY
+    # above (silently falls back if EnvironmentFile= isn't wired into the
+    # systemd unit), just lower-stakes since it's a schedule, not a secret.
+    report_auto_generate: bool = True
+    report_schedule_hour: int = 9      # 0-23, IST
+    report_schedule_minute: int = 0    # 0-59
 
     class Config:
         env_file = f"{FIM_HOME}/.env"

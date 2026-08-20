@@ -15,13 +15,22 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import os
 import uuid
 import bcrypt
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))  # 8 hours default
+from app.core.config import settings
+
+# Sourced from the validated Settings object (fails loudly at startup if
+# SECRET_KEY is missing) instead of a bare os.getenv() with an insecure
+# fallback string — that fallback previously kicked in silently whenever a
+# systemd unit didn't have EnvironmentFile= wired in, a real auth-bypass
+# risk this project has hit live before. Also fixes a naming mismatch:
+# .env.example has always documented ALGORITHM, but the old os.getenv()
+# here read JWT_ALGORITHM instead, so setting ALGORITHM never actually did
+# anything.
+SECRET_KEY = settings.secret_key
+ALGORITHM = settings.algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 TOKEN_ISSUER = "fim-enterprise"
 
 security = HTTPBearer()
