@@ -109,9 +109,13 @@ venv/bin/alembic upgrade head
 ```
 now creates the schema, all 33 tables, and every trigger (`protect_alert_evidence`,
 `raise_audit_immutable`) from nothing. Existing instances (already stamped past
-`0001`) are unaffected either way — Alembic only walks forward from the current
-revision, so it never attempts to re-run `0000` against a database that already
-has these tables, and picks up `0014` as a normal forward step.
+`0001`) never attempt to re-run `0000` — Alembic only walks forward from the
+current revision. `0014` is different: it **will** execute for real against an
+existing instance once upgraded past `0013`, since its DDL came from a `pg_dump`
+of `fim_db` itself — those 9 tables already exist there. It's written
+idempotently for exactly that reason (`CREATE TABLE`/`CREATE INDEX ... IF NOT
+EXISTS`, constraints/FKs wrapped to swallow "already exists") specifically so
+that's safe rather than failing with `relation already exists`.
 
 **Verified 2026-08-20 on test06** against a genuinely empty `fim_fresh_test`
 database: `alembic upgrade head` ran the full `0000`→`0013` chain cleanly and
