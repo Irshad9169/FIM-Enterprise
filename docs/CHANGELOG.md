@@ -4,6 +4,113 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-08-20: Fresh-install/migration portability audit and fixes
+
+User asked whether the project could migrate easily to a new server. A research
+agent produced a bottleneck list with file:line evidence; each finding was fixed
+one at a time, verified, and committed to `feature/upgrades`
+(`21f8e6b`…`c7149f5`).
+
+- **No from-scratch schema (the real blocker)**: `alembic upgrade head` against a
+  genuinely empty database previously created almost nothing — migration `0001`
+  was a no-op, and every real table was assumed to already exist. New migrations
+  `0000_initial_schema` (24 tables — the 22 ORM-modeled ones, DDL generated
+  mechanically from live SQLAlchemy metadata, plus 2 of the 11 "unmanaged"
+  raw-SQL tables whose DDL already existed in-repo) and
+  `0014_unmanaged_tables_dump` (the remaining 9, a real schema-only `pg_dump`
+  from `fim_db` — not guessed, since two of those tables have real gotchas that
+  guessing would've missed: `scans_archive` has no primary key at all in
+  production, and `file_changes.scan_id` has no FK to `fim.scans` despite the
+  name) now bootstrap all 33 tables + both tamper-evidence triggers from
+  nothing. Verified end-to-end on test06 against a scratch `fim_fresh_test`
+  database: 34 relations, `alembic_version` at head. One real bug caught during
+  that validation: `env.py`'s new `CREATE SCHEMA` call needed its own explicit
+  `connection.commit()` — without it, Alembic's own transaction wrapped the
+  whole 14-migration batch as a nested savepoint instead of the real
+  transaction, and it silently rolled back on connection close with every
+  "Running upgrade" line still logging as if it had succeeded.
+- **CORS origins were hardcoded** to test06's specific hostnames in
+  `app/main.py`. Now reads `settings.cors_origins` (`CORS_ORIGINS` in `.env`,
+  a field that existed but was never actually wired up). Zero-risk to deploy:
+  test06's `.env` already had `CORS_ORIGINS` set to the exact values that were
+  hardcoded, just never read.
+- **`SECRET_KEY`/`ALGORITHM`/`ACCESS_TOKEN_EXPIRE_MINUTES`
+  (`app/core/security.py`) and `REPORT_AUTO_GENERATE`/`REPORT_SCHEDULE_HOUR`/
+  `REPORT_SCHEDULE_MINUTE` (`report_scheduler.py`) read via bare `os.getenv()`**
+  with an insecure fallback (`SECRET_KEY` defaulted to the literal string
+  `"your-secret-key-change-in-production"`) that kicked in silently if a
+  systemd unit didn't load `.env` into real process environment — the same
+  class of live auth-bypass risk already found and fixed operationally once
+  before (2026-07-24, see below). Now both read from the validated `Settings`
+  object, which fails loudly (`pydantic.ValidationError`) if `secret_key` is
+  missing, and loads `.env` directly regardless of process environment. Also
+  fixed a naming mismatch found in the process: `.env.example` always
+  documented `ALGORITHM`, but the old code read `JWT_ALGORITHM` instead, so
+  setting `ALGORITHM` never did anything.
+- **Conflicting systemd unit templates**: `fim-backend.service` had a real bug
+  (`WorkingDirectory=/opt/fim` but `ExecStart` pointed at a different
+  `/usr/local/opt/fim` venv), ran as `root`, single worker, no
+  `EnvironmentFile=`. Fixed to match what `PRODUCTION_DEPLOYMENT.md` already
+  recommended. `fim-server.service` — a full duplicate under a different unit
+  name, still referenced by a family of older scripts (`deploy-dashboard.sh`,
+  `fix-cors.sh`, `verify-dashboard.sh`, `verify_phase1.sh`,
+  `verify_phase2_deployment.sh`) that predate the `fim-backend` naming — was
+  archived rather than left live. `fim-agent.service` was also fixed; it was
+  the one file still using `/opt/fim/agent` while `agent-install.sh`, README,
+  and the deployment guide's own agent section all already agreed on
+  `/opt/fim-agent`.
+- Smaller fixes closed the same day: `gap21_baseline_version_control.sh`
+  hardcoded `/opt/fim/baselines-git` instead of respecting `FIM_HOME` (fixed in
+  both the script and the `baseline_version_control.py` service it generates);
+  no first-admin-user creation step existed for a genuine from-scratch install
+  (added `scripts/create_first_admin.py` — interactive, password-policy
+  enforced, refuses to run if an admin already exists); three of five
+  overlapping backup script variants (`backup_fim.sh`, `setup_backups.sh`,
+  `backup-complete-fim-local.sh`) retired to `archive/scripts/`, leaving
+  `gap16_backup_encryption.sh` as the one active script; `fim-frontend-build.service`
+  was undocumented (not dead — documented instead of removed).
+- Explicitly declined/deferred, not fixed: RT ticket URL hardcoded in 5
+  frontend files (user: not needed unless targeting a different org); real
+  secrets checked into git — `agent/config/agent_config.yaml` and
+  `master_configs/test06.hyd.int.untd.com.yaml` (user: "leave it and record
+  it" — joins the existing token.json rotation queue).
+
+## 2026-08-17: Bulk-select and bulk-submit for Daily Report agents
+
+Analysts previously had to click Submit on each agent individually within a
+report, even when several hosts shared the same RT ticket. Added per-row
+checkboxes (both classic and grouped report views), a "select all pending"
+toggle, and a bulk-submit modal that keeps each agent's own RT#/note
+independently editable (pre-filled from whatever's already correlated) and
+submits them all in one pass via the existing per-hostname submit endpoint —
+no backend change needed.
+
+## 2026-08-14: Postgres log growth from `log_statement = 'mod'`, unrelated to the two disk-full incidents below
+
+A day after the `log_duration = 'on'` incident (2026-08-13) was fixed, Postgres's
+log directory started growing again — `postgresql-Fri.log` reached 1.1GB within
+hours. Different root cause this time: `log_statement = 'mod'` logs the full text
+of every INSERT/UPDATE/DELETE/DDL statement (not just slow ones), and
+`log_parameter_max_length = -1` meant each logged statement's parameters were
+dumped with no length cap — `threatos`'s high-frequency writes with full JSONB
+payloads were the dominant contributor, same shared-instance pattern as the prior
+incident. A second, independent bug compounded it: `log_filename =
+'postgresql-%a.log'` names files by weekday only, so when `log_rotation_size`
+(100MB) tried to trigger mid-day, Postgres couldn't produce a new filename and
+just kept appending to the same file — the size cap silently never took effect
+within a day.
+
+Fixed via `ALTER SYSTEM` (reload only, no restart): `log_statement = 'none'`
+(errors and slow queries ≥5s still logged via `log_min_duration_statement`,
+which was fine and not the problem), `log_parameter_max_length = 512` (truncates
+rather than dumping full payloads even for logged slow queries), and
+`log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'` (timestamped, so every
+rotation gets a distinct file and the size cap actually works), followed by
+`pg_rotate_logfile()` to apply immediately. Added `/usr/local/bin/pg-log-cleanup.sh`
+(gzips logs older than 2 days, deletes gzipped ones older than 30) scheduled via
+the same `cronwrap` convention as `fim-disk-cleanup.sh`. Confirmed fixed:
+daily logs dropped to 54K–110K/day, down from 900MB–4.5GB/day.
+
 ## 2026-08-13: Second disk-full incident — different root cause this time
 
 Disk hit 0 bytes free again, two days after the incident below was believed fixed.

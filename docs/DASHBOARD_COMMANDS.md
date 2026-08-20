@@ -62,14 +62,14 @@ cd frontend && npm run build
 
 ### API connection / CORS errors
 ```bash
-grep -A6 "allow_origins" app/main.py
+grep CORS_ORIGINS $FIM_HOME/.env   # default FIM_HOME is /opt/fim
 ```
-CORS origins are a **hardcoded Python list in `app/main.py`**, not read from
-`.env`'s `CORS_ORIGINS` (that setting is currently dead code — see
-`PRODUCTION_DEPLOYMENT.md`'s appendix). If the frontend's actual origin isn't in
-that list, every API call fails silently in the browser console with a CORS error,
-not a clear "add your origin" message. Edit the list directly and restart the
-backend.
+As of 2026-08-20, CORS origins are read from `CORS_ORIGINS` in `.env`
+(`app/main.py` → `settings.cors_origins`), not hardcoded in source anymore. The
+default (no `CORS_ORIGINS` set) is localhost dev-server origins only — a real
+deployment's frontend origin must be added explicitly, or every API call fails
+silently in the browser console with a CORS error, not a clear "add your origin"
+message. Edit `.env` and restart the backend; no source edit needed.
 
 ### 500 errors that don't show up in the browser
 ```bash

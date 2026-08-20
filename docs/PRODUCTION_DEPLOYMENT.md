@@ -91,6 +91,18 @@ against a genuinely empty database, no `pg_dump`/`pg_restore` required.
   or index in production, and `file_changes.scan_id` has no FK to `fim.scans`
   despite the name — both faithfully preserved as-is rather than "fixed."
 
+The `fim_app` role and `fim_db` database itself are **not** created by any
+migration — Alembic connects to an already-existing, empty database, it doesn't
+create the database itself. Create both first:
+```bash
+sudo -u postgres psql << 'SQL'
+CREATE USER fim_app WITH PASSWORD 'a-new-strong-password';
+CREATE DATABASE fim_db OWNER fim_app;
+SQL
+```
+Then, from the Python backend's venv (§5 — needs `requirements.txt` installed
+and `DATABASE_URL` set in `.env` first; skip ahead to §5 and come back here if
+doing this in order):
 ```bash
 cd /opt/fim
 venv/bin/alembic upgrade head

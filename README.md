@@ -267,9 +267,9 @@ Run these scripts in order on a fresh deployment:
 | `scripts/gap15_agent_rate_limiting.sh` | #15 | Agent registration flooding |
 | `scripts/gap16_backup_encryption.sh` | #16 | Plaintext database backups (⚠️ see [PRODUCTION_DEPLOYMENT.md §13](docs/PRODUCTION_DEPLOYMENT.md) before scheduling this — its default retention can exceed available disk on a small volume) |
 | `scripts/gap17_csp_headers.sh` | #17 | Missing Content-Security-Policy headers |
-| `scripts/gap18_cors_configuration.sh` | #18 | CORS — note `app/main.py`'s `allow_origins` is still hardcoded regardless; this script doesn't make `.env`'s `CORS_ORIGINS` live |
+| `scripts/gap18_cors_configuration.sh` | #18 | CORS — superseded 2026-08-20: `app/main.py` now reads `settings.cors_origins` (`CORS_ORIGINS` in `.env`) directly; this script's sed-patch-main.py approach is no longer needed, just edit `.env` |
 | `scripts/gap19_anomaly_detection.sh` | #19 | Anomaly detection engine (alert-volume spikes, repeated-modification patterns) |
-| `scripts/gap21_baseline_version_control.sh` | #21 | Baseline change history (git-backed) — hardcodes `/opt/fim/baselines-git`, not `FIM_HOME`-aware |
+| `scripts/gap21_baseline_version_control.sh` | #21 | Baseline change history (git-backed) — `FIM_HOME`-aware as of 2026-08-20 |
 | `scripts/gap22_mtls_activation.sh` | #22 | Mutual TLS between agent and server |
 | `scripts/gap23_baseline_diff_signing.sh` | #23 | Signed baseline diffs |
 
@@ -411,7 +411,7 @@ to close, not a missing feature.
 
 This status is kept here only as a one-line summary. For the actual, currently-accurate
 list of what's fixed, what's still dead code, and non-obvious deployment gotchas
-(hardcoded CORS origins, `SECRET_KEY` env-loading trap, etc.), see
+(dead `SMTP_*` settings, table-ownership traps after a `pg_restore`, etc.), see
 **[`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md)** — that doc is the one
 actively updated when something real is found; this README is not.
 
