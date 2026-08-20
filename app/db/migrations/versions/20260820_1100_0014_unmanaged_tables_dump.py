@@ -20,6 +20,17 @@ index in production -- not added here. `fim.file_changes.scan_id` has no FK
 to `fim.scans` despite the name -- also not added, faithfully matching
 what's actually live.
 
+Deliberately idempotent (CREATE TABLE/INDEX IF NOT EXISTS, constraints/FKs
+wrapped to swallow "already exists"): unlike 0000/0002-0013, this migration
+was written from a dump of a database that ALREADY HAS these 9 tables for
+real -- test06's fim_db, the exact source of this DDL. Alembic doesn't know
+that; it walks forward from wherever a given database is currently stamped,
+so this migration WILL be executed for real against fim_db once it's
+upgraded past 0013, not skipped just because the tables already happen to
+match. A plain (non-idempotent) CREATE TABLE would fail there with
+"relation already exists" the first time anyone ran `alembic upgrade head`
+against the real instance -- caught before that happened for real.
+
 These 9 remain in env.py's UNMANAGED_TABLES after this migration -- they
 still have no SQLAlchemy model, so autogenerate still needs to leave them
 alone; this migration only supplies the DDL, not ORM models.
@@ -42,7 +53,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 TABLE_DDL = [
 """
-CREATE TABLE fim.agent_health_events (
+CREATE TABLE IF NOT EXISTS fim.agent_health_events (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     agent_id uuid NOT NULL,
     event_type character varying(50) NOT NULL,
@@ -53,7 +64,7 @@ CREATE TABLE fim.agent_health_events (
 );
 """,
 """
-CREATE TABLE fim.api_keys (
+CREATE TABLE IF NOT EXISTS fim.api_keys (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     user_id uuid NOT NULL,
     key character varying(255) NOT NULL,
@@ -65,7 +76,7 @@ CREATE TABLE fim.api_keys (
 );
 """,
 """
-CREATE TABLE fim.baseline_history (
+CREATE TABLE IF NOT EXISTS fim.baseline_history (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     baseline_id uuid NOT NULL,
     action character varying(50) NOT NULL,
@@ -75,7 +86,7 @@ CREATE TABLE fim.baseline_history (
 );
 """,
 """
-CREATE TABLE fim.file_changes (
+CREATE TABLE IF NOT EXISTS fim.file_changes (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     scan_id uuid NOT NULL,
     agent_id uuid NOT NULL,
@@ -98,7 +109,7 @@ CREATE TABLE fim.file_changes (
 );
 """,
 """
-CREATE TABLE fim.integration_settings (
+CREATE TABLE IF NOT EXISTS fim.integration_settings (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     service_name character varying(50) NOT NULL,
     enabled boolean DEFAULT false,
@@ -111,7 +122,7 @@ CREATE TABLE fim.integration_settings (
 );
 """,
 """
-CREATE TABLE fim.retention_policies (
+CREATE TABLE IF NOT EXISTS fim.retention_policies (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     table_name character varying(100) NOT NULL,
     column_name character varying(100) NOT NULL,
@@ -124,7 +135,7 @@ CREATE TABLE fim.retention_policies (
 );
 """,
 """
-CREATE TABLE fim.scans_archive (
+CREATE TABLE IF NOT EXISTS fim.scans_archive (
     id uuid,
     agent_id uuid,
     scan_type character varying(50),
@@ -139,7 +150,7 @@ CREATE TABLE fim.scans_archive (
 );
 """,
 """
-CREATE TABLE fim.sessions (
+CREATE TABLE IF NOT EXISTS fim.sessions (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     user_id uuid NOT NULL,
     token_jti character varying(64) NOT NULL,
@@ -155,7 +166,7 @@ CREATE TABLE fim.sessions (
 );
 """,
 """
-CREATE TABLE fim.whitelist_matches (
+CREATE TABLE IF NOT EXISTS fim.whitelist_matches (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     rule_id uuid NOT NULL,
     file_path text NOT NULL,
@@ -167,7 +178,19 @@ CREATE TABLE fim.whitelist_matches (
 """,
 ]
 
-CONSTRAINT_DDL = [
+# Table constraints have no native IF NOT EXISTS in Postgres -- wrapped in a
+# DO block that swallows "already exists" (SQLSTATE 42710 / duplicate_object)
+# instead, same effect.
+def _idempotent(ddl: str) -> str:
+    return f"""
+DO $$ BEGIN
+    {ddl.strip()}
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+"""
+
+
+CONSTRAINT_DDL = [_idempotent(s) for s in [
     "ALTER TABLE ONLY fim.agent_health_events ADD CONSTRAINT agent_health_events_pkey PRIMARY KEY (id);",
     "ALTER TABLE ONLY fim.api_keys ADD CONSTRAINT api_keys_key_key UNIQUE (key);",
     "ALTER TABLE ONLY fim.api_keys ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);",
@@ -179,24 +202,24 @@ CONSTRAINT_DDL = [
     "ALTER TABLE ONLY fim.sessions ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);",
     "ALTER TABLE ONLY fim.sessions ADD CONSTRAINT sessions_token_jti_key UNIQUE (token_jti);",
     "ALTER TABLE ONLY fim.whitelist_matches ADD CONSTRAINT whitelist_matches_pkey PRIMARY KEY (id);",
-]
+]]
 
 INDEX_DDL = [
-    "CREATE INDEX idx_agent_health_events_agent ON fim.agent_health_events USING btree (agent_id, created_at DESC);",
-    "CREATE INDEX idx_agent_health_events_type ON fim.agent_health_events USING btree (event_type);",
-    "CREATE INDEX idx_api_keys_key ON fim.api_keys USING btree (key);",
-    "CREATE INDEX idx_api_keys_user_id ON fim.api_keys USING btree (user_id);",
-    "CREATE INDEX idx_file_changes_agent ON fim.file_changes USING btree (agent_id);",
-    "CREATE INDEX idx_file_changes_detected ON fim.file_changes USING btree (detected_at DESC);",
-    "CREATE INDEX idx_file_changes_scan ON fim.file_changes USING btree (scan_id);",
-    "CREATE INDEX idx_file_changes_unacked ON fim.file_changes USING btree (is_acknowledged) WHERE (is_acknowledged = false);",
-    "CREATE INDEX idx_sessions_jti ON fim.sessions USING btree (token_jti);",
-    "CREATE INDEX idx_sessions_user_id ON fim.sessions USING btree (user_id);",
-    "CREATE INDEX idx_sessions_user_revoked ON fim.sessions USING btree (user_id, is_revoked);",
-    "CREATE INDEX idx_whitelist_matches_rule ON fim.whitelist_matches USING btree (rule_id, matched_at DESC);",
+    "CREATE INDEX IF NOT EXISTS idx_agent_health_events_agent ON fim.agent_health_events USING btree (agent_id, created_at DESC);",
+    "CREATE INDEX IF NOT EXISTS idx_agent_health_events_type ON fim.agent_health_events USING btree (event_type);",
+    "CREATE INDEX IF NOT EXISTS idx_api_keys_key ON fim.api_keys USING btree (key);",
+    "CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON fim.api_keys USING btree (user_id);",
+    "CREATE INDEX IF NOT EXISTS idx_file_changes_agent ON fim.file_changes USING btree (agent_id);",
+    "CREATE INDEX IF NOT EXISTS idx_file_changes_detected ON fim.file_changes USING btree (detected_at DESC);",
+    "CREATE INDEX IF NOT EXISTS idx_file_changes_scan ON fim.file_changes USING btree (scan_id);",
+    "CREATE INDEX IF NOT EXISTS idx_file_changes_unacked ON fim.file_changes USING btree (is_acknowledged) WHERE (is_acknowledged = false);",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_jti ON fim.sessions USING btree (token_jti);",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON fim.sessions USING btree (user_id);",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_user_revoked ON fim.sessions USING btree (user_id, is_revoked);",
+    "CREATE INDEX IF NOT EXISTS idx_whitelist_matches_rule ON fim.whitelist_matches USING btree (rule_id, matched_at DESC);",
 ]
 
-FK_DDL = [
+FK_DDL = [_idempotent(s) for s in [
     "ALTER TABLE ONLY fim.agent_health_events ADD CONSTRAINT agent_health_events_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES fim.agents(id) ON DELETE CASCADE;",
     "ALTER TABLE ONLY fim.api_keys ADD CONSTRAINT api_keys_user_id_fkey FOREIGN KEY (user_id) REFERENCES fim.users(id) ON DELETE CASCADE;",
     "ALTER TABLE ONLY fim.baseline_history ADD CONSTRAINT baseline_history_baseline_id_fkey FOREIGN KEY (baseline_id) REFERENCES fim.baselines(id);",
@@ -206,7 +229,7 @@ FK_DDL = [
     "ALTER TABLE ONLY fim.sessions ADD CONSTRAINT sessions_revoked_by_fkey FOREIGN KEY (revoked_by) REFERENCES fim.users(id);",
     "ALTER TABLE ONLY fim.sessions ADD CONSTRAINT sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES fim.users(id) ON DELETE CASCADE;",
     "ALTER TABLE ONLY fim.whitelist_matches ADD CONSTRAINT whitelist_matches_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES fim.whitelist_rules(id) ON DELETE CASCADE;",
-]
+]]
 
 
 def upgrade() -> None:
