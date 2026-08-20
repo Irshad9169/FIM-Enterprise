@@ -227,10 +227,14 @@ After=network.target postgresql-15.service
 
 [Service]
 Type=simple
-WorkingDirectory=/usr/local/opt/fim
-ExecStart=/usr/local/opt/fim/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+User=secauto
+Group=secauto
+WorkingDirectory=/opt/fim
+Environment="PATH=/opt/fim/venv/bin"
+EnvironmentFile=/opt/fim/.env
+ExecStart=/opt/fim/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 Restart=always
-RestartSec=5
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target

@@ -25,6 +25,20 @@ Safe to delete entirely once no longer needed for reference.
 - `root/` — old README, a stray `tree` dump, a sample generated report, and an
   unused root-level `package.json`/`package-lock.json` (the real frontend deps live
   in `frontend/package.json`; all build scripts `cd frontend` before running npm).
+- `etc-fim-server.service` — 2026-08-20: a full duplicate of
+  `etc/systemd/system/fim-backend.service` under a different unit name
+  (`fim-server`), with `secauto`/4-workers/no-`EnvironmentFile=` vs the other's
+  `root`/1-worker at the time. `fim-backend` is the name actually running in
+  production (`fim-backend`/`fim-backend-test`, confirmed live all session);
+  `fim-backend.service` now has the corrected content (matches
+  `docs/PRODUCTION_DEPLOYMENT.md` §9: `secauto`, 4 workers, `EnvironmentFile=`).
+  **Not fully dead**, though: `scripts/deploy-dashboard.sh`, `fix-cors.sh`,
+  `verify-dashboard.sh`, `verify_phase1.sh`, and `verify_phase2_deployment.sh`
+  all still hardcode `systemctl ... fim-server` — those scripts predate the
+  `fim-backend` naming and will silently no-op (`is-active` on a nonexistent
+  unit) against any real `fim-backend`-named deployment. Not rewritten as part
+  of this cleanup; treat any of those scripts' output as unreliable until they
+  are.
 
 ## Deliberately NOT archived
 

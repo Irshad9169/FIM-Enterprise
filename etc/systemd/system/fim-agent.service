@@ -4,9 +4,8 @@ After=network.target
 
 [Service]
 User=root
-WorkingDirectory=/opt/fim/agent
-# Using the correct VENV path
-ExecStart=/usr/local/opt/fim/venv/bin/python /opt/fim/agent/fim_agent.py --config /opt/fim/agent/config/agent_config.yaml
+WorkingDirectory=/opt/fim-agent
+ExecStart=/usr/bin/python3 /opt/fim-agent/fim_agent.py --config /opt/fim-agent/config/agent_config.yaml
 Restart=always
 RestartSec=10
 

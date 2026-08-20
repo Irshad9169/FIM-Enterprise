@@ -15,11 +15,13 @@ but `yum`/`dnf` is the primary path this repo assumes).
 - **Install path**: everything below assumes `/opt/fim`. Several source files hardcode
   this as a *fallback* default via a `FIM_HOME` environment variable (see §6) — if you
   use a different path, you must set `FIM_HOME` explicitly everywhere the app runs.
-- **Service user**: this repo has two systemd unit templates with different conventions
-  — `fim-backend.service` (root, single worker) and `fim-server.service` (`secauto` user,
-  4 workers). Pick one style and use it consistently; this guide uses the `secauto` /
-  multi-worker pattern as the recommended production template, but check what your
-  existing servers actually run and match it if consistency across your fleet matters.
+- **Service user**: fixed 2026-08-20 — `etc/systemd/system/fim-backend.service` is now
+  the one canonical template (`secauto` user, 4 workers, `EnvironmentFile=`, matching §9
+  exactly); the conflicting duplicate (`fim-server.service`, different name/user/worker
+  count) is archived at `archive/etc-fim-server.service`. If any existing server in your
+  fleet was set up from the old `fim-server`-named or root/1-worker variant, it won't
+  match this template until re-deployed — check what's actually running before assuming
+  consistency.
 
 ---
 
@@ -583,6 +585,14 @@ gpg --batch --passphrase-file /etc/fim/backup-passphrase \
   either wire `email_service.py` to use them as an SMTP fallback, or remove them.
 - ~~`SECRET_KEY`/`JWT_ALGORITHM`/`ACCESS_TOKEN_EXPIRE_MINUTES`/`REPORT_*` via
   `os.getenv()`~~ — fixed 2026-08-20, see §5.
+- ~~Conflicting systemd unit templates~~ — fixed 2026-08-20, see §0 and §9.
+  `etc/systemd/system/fim-agent.service` was also fixed to match the `/opt/fim-agent`
+  convention that `agent-install.sh`/README/§12 already agreed on (it was the one
+  outlier, using `/opt/fim/agent` + a stale venv path).
+- `etc/systemd/system/fim-frontend-build.service` + `scripts/build-frontend.sh` exist
+  but aren't referenced by any documented workflow — the actual documented build step
+  is a manual `cd frontend && npm run build` (§7/README). Not wired up to anything,
+  not wrong, just dead weight unless someone's using it undocumented.
 - `scripts/gap21_baseline_version_control.sh` hardcodes `/opt/fim/baselines-git`
   rather than respecting `FIM_HOME`.
 - Five overlapping backup script variants exist (§13) — worth actually deleting the
