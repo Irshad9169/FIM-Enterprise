@@ -102,6 +102,22 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    # Alembic creates its own bookkeeping table (alembic_version) inside
+    # MANAGED_SCHEMA *before* running any migration's upgrade() — including
+    # 0000_initial_schema, which is what actually creates that schema. On a
+    # genuinely empty database that's a chicken-and-egg failure
+    # (InvalidSchemaNameError: schema "fim" does not exist) unless the schema
+    # is guaranteed to exist here, first.
+    connection.exec_driver_sql(f"CREATE SCHEMA IF NOT EXISTS {MANAGED_SCHEMA}")
+    # Commit this as its own unit of work — leaving it open would make it an
+    # implicit outer transaction that Alembic's own begin_transaction() below
+    # doesn't know about, wrapping every migration as a nested savepoint
+    # instead of the real transaction. The outer one then never gets an
+    # explicit commit and is silently rolled back on connection close,
+    # wiping out everything (confirmed: every "Running upgrade" line logs
+    # successfully, but no tables actually persist).
+    connection.commit()
+
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
