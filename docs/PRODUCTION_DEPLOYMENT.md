@@ -413,13 +413,27 @@ running blind.
 
 ## 12. Agent deployment (per monitored server)
 
+⚠️ **Where `server.api_key`'s value comes from — this isn't issued by the server
+ahead of time.** `POST /api/v1/agents/register` (`app/api/agents.py`) is
+trust-on-first-contact: for a hostname it's never seen, it accepts whatever
+string is sent as the `X-API-Key` header and stores its hash as that agent's
+credential from then on; only a *re-registration* of an already-known hostname
+has to prove it holds the previously-established key. So the value you put in
+`agent_config.yaml` isn't looked up or validated against anything server-side
+the first time — you generate it yourself, and whatever you put there becomes
+the real credential the moment this agent first registers:
+```bash
+openssl rand -hex 32   # use this as server.api_key below
+```
+
 ```bash
 scp agent/fim_agent.py agent/config/agent_config.yaml.example root@monitored-host:/opt/fim-agent/
 ssh root@monitored-host
 cd /opt/fim-agent
 mv agent_config.yaml.example config/agent_config.yaml
 vi config/agent_config.yaml
-# Set: server.url (https://your-new-hostname), server.api_key, agent.hostname, monitored_paths
+# Set: server.url (https://your-new-hostname), server.api_key (the openssl output above),
+# agent.hostname, monitored_paths
 sudo bash scripts/gap9_encrypt_api_keys.sh    # encrypts the API key in place
 
 # Base dependencies (required — cryptography is needed to decrypt the

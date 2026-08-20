@@ -310,7 +310,12 @@ scp agent/config/agent_config.yaml.example \
 
 # Edit config on the agent host
 nano /opt/fim-agent/config/agent_config.yaml
-# Set: server.url, server.api_key, agent.hostname, monitored_paths
+# Set: server.url, server.api_key (see below), agent.hostname, monitored_paths
+
+# server.api_key isn't issued by the server ahead of time -- registration is
+# trust-on-first-contact, so whatever value you put here becomes this agent's
+# real credential the moment it first registers. Generate one yourself:
+#   openssl rand -hex 32
 
 # Encrypt the API key (run gap9 on agent host)
 sudo bash scripts/gap9_encrypt_api_keys.sh
