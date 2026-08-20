@@ -570,9 +570,14 @@ gpg --batch --passphrase-file /etc/fim/backup-passphrase \
 - ~~No `000_initial_schema.sql`~~ — fixed 2026-08-20: `0000_initial_schema` +
   `0014_unmanaged_tables_dump` now create all 33/33 real tables from nothing (§4).
   A genuine from-scratch install no longer needs `pg_dump`/`pg_restore` at all.
-- `CORS_ORIGINS` in `.env`/`config.py` is dead code — either wire `app/main.py` to
-  actually read `settings.cors_origins`, or remove the setting from `.env.example`
-  to stop it looking configurable.
+- ~~`CORS_ORIGINS` dead code~~ — fixed 2026-08-20: `app/main.py` now reads
+  `settings.cors_origins` instead of a hardcoded list. `config.py`'s default is
+  the three localhost dev-server origins only — **production deployments must
+  set `CORS_ORIGINS` in `.env`** (see `.env.example`) or the real frontend gets
+  CORS errors. This is a real behavior change for any already-running instance
+  that never had `CORS_ORIGINS` in its `.env`: check and set it *before*
+  restarting the backend with this update, matching whatever's currently
+  hardcoded for that instance.
 - `SMTP_*` settings in `.env.example`/`config.py` are dead code for the same reason —
   either wire `email_service.py` to use them as an SMTP fallback, or remove them.
 - `SECRET_KEY`/`JWT_ALGORITHM`/`ACCESS_TOKEN_EXPIRE_MINUTES`/`REPORT_*` reading via

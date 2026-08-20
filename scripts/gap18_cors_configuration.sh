@@ -1,5 +1,13 @@
 #!/bin/bash
 # =============================================================================
+# SUPERSEDED 2026-08-20: app/main.py now reads settings.cors_origins (from
+# CORS_ORIGINS in .env) instead of a hardcoded allow_origins list — this
+# script's Step 2 (sed-patching main.py's Python source directly) would
+# fight with that. To set allowed origins now, just edit CORS_ORIGINS in
+# .env and restart the backend; no source patch needed. Kept for history —
+# do not run this against a checkout that already has the settings-driven
+# CORS fix.
+# =============================================================================
 # GAP #18 FIX: CORS Configuration
 #
 # Problem: CORS configured with allow_origins=["*"], allow_methods=["*"],

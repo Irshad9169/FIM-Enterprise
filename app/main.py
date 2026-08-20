@@ -44,8 +44,11 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    # GAP #18: explicit origins instead of wildcard "*"
-    allow_origins=['https://test06.hyd.int.untd.com', 'http://test06.hyd.int.untd.com', 'http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'],
+    # GAP #18: explicit origins instead of wildcard "*" — now sourced from
+    # settings.cors_origins (CORS_ORIGINS in .env) instead of hardcoded here,
+    # so a new deployment doesn't need a source edit + rebuild just to allow
+    # its own hostname. See .env.example for the required format.
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[

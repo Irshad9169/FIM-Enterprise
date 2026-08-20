@@ -21,8 +21,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
     
-    # CORS
-    cors_origins: List[str] = ["*"]
+    # CORS — dev-server origins by default; production MUST override via
+    # .env (a wildcard here would be pointless anyway once combined with
+    # allow_credentials=True in app/main.py, which browsers reject outright).
+    cors_origins: List[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"]
     
     # SMTP (optional)
     smtp_host: str = ""
