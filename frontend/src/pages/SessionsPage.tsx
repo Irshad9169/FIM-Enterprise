@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchSessions, revokeSession, revokeAllUserSessions } from "../api/dashboard";
+import { formatServerDateTime } from "../lib/formatDate";
 import { Monitor, LogOut, X, Shield } from "lucide-react";
 
 export default function SessionsPage() {
@@ -85,9 +86,9 @@ export default function SessionsPage() {
                 <tr key={s.id} className="hover:bg-slate-800/50">
                   <td className="px-5 py-2.5 font-mono text-xs text-slate-300">{s.ip_address || "-"}</td>
                   <td className="px-5 py-2.5 text-xs text-slate-400 truncate max-w-xs">{s.user_agent?.split(" ").slice(0, 3).join(" ") || "-"}</td>
-                  <td className="px-5 py-2.5 text-xs text-slate-400">{s.created_at ? new Date(s.created_at).toLocaleString() : "-"}</td>
-                  <td className="px-5 py-2.5 text-xs text-slate-400">{s.last_activity ? new Date(s.last_activity).toLocaleString() : "-"}</td>
-                  <td className="px-5 py-2.5 text-xs text-slate-400">{s.expires_at ? new Date(s.expires_at).toLocaleString() : "-"}</td>
+                  <td className="px-5 py-2.5 text-xs text-slate-400">{formatServerDateTime(s.created_at)}</td>
+                  <td className="px-5 py-2.5 text-xs text-slate-400">{formatServerDateTime(s.last_activity)}</td>
+                  <td className="px-5 py-2.5 text-xs text-slate-400">{formatServerDateTime(s.expires_at)}</td>
                   <td className="px-5 py-2.5 text-center">
                     <button onClick={() => handleRevoke(s.id)} disabled={revoking === s.id}
                       className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-500 disabled:opacity-50 flex items-center gap-1 mx-auto">

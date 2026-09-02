@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAuditLogs, exportAuditCSV, exportAuditPDF } from "../api/dashboard";
+import { formatServerDateTime } from "../lib/formatDate";
 import { History, Search, ArrowLeft, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -128,7 +129,7 @@ export default function AuditPage() {
             {filtered.length > 0 ? filtered.map((log: any) => (
               <tr key={log.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="px-6 py-4 font-mono text-xs text-slate-400">
-                  {new Date(log.created_at).toLocaleString()}
+                  {formatServerDateTime(log.created_at)}
                 </td>
                 <td className="px-6 py-4 font-medium text-white">
                   {log.username || 'System'}

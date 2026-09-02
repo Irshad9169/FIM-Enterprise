@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.core.time_utils import as_utc
 from app.models.models import User
 from app.services.session_service import SessionService
 
@@ -21,7 +22,7 @@ async def list_active_sessions(
     for s in sessions:
         for k in s:
             if hasattr(s[k], 'isoformat'):
-                s[k] = s[k].isoformat()
+                s[k] = as_utc(s[k]).isoformat()
         s['user_id'] = str(s['user_id'])
         s['id'] = str(s['id'])
     return {"sessions": sessions}
@@ -37,7 +38,7 @@ async def my_sessions(
     for s in sessions:
         for k in s:
             if hasattr(s[k], 'isoformat'):
-                s[k] = s[k].isoformat()
+                s[k] = as_utc(s[k]).isoformat()
         s['id'] = str(s['id'])
     return {"sessions": sessions}
 

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.core.time_utils import as_utc
 from app.models.models import User
 
 router = APIRouter()
@@ -53,6 +54,7 @@ async def list_audit_logs(
                 log['details'] = {}
             # Ensure id is string
             log['id'] = str(log['id'])
+            log['created_at'] = as_utc(log['created_at'])
             logs.append(log)
             
         return logs
