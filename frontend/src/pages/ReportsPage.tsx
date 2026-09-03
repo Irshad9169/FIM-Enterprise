@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { fetchReports, generateReport, deleteReport, generateComplianceReport, generateSoxComplianceReport, archiveReports } from "../api/dashboard";
-import type { DailyReport } from "../types";
-import { Eye, Trash2, RefreshCw, Plus, Calendar, CheckCircle, Send, FileDown, Archive } from "lucide-react";
+import { fetchReports, generateReport, deleteReport, generateComplianceReport, generateSoxComplianceReport, archiveReports, fetchRecentActivity } from "../api/dashboard";
+import type { DailyReport, RecentActivity } from "../types";
+import { Eye, Trash2, RefreshCw, Plus, Calendar, CheckCircle, Send, FileDown, Archive, Ticket, GitPullRequest } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
 const STATUS_CLASSES: Record<string, string> = {
@@ -31,6 +31,11 @@ export default function ReportsPage() {
   const { data, isLoading, refetch } = useQuery<DailyReport[]>({
     queryKey: ["reports"],
     queryFn:  () => fetchReports(50),
+  });
+
+  const { data: recentActivity, isLoading: activityLoading, refetch: refetchActivity } = useQuery<RecentActivity>({
+    queryKey: ["reports-recent-activity"],
+    queryFn:  () => fetchRecentActivity(5),
   });
 
   const deleteMutation = useMutation({
@@ -211,6 +216,85 @@ export default function ReportsPage() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* Recent activity — RT (Production Systems queue) + implemented CMRs, last 5 days */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center">
+            <h2 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <Ticket size={15} className="text-sky-400" />
+              Tickets in Production Systems queue — updated in the last 5 days
+            </h2>
+            <button onClick={() => refetchActivity()} title="Refresh" className="text-slate-500 hover:text-slate-300">
+              <RefreshCw size={13} />
+            </button>
+          </div>
+          {activityLoading ? (
+            <div className="text-center py-10 text-slate-500 text-xs">Loading…</div>
+          ) : (recentActivity?.rt_tickets || []).length === 0 ? (
+            <div className="text-center py-10 text-slate-500 text-xs">No tickets in the last 5 days.</div>
+          ) : (
+            <div className="divide-y divide-slate-800/70 max-h-96 overflow-y-auto">
+              {recentActivity!.rt_tickets.map(t => (
+                <a key={t.ticket_id} href={t.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-start gap-3 px-5 py-2.5 text-xs hover:bg-slate-800/40 transition-colors">
+                  <span className="text-sky-400 font-mono font-bold shrink-0">#{t.ticket_id}</span>
+                  <span className="text-slate-300">{t.subject}</span>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center">
+            <h2 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <GitPullRequest size={15} className="text-violet-400" />
+              CMRs implemented in the last 5 days
+            </h2>
+            <button onClick={() => refetchActivity()} title="Refresh" className="text-slate-500 hover:text-slate-300">
+              <RefreshCw size={13} />
+            </button>
+          </div>
+          {activityLoading ? (
+            <div className="text-center py-10 text-slate-500 text-xs">Loading…</div>
+          ) : (recentActivity?.cmrs || []).length === 0 ? (
+            <div className="text-center py-10 text-slate-500 text-xs">No CMRs in the last 5 days.</div>
+          ) : (
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <table className="w-full text-xs text-left text-slate-300">
+                <thead className="bg-slate-950/60 text-slate-500 uppercase border-b border-slate-800 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-2">Request ID</th>
+                    <th className="px-4 py-2">Owner</th>
+                    <th className="px-4 py-2">Status</th>
+                    <th className="px-4 py-2">Start Time</th>
+                    <th className="px-4 py-2">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/70">
+                  {recentActivity!.cmrs.map(c => (
+                    <tr key={c.ticket_id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="px-4 py-2.5">
+                        <a href={c.url} target="_blank" rel="noopener noreferrer"
+                          className="text-violet-400 font-mono font-bold hover:underline">#{c.ticket_id}</a>
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">{c.owner}</td>
+                      <td className="px-4 py-2.5">
+                        <span className="px-2 py-0.5 rounded border text-[10px] font-bold uppercase bg-green-500/20 text-green-400 border-green-500/30">
+                          {c.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-400 whitespace-nowrap">{c.start_time}</td>
+                      <td className="px-4 py-2.5 max-w-xs truncate" title={c.description}>{c.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

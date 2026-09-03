@@ -176,6 +176,28 @@ async def list_reports(db: AsyncSession = Depends(get_db)):
     ]
 
 
+@router.get("/recent-activity")
+async def recent_activity(
+    request: Request,
+    days_back: int = 5,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    RT tickets (Production Systems queue) and implemented CMRs from the
+    last days_back days -- fleet-wide, not scoped to any one report or
+    agent. For the "recent activity" widget at the bottom of the Reports
+    list page. CMR half returns [] (not an error) whenever
+    settings.cmr_cookie_jar_path is unconfigured or its session has
+    expired -- see TicketLinkerService.fetch_recent_implemented_cmrs.
+    """
+    sso_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    rt_tickets = await TicketLinkerService.search_rt_recent_production_tickets(
+        sso_token, days_back=days_back
+    )
+    cmrs = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=days_back)
+    return {"rt_tickets": rt_tickets, "cmrs": cmrs}
+
+
 @router.post("/generate")
 async def generate_daily_report(
     req: GenerateReportRequest,

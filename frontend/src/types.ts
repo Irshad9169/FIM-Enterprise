@@ -112,6 +112,26 @@ export interface ReportTicket {
   is_linked:   boolean;
 }
 
+export interface RecentRtTicket {
+  ticket_id: string;
+  subject:   string;
+  url:       string;
+}
+
+export interface RecentCmr {
+  ticket_id:   string;
+  owner:       string;
+  status:      string;
+  start_time:  string;
+  description: string;
+  url:         string;
+}
+
+export interface RecentActivity {
+  rt_tickets: RecentRtTicket[];
+  cmrs:       RecentCmr[];
+}
+
 export interface ReportAgent {
   id:               string;
   agent_hostname:   string;

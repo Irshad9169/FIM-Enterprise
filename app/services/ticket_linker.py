@@ -15,10 +15,12 @@ import re
 import subprocess
 import json
 import base64
-from datetime import datetime, timedelta
+import http.cookiejar
+from datetime import datetime, timedelta, date
 from typing import List, Dict, Tuple, Set, Optional, Optional, List, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from bs4 import BeautifulSoup
 
 from app.core.config import settings
 
@@ -141,6 +143,14 @@ class TicketLinkerService:
         """
         Search RT for tickets mentioning a hostname.
         Checks cache first, falls back to live RT API.
+
+        Matches on Created OR LastUpdated within days_back, not Created
+        alone -- an old ticket that a human recently commented on (the
+        common case: work landed on a ticket opened months ago, not a
+        fresh one) previously fell outside the window entirely and was
+        never found, no matter how current the actual activity was.
+        LastUpdated covers any touch to the ticket -- comment,
+        correspondence, status change -- not just the original creation.
         """
         results    = []
         short_host = hostname.split(".")[0]
@@ -167,7 +177,10 @@ class TicketLinkerService:
                 ]
 
         # Live RT search
-        query = f"Subject LIKE '%{short_host}%' AND Created > '-{days_back} days'"
+        query = (
+            f"Subject LIKE '%{short_host}%' AND "
+            f"(Created > '-{days_back} days' OR LastUpdated > '-{days_back} days')"
+        )
         try:
             async with httpx.AsyncClient(**HTTPX_OPTS) as client:
                 resp = await client.get(RT_LOOKUP_URL, params={
@@ -274,6 +287,167 @@ class TicketLinkerService:
                     )
         except Exception as e:
             logger.error(f"search_jira_by_hostname({hostname}): {e}")
+        return results
+
+    # ── Recent activity (Reports page widget) ───────────────────────────────
+    # Not scoped to any one hostname -- "what's happened fleet-wide lately",
+    # for the Reports list page rather than a specific report/agent.
+
+    @staticmethod
+    async def search_rt_recent_production_tickets(token: str, days_back: int = 5) -> List[Dict]:
+        """
+        All tickets in the Production Systems queue touched in the last
+        days_back days. Created-OR-LastUpdated, same reasoning as
+        search_rt_by_hostname -- an old ticket someone just updated should
+        still show up. Query shape matches the existing get_RT_CMRs cron
+        job's own (confirmed-working) Queue/LastUpdated query.
+        """
+        query = (
+            "Queue = 'Production Systems' AND "
+            f"(Created > '-{days_back} days' OR LastUpdated > '-{days_back} days')"
+        )
+        results = []
+        try:
+            async with httpx.AsyncClient(**HTTPX_OPTS) as client:
+                resp = await client.get(RT_LOOKUP_URL, params={
+                    "query": query, "format": "s", "sso_token": token
+                })
+                if resp.status_code != 200:
+                    logger.warning(
+                        f"search_rt_recent_production_tickets: HTTP {resp.status_code}"
+                    )
+                    return results
+                for line in resp.text.strip().splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    match = re.match(r"^(\d+):\s*(.+)$", line)
+                    if match:
+                        tid, subj = match.group(1), match.group(2)
+                        results.append({
+                            "ticket_id": tid,
+                            "subject":   subj,
+                            "url":       f"{RT_UPDATE_URL}/ticket/{tid}/show",
+                        })
+        except Exception as e:
+            logger.error(f"search_rt_recent_production_tickets: {e}")
+        return results
+
+    @staticmethod
+    def _load_cmr_cookies() -> Optional[Dict[str, str]]:
+        """
+        Load whatever's currently valid from settings.cmr_cookie_jar_path
+        (Netscape cookie-file format -- curl's -b/-c format, e.g. the
+        get_RT_CMRs script's phantomid.txt). Returns None if unconfigured,
+        missing, unreadable, or fully expired -- callers must treat that
+        as "skip CMR", not an error.
+        """
+        path = settings.cmr_cookie_jar_path
+        if not path or not os.path.exists(path):
+            return None
+        jar = http.cookiejar.MozillaCookieJar(path)
+        try:
+            # ignore_discard=True: the SSO session cookie is marked
+            # discard-on-browser-close in the file, but there's no browser
+            # session here to discard it from -- we want it regardless.
+            # ignore_expires=True: the real cookie file's SSO cookie uses
+            # expiration "0" to mean "session cookie, no fixed expiry" (the
+            # normal Netscape-format convention) -- but Python's
+            # MozillaCookieJar treats a literal 0 as an already-expired
+            # epoch-0 timestamp and silently drops it if ignore_expires is
+            # left False, which was confirmed dropping the one cookie this
+            # whole feature actually needs. Filtering genuinely-expired
+            # cookies is done manually below instead, where "expires" can
+            # be told apart from "no expiry recorded".
+            jar.load(ignore_discard=True, ignore_expires=True)
+        except Exception as e:
+            logger.error(f"Failed to load CMR cookie jar {path}: {e}")
+            return None
+        now = datetime.now().timestamp()
+        cookies = {
+            c.name: c.value
+            for c in jar
+            if not c.expires or c.expires > now
+        }
+        return cookies or None
+
+    @staticmethod
+    async def fetch_recent_implemented_cmrs(days_back: int = 5) -> List[Dict]:
+        """
+        CMRs implemented in the last days_back days, via Phantom's own
+        search UI -- Phantom has no service-account/API option, only its
+        web UI behind interactive company SSO (see
+        docs/PRODUCTION_DEPLOYMENT.md). Reuses whatever session is
+        currently valid in settings.cmr_cookie_jar_path, an
+        externally-maintained cookie jar (see get_RT_CMRs) -- NOT a
+        credential FIM owns. Returns [] silently (not an error) if that
+        jar is unconfigured, unreadable, or its session has expired.
+        """
+        cookies = TicketLinkerService._load_cmr_cookies()
+        if not cookies:
+            logger.info(
+                "fetch_recent_implemented_cmrs: no valid CMR session cookie -- skipping"
+            )
+            return []
+
+        today = date.today()
+        start = today - timedelta(days=days_back)
+        params = {
+            "action": "display",
+            "type": "runadvancedsearch",
+            "mode": "prod",
+            "frame": "content",
+            "IMPLEMENTATION_ENDDATE": f"between '{start.isoformat()}' and '{today.isoformat()}'",
+            "Status": "'Implemented'",
+        }
+        try:
+            async with httpx.AsyncClient(**HTTPX_OPTS, cookies=cookies) as client:
+                resp = await client.get(CMR_URL, params=params)
+                if resp.status_code != 200:
+                    logger.warning(f"fetch_recent_implemented_cmrs: HTTP {resp.status_code}")
+                    return []
+                return TicketLinkerService._parse_cmr_results(resp.text)
+        except Exception as e:
+            logger.error(f"fetch_recent_implemented_cmrs: {e}")
+            return []
+
+    @staticmethod
+    def _parse_cmr_results(html: str) -> List[Dict]:
+        """
+        UNVERIFIED against a real authenticated response -- built from the
+        column order (Request ID, Owner, Status, StartTime, Description)
+        shown as the desired display, not a confirmed sample of Phantom's
+        actual results HTML. Expects a standard table; a row only counts
+        as a real CMR if its first cell looks like a ticket number
+        ("#123456" or "123456"), which is how header/spacer rows get
+        skipped. This WILL need adjusting against a real response before
+        it can be trusted -- flagged deliberately rather than presented
+        as verified.
+        """
+        results = []
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            for row in soup.find_all("tr"):
+                cells = [c.get_text(strip=True) for c in row.find_all(["td", "th"])]
+                if len(cells) < 5:
+                    continue
+                id_match = re.match(r"^#?(\d{5,7})$", cells[0])
+                if not id_match:
+                    continue
+                results.append({
+                    "ticket_id":   id_match.group(1),
+                    "owner":       cells[1],
+                    "status":      cells[2],
+                    "start_time":  cells[3],
+                    "description": cells[4],
+                    "url": (
+                        f"{CMR_URL}?action=display&type=viewrequest"
+                        f"&mode=prod&id={id_match.group(1)}"
+                    ),
+                    "source": "cmr",
+                })
+        except Exception as e:
+            logger.error(f"_parse_cmr_results: {e}")
         return results
 
     # ── report_tickets helpers ────────────────────────────────────────────────

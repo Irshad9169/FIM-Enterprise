@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     jira_email: str = ""
     jira_api_token: str = ""
 
+    # CMR (Phantom) has no service-account/API option -- only its own web UI
+    # behind interactive company SSO. This points at a Netscape-format
+    # cookie jar file that some OTHER, externally-maintained process
+    # refreshes (see get_RT_CMRs) -- FIM reuses whatever session is
+    # currently valid in it. Empty = CMR fetch on the Reports page is
+    # skipped entirely, not an error. This is a deliberate stopgap, not a
+    # real credential FIM owns -- see docs/PRODUCTION_DEPLOYMENT.md.
+    cmr_cookie_jar_path: str = ""
+
     # Daily report auto-generation (app/services/report_scheduler.py) —
     # previously its own os.getenv() calls, same fragility as SECRET_KEY
     # above (silently falls back if EnvironmentFile= isn't wired into the

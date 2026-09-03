@@ -66,6 +66,9 @@ export const generateReport = (reportDate: string) =>
 export const fetchReportDetail = (reportId: string) =>
   apiCall(`/api/v1/reports/${reportId}`);
 
+export const fetchRecentActivity = (daysBack = 5) =>
+  apiCall(`/api/v1/reports/recent-activity?days_back=${daysBack}`);
+
 export const deleteReport = (reportId: string) =>
   apiCall(`/api/v1/reports/${reportId}`, { method: "DELETE" });
 
