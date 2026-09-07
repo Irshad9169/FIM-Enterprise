@@ -2,14 +2,16 @@ import os, time, logging, hashlib, urllib.parse, base64, re
 from subprocess import Popen, PIPE
 from typing import Optional
 
+from app.core.config import settings
+
 logger = logging.getLogger("sso_debug")
 
 class SSOManager:
     def __init__(self):
         self.OPENSSL_BIN = '/usr/bin/openssl'
-        self.SSO_SERVER_URL = 'https://auth.qa.int.untd.com/bin/sso'
+        self.SSO_SERVER_URL = settings.sso_server_url
         self.PUBLIC_KEY_PATH = f"{os.environ.get('FIM_HOME', '/opt/fim')}/config/sso-public.pem"
-        self.APP_ID = 'FIM_ENTERPRISE' 
+        self.APP_ID = 'FIM_ENTERPRISE'
 
     def run_openssl_decrypt(self, data: bytes) -> Optional[bytes]:
         """Uses rsautl with -raw to see the entire decrypted block"""

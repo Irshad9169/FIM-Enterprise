@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     jira_email: str = ""
     jira_api_token: str = ""
 
+    # SSO login redirect target — was hardcoded in app/core/sso_manager.py
+    # (previously the QA endpoint, auth.qa.int.untd.com) with .env.example's
+    # SSO_SERVER_URL documented but never actually read. Default below is
+    # the production endpoint.
+    sso_server_url: str = "https://auth.int.untd.com/bin/sso"
+
     # CMR (Phantom) has no service-account/API option -- only its own web UI
     # behind interactive company SSO. This points at a Netscape-format
     # cookie jar file that some OTHER, externally-maintained process
