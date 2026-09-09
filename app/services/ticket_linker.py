@@ -689,8 +689,14 @@ class TicketLinkerService:
             count    = a.get("change_count", 0)
             note     = a.get("correlation_note") or ""
 
-            # Determine RT reference with subject
-            rt_num = a.get("manual_rt") or a.get("correlated_rt") or None
+            # Determine RT reference with subject. manual_rt of "" means an
+            # analyst explicitly rejected the auto-correlated match -- must
+            # NOT fall back to correlated_rt in that case, only when
+            # manual_rt was never set at all (None). `or` treated both the
+            # same, silently re-attaching a ticket the analyst had
+            # deliberately cleared by the time the report got published.
+            manual_rt = a.get("manual_rt")
+            rt_num = manual_rt if manual_rt is not None else a.get("correlated_rt")
             if rt_num:
                 rt_subj = rt_subjects.get(str(rt_num), "")
                 rt_display = f"RT#{rt_num} — {rt_subj}" if rt_subj else f"RT#{rt_num}"

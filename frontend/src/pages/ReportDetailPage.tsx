@@ -55,6 +55,16 @@ function SeverityDot({ severity }: { severity: string | null }) {
   return <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${colors[severity ?? "medium"] ?? "bg-slate-400"}`} />;
 }
 
+// manual_rt of "" means an analyst explicitly reviewed and rejected the
+// auto-correlated match -- must NOT fall back to correlated_rt in that case.
+// Only fall back when manual_rt was never set at all (null/undefined).
+// `manual_rt || correlated_rt` looked equivalent but silently treated
+// "explicitly rejected" the same as "never reviewed", making it impossible
+// to ever clear an incorrect auto-match from the report.
+function resolveEffectiveRt(agent: { manual_rt: string | null; correlated_rt: string | null }): string | null {
+  return agent.manual_rt != null ? agent.manual_rt : agent.correlated_rt;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Edit-Agent Modal
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,10 +79,17 @@ function EditAgentModal({ agent, reportId, onClose }: { agent: ReportAgent; repo
   const save = async () => {
     setBusy(true);
     try {
+      // Send whatever's actually in the form, including an empty string --
+      // this modal is "save the whole form", so a field the analyst
+      // deliberately cleared (e.g. rejecting an auto-correlated RT that
+      // doesn't apply) must persist as empty, not silently drop out of the
+      // request. `field || undefined` used to do exactly that: JSON.stringify
+      // omits an undefined-valued key entirely, so the backend never saw an
+      // update was even attempted and the old value stuck around forever.
       await updateReportAgent(reportId, agent.agent_hostname, {
-        manual_rt:        rt   || undefined,
-        correlated_cmr:   cmr  || undefined,
-        correlation_note: note || undefined,
+        manual_rt:        rt,
+        correlated_cmr:   cmr,
+        correlation_note: note,
       });
       qc.invalidateQueries({ queryKey: ["report", reportId] });
       onClose();
@@ -463,7 +480,7 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
   const [searching,    setSearching]    = useState(false);
   const [skipping,     setSkipping]     = useState(false);
 
-  const effectiveRt = agent.manual_rt || agent.correlated_rt;
+  const effectiveRt = resolveEffectiveRt(agent);
   // Classic mode keeps the exact original raw count. Grouped mode dedupes
   // first so this number agrees with what the bucket breakdown below
   // actually shows — a file detected twice in one day is one change, not two.
@@ -642,7 +659,7 @@ function HostActionRow({ agent, report, selected = false, onToggleSelect }: {
   const [submitModal, setSubmitModal] = useState(false);
   const [searching, setSearching] = useState(false);
 
-  const effectiveRt = agent.manual_rt || agent.correlated_rt;
+  const effectiveRt = resolveEffectiveRt(agent);
   const selectable = agent.status !== "submitted" && agent.status !== "skipped" && !!onToggleSelect;
 
   const handleFindTickets = async () => {
