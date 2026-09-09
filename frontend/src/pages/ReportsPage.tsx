@@ -7,9 +7,9 @@ import { Eye, Trash2, RefreshCw, Plus, Calendar, CheckCircle, Send, FileDown, Ar
 import { format, parseISO } from "date-fns";
 
 const STATUS_CLASSES: Record<string, string> = {
-  pending:   "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  reviewed:  "bg-blue-500/20   text-blue-400   border-blue-500/30",
-  published: "bg-purple-500/20 text-purple-400  border-purple-500/30",
+  pending:   "bg-yellow-50 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-500/30",
+  reviewed:  "bg-blue-50 dark:bg-blue-500/20   text-blue-700 dark:text-blue-400   border-blue-200 dark:border-blue-500/30",
+  published: "bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400  border-purple-200 dark:border-purple-500/30",
 };
 
 function getReportName(dateStr: string) {
@@ -120,7 +120,7 @@ export default function ReportsPage() {
       </div>
 
       {genError && (
-        <div className="bg-red-900/20 border border-red-800/40 rounded p-3 text-red-400 text-sm">{genError}</div>
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded p-3 text-red-700 dark:text-red-400 text-sm">{genError}</div>
       )}
 
       {/* Table */}
@@ -282,7 +282,7 @@ export default function ReportsPage() {
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap">{c.owner}</td>
                       <td className="px-4 py-2.5">
-                        <span className="px-2 py-0.5 rounded border text-[10px] font-bold uppercase bg-green-500/20 text-green-400 border-green-500/30">
+                        <span className="px-2 py-0.5 rounded border text-[10px] font-bold uppercase bg-green-50 dark:bg-green-500/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-500/30">
                           {c.status}
                         </span>
                       </td>

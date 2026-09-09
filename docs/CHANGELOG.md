@@ -4,6 +4,66 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-09-09: Light theme actually themes the whole app, RT correlation "reject" bug, publish preview
+
+- **Light/dark toggle only ever re-themed the sidebar/header.** Root cause was
+  two-layered. First, `frontend/tailwind.config.cjs` was a stray, empty leftover
+  config silently shadowing the real `tailwind.config.ts` (Tailwind's config
+  resolution checks `.cjs` before `.ts`), so `darkMode: ["class"]` and the
+  CSS-variable color-token system already written into the `.ts` config had
+  never once actually loaded — dead scaffolding from an abandoned shadcn/ui
+  setup (`components.json` still points at an `app/globals.css` that doesn't
+  exist in this repo). Deleted the shadow config; its only consumer besides the
+  dead one, a `tailwindcss-animate` plugin dependency that was never installed
+  and nothing in the app uses (no Radix accordion anywhere), was removed too
+  rather than adding a new dependency to unblock scaffolding nothing needs.
+  Second, even once the token system could load, every page hardcoded
+  dark-only classes (`bg-slate-900`, `text-white`, `border-slate-800`, ...)
+  instead of theme tokens — only `DashboardLayout.tsx` ever consumed
+  `ThemeContext`. Defined the missing light/dark CSS variables
+  (`src/index.css`) and migrated all pages + shared components to
+  `bg-background`/`bg-card`/`bg-muted`/`bg-secondary`/`text-foreground`/
+  `text-muted-foreground`/`border-border`/`border-input`/`divide-border`.
+  Finally, severity/status badge colors (alert severity, report/agent status
+  chips) used dark-mode-tuned translucent backgrounds (e.g. `bg-red-900/20`)
+  that read as a near-invisible tint against a light page — added light
+  defaults (`bg-{hue}-50`/`border-{hue}-200`/`text-{hue}-700`, or a solid
+  `bg-{hue}-600 text-white` for the two near-opaque toast banners) alongside
+  `dark:` variants carrying the original dark-mode values unchanged.
+- **RT correlation couldn't be rejected** — an analyst clearing an
+  auto-correlated RT ticket back to blank (because it was the wrong match)
+  would see it silently reappear at Submit, Bulk Submit, and in the final
+  published report. Three compounding `|| fallback`/truthy-check bugs, all
+  the same root cause: an explicit empty string (deliberately-rejected) and
+  `None`/never-set were treated as identical, so the auto-match kept winning.
+  Fixed in `EditAgentModal`/`SubmitAgentModal`/`BulkSubmitModal`
+  (`ReportDetailPage.tsx`), `submit_agent` and the publish-content builder
+  (`app/api/reports.py`, `app/services/ticket_linker.py`).
+- **Report preview before publishing to RT**: `GET /{report_id}/publish-preview`
+  (new) and `TicketLinkerService.preview_publish_content()` build the exact
+  ticket match + comment text `publish_report()` would send, without sending
+  it — surfaced in `PublishModal` as a full-screen panel (not a small dialog)
+  so the exact content is actually readable before the irreversible publish.
+- Recent RT tickets + implemented CMRs widget added to the Reports page
+  (`GET /recent-activity`); CMR fetching is real but not yet functional in
+  practice — Phantom has no service-account auth, only interactive SSO, and
+  the one candidate cookie-jar file lives on a prod server unreachable from
+  the test06 instance. RT tickets work today; CMRs are wired for whenever a
+  real credential path exists.
+- `SSO_SERVER_URL` switched from the QA endpoint (hardcoded) to production,
+  and made a real setting (`app/core/config.py`, `app/core/sso_manager.py`).
+- Session and audit-log timestamps were displaying as unconverted UTC
+  (naive datetimes serialize without an offset, so the browser misread the
+  raw clock numbers as local time). Fixed for Sessions/Audit pages via
+  `app/core/time_utils.py`'s `as_utc()` and `frontend/src/lib/formatDate.ts`
+  (explicit IST formatting, matching this project's existing convention).
+  Same bug still present on nine other pages — deferred.
+- `fim.scans` TOAST growth (not dead-tuple bloat) was outrunning
+  `cleanup_scan_data.sh`'s daily `LIMIT 100` batch; increased run frequency
+  (same proven-safe batch size, run 4x/day instead of once) rather than the
+  batch size, to avoid the WAL-exhaustion crash risk from the disk-full
+  incidents below.
+
 ## 2026-08-20: Fresh-install/migration portability audit and fixes
 
 User asked whether the project could migrate easily to a new server. A research

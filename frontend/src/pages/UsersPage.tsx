@@ -70,7 +70,7 @@ export default function UsersPage() {
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg border text-sm shadow-lg ${
-          toast.ok ? "bg-green-900/90 border-green-700 text-green-200" : "bg-red-900/90 border-red-700 text-red-200"
+          toast.ok ? "bg-green-600 dark:bg-green-900/90 border-green-700 text-white dark:text-green-200" : "bg-red-600 dark:bg-red-900/90 border-red-700 text-white dark:text-red-200"
         }`}>
           {toast.ok ? "✅" : "❌"} {toast.msg}
         </div>
@@ -108,7 +108,7 @@ export default function UsersPage() {
                 </td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded text-xs border uppercase ${
-                    user.role === 'admin' ? 'bg-purple-900/30 text-purple-400 border-purple-800' : 'bg-muted text-foreground/90 border-input'
+                    user.role === 'admin' ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800' : 'bg-muted text-foreground/90 border-input'
                   }`}>
                     {user.role}
                   </span>
@@ -131,7 +131,7 @@ export default function UsersPage() {
                   <div className="flex justify-end gap-2">
                     <button
                       onClick={() => handleEditClick(user)}
-                      className="p-2 text-blue-400 hover:bg-blue-900/20 rounded"
+                      className="p-2 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded"
                       title="Edit User"
                     >
                       <Edit2 size={16} />
@@ -143,7 +143,7 @@ export default function UsersPage() {
                         onClick={() => {
                           if(confirm('Delete user?')) deleteMutation.mutate(user.id);
                         }}
-                        className="p-2 text-red-400 hover:bg-red-900/20 rounded"
+                        className="p-2 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20 rounded"
                         title="Delete User"
                       >
                         <Trash2 size={16} />

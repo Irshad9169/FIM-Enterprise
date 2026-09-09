@@ -29,19 +29,19 @@ type Health = "healthy" | "stale" | "warning" | "critical" | "never_scanned";
 type FilterVal = "all" | Health;
 
 const healthConfig: Record<Health, { label: string; badge: string; row: string; icon: any }> = {
-  healthy:      { label: "Healthy",       badge: "text-green-400 border-green-800 bg-green-900/20",    row: "",                    icon: CheckCircle  },
-  stale:        { label: ">24h",          badge: "text-yellow-400 border-yellow-800 bg-yellow-900/20", row: "bg-yellow-900/10",    icon: AlertCircle  },
-  warning:      { label: ">48h",          badge: "text-orange-400 border-orange-800 bg-orange-900/20", row: "bg-orange-900/10",    icon: AlertTriangle },
-  critical:     { label: ">72h",          badge: "text-red-400 border-red-800 bg-red-900/20 fim-attn-pulse", row: "bg-red-900/10", icon: XCircle      },
+  healthy:      { label: "Healthy",       badge: "text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20",    row: "",                    icon: CheckCircle  },
+  stale:        { label: ">24h",          badge: "text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20", row: "bg-yellow-50 dark:bg-yellow-900/10",    icon: AlertCircle  },
+  warning:      { label: ">48h",          badge: "text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20", row: "bg-orange-50 dark:bg-orange-900/10",    icon: AlertTriangle },
+  critical:     { label: ">72h",          badge: "text-red-700 dark:text-red-400 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 fim-attn-pulse", row: "bg-red-50 dark:bg-red-900/10", icon: XCircle      },
   never_scanned:{ label: "Never Scanned", badge: "text-muted-foreground border-input bg-muted/40",   row: "bg-muted/20",     icon: XCircle      },
 };
 
 const cardConfig: { key: Health; label: string; card: string }[] = [
-  { key: "healthy",       label: "Healthy",       card: "border-green-800 bg-green-900/10 text-green-400 hover:bg-green-900/20"   },
-  { key: "stale",         label: "Stale >24h",    card: "border-yellow-800 bg-yellow-900/10 text-yellow-400 hover:bg-yellow-900/20" },
-  { key: "warning",       label: "Warning >48h",  card: "border-orange-800 bg-orange-900/10 text-orange-400 hover:bg-orange-900/20" },
-  { key: "critical",      label: "Critical >72h", card: "border-red-800 bg-red-900/10 text-red-400 hover:bg-red-900/20"           },
-  { key: "never_scanned", label: "Never Scanned", card: "border-input bg-muted/20 text-muted-foreground hover:bg-secondary/80/30"   },
+  { key: "healthy",       label: "Healthy",       card: "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/20"   },
+  { key: "stale",         label: "Stale >24h",    card: "border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/10 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/20" },
+  { key: "warning",       label: "Warning >48h",  card: "border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/10 text-orange-700 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/20" },
+  { key: "critical",      label: "Critical >72h", card: "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20"           },
+  { key: "never_scanned", label: "Never Scanned", card: "border-input bg-muted/20 text-muted-foreground hover:bg-secondary/30"   },
 ];
 
 export default function ScansPage() {
@@ -97,7 +97,7 @@ export default function ScansPage() {
       <div className="fixed top-4 right-4 z-50 space-y-2">
         {toasts.map(t => (
           <div key={t.id} className={`px-4 py-3 rounded-lg border text-sm shadow-lg transition-all ${
-            t.ok ? "bg-green-900/90 border-green-700 text-green-200" : "bg-red-900/90 border-red-700 text-red-200"
+            t.ok ? "bg-green-600 dark:bg-green-900/90 border-green-700 text-white dark:text-green-200" : "bg-red-600 dark:bg-red-900/90 border-red-700 text-white dark:text-red-200"
           }`}>
             {t.ok ? "✅" : "❌"} {t.msg}
           </div>
@@ -117,11 +117,11 @@ export default function ScansPage() {
           {/* Stale / All toggle */}
           <div className="flex rounded-lg overflow-hidden border border-input text-xs">
             <button onClick={() => setFilter(f => f === "all" ? "critical" : "all")}
-              className={`px-3 py-2 ${filter !== "all" ? "bg-red-900/40 text-red-300" : "bg-muted text-muted-foreground hover:bg-secondary/80"}`}>
+              className={`px-3 py-2 ${filter !== "all" ? "bg-red-50 dark:bg-red-900/40 text-red-700 dark:text-red-300" : "bg-muted text-muted-foreground hover:bg-secondary/80"}`}>
               Stale ({staleCount})
             </button>
             <button onClick={() => setFilter("all")}
-              className={`px-3 py-2 ${filter === "all" ? "bg-blue-900/40 text-blue-300" : "bg-muted text-muted-foreground hover:bg-secondary/80"}`}>
+              className={`px-3 py-2 ${filter === "all" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300" : "bg-muted text-muted-foreground hover:bg-secondary/80"}`}>
               All ({allScans.length})
             </button>
           </div>
@@ -230,10 +230,10 @@ export default function ScansPage() {
                         onClick={() => handleScanNow(scan.agent_id, scan.agent_hostname, true)}
                         disabled={!!scanState}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-all ${
-                          scanState === "pending" ? "bg-blue-900/30 border-blue-700 text-blue-300 cursor-wait" :
-                          scanState === "ok"      ? "bg-green-900/30 border-green-700 text-green-300" :
-                          scanState === "err"     ? "bg-red-900/30 border-red-700 text-red-300" :
-                          "bg-muted border-input text-foreground/90 hover:bg-blue-900/30 hover:border-blue-700 hover:text-blue-300"
+                          scanState === "pending" ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 cursor-wait" :
+                          scanState === "ok"      ? "bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700 text-green-700 dark:text-green-300" :
+                          scanState === "err"     ? "bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700 text-red-700 dark:text-red-300" :
+                          "bg-muted border-input text-foreground/90 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:border-blue-300 dark:hover:border-blue-700 hover:text-blue-800 dark:hover:text-blue-300"
                         }`}>
                         {scanState === "pending" ? <><RefreshCw size={11} className="animate-spin" /> Queuing...</> :
                          scanState === "ok"      ? <>✓ Queued</> :

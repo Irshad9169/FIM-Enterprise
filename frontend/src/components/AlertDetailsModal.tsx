@@ -155,9 +155,9 @@ export default function AlertDetailsModal({ alert, onClose, onUpdate }: AlertDet
                   <span
                     className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
                       alert.severity === "critical"
-                        ? "bg-red-900/40 text-red-300 border border-red-700"
+                        ? "bg-red-50 dark:bg-red-900/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700"
                         : alert.severity === "high"
-                        ? "bg-orange-900/40 text-orange-300 border border-orange-700"
+                        ? "bg-orange-50 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-700"
                         : "bg-muted text-foreground border border-input"
                     }`}
                   >
@@ -168,7 +168,7 @@ export default function AlertDetailsModal({ alert, onClose, onUpdate }: AlertDet
                   <div className="text-xs text-muted-foreground mb-1">Status</div>
                   <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
                     currentStatus === "acknowledged"
-                      ? "bg-sky-900/40 text-sky-300 border border-sky-700"
+                      ? "bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-700"
                       : "bg-muted border border-input"
                   }`}>
                     {currentStatus}

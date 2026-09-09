@@ -11,9 +11,9 @@ export default function ChangeGroupCard({ group }: Props) {
 
   const getSeverityBadge = (severity: string) => {
     const colors = {
-      critical: "bg-red-900/40 text-red-300 border-red-700",
-      high: "bg-orange-900/40 text-orange-300 border-orange-700",
-      medium: "bg-yellow-900/40 text-yellow-300 border-yellow-700",
+      critical: "bg-red-50 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-700",
+      high: "bg-orange-50 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-700",
+      medium: "bg-yellow-50 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700",
       low: "bg-muted text-foreground/90 border-input",
     };
     return colors[severity as keyof typeof colors] || colors.low;
@@ -42,7 +42,7 @@ export default function ChangeGroupCard({ group }: Props) {
               {group.severity.toUpperCase()}
             </span>
             {group.is_known && (
-              <span className="px-2 py-1 rounded text-xs bg-green-900/40 text-green-300 border border-green-700">
+              <span className="px-2 py-1 rounded text-xs bg-green-50 dark:bg-green-900/40 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700">
                 ✓ Known
               </span>
             )}
@@ -67,25 +67,25 @@ export default function ChangeGroupCard({ group }: Props) {
       {commonChanges && (
         <div className="grid grid-cols-4 gap-2 text-xs">
           {commonChanges.hash_changed > 0 && (
-            <div className="bg-orange-950/30 border border-orange-800 rounded px-2 py-1">
+            <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded px-2 py-1">
               <span className="text-orange-400">🔸 Content:</span>{" "}
               <span className="text-foreground/90">{commonChanges.hash_changed}</span>
             </div>
           )}
           {commonChanges.permissions_changed > 0 && (
-            <div className="bg-red-950/30 border border-red-800 rounded px-2 py-1">
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded px-2 py-1">
               <span className="text-red-400">🔸 Perms:</span>{" "}
               <span className="text-foreground/90">{commonChanges.permissions_changed}</span>
             </div>
           )}
           {commonChanges.owner_changed > 0 && (
-            <div className="bg-red-950/30 border border-red-800 rounded px-2 py-1">
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded px-2 py-1">
               <span className="text-red-400">🔸 Owner:</span>{" "}
               <span className="text-foreground/90">{commonChanges.owner_changed}</span>
             </div>
           )}
           {commonChanges.size_changed > 0 && (
-            <div className="bg-yellow-950/30 border border-yellow-800 rounded px-2 py-1">
+            <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded px-2 py-1">
               <span className="text-yellow-400">🔸 Size:</span>{" "}
               <span className="text-foreground/90">{commonChanges.size_changed}</span>
             </div>
@@ -117,7 +117,7 @@ export default function ChangeGroupCard({ group }: Props) {
 
       {/* Pattern Analysis */}
       {timeDiff < 5 && group.server_count > 1 && (
-        <div className="bg-blue-950/20 border border-blue-800 rounded px-3 py-2 text-xs">
+        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded px-3 py-2 text-xs">
           <span className="text-blue-400">💡 Automated Change Pattern:</span>{" "}
           <span className="text-foreground/90">
             {group.server_count} servers affected within {timeDiff.toFixed(1)} minutes

@@ -91,7 +91,7 @@ export default function DashboardPage() {
               <p className="text-muted-foreground text-sm font-medium">Pending Reports</p>
               <h3 className="text-3xl font-bold text-foreground mt-2">{reportStats?.pending_review || 0}</h3>
             </div>
-            <div className="p-2 bg-yellow-900/30 rounded-lg"><FileText className="text-yellow-500" size={24} /></div>
+            <div className="p-2 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg"><FileText className="text-yellow-700 dark:text-yellow-500" size={24} /></div>
           </div>
           <div className="mt-4 flex items-center gap-2 text-sm">
             <span className="text-red-400 font-medium">{reportStats?.missing_reports || 0}</span>
@@ -244,8 +244,8 @@ export default function DashboardPage() {
 function AttentionCard({ label, value, icon, color, onClick }: any) {
   const active = value > 0;
   const theme: Record<string, { border: string; iconBg: string; icon: string; value: string }> = {
-    yellow: { border: "border-yellow-700/60", iconBg: "bg-yellow-900/30", icon: "text-yellow-500", value: "text-yellow-400" },
-    red:    { border: "border-red-700/60",    iconBg: "bg-red-900/30",    icon: "text-red-500",    value: "text-red-400" },
+    yellow: { border: "border-yellow-200 dark:border-yellow-700/60", iconBg: "bg-yellow-50 dark:bg-yellow-900/30", icon: "text-yellow-700 dark:text-yellow-500", value: "text-yellow-700 dark:text-yellow-400" },
+    red:    { border: "border-red-200 dark:border-red-700/60",    iconBg: "bg-red-50 dark:bg-red-900/30",    icon: "text-red-700 dark:text-red-500",    value: "text-red-700 dark:text-red-400" },
   };
   const t = theme[color];
   return (
@@ -283,10 +283,10 @@ function StatCard({ label, value, icon, onClick }: any) {
 
 function SeverityCard({ label, value, color }: any) {
   const colors: any = {
-    red: "bg-red-900/20 text-red-500 border-red-900",
-    orange: "bg-orange-900/20 text-orange-500 border-orange-900",
-    yellow: "bg-yellow-900/20 text-yellow-500 border-yellow-900",
-    blue: "bg-blue-900/20 text-blue-500 border-blue-900",
+    red: "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-500 border-red-200 dark:border-red-900",
+    orange: "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-500 border-orange-200 dark:border-orange-900",
+    yellow: "bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-500 border-yellow-200 dark:border-yellow-900",
+    blue: "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-500 border-blue-200 dark:border-blue-900",
   };
   return (
     <div className={`p-4 rounded border ${colors[color]}`}>

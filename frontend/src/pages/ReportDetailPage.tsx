@@ -25,17 +25,17 @@ type ViewMode = "grouped" | "classic";
 
 // Map DB status values to display colours
 const REPORT_STATUS_COLORS: Record<string, string> = {
-  pending:              "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  in_review:            "bg-blue-500/20   text-blue-400   border-blue-500/30",
-  reviewed:             "bg-sky-500/20    text-sky-400    border-sky-500/30",
-  submitted:            "bg-green-500/20  text-green-400  border-green-500/30",
-  submitted_no_ticket:  "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  pending:              "bg-yellow-50 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-500/30",
+  in_review:            "bg-blue-50 dark:bg-blue-500/20   text-blue-700 dark:text-blue-400   border-blue-200 dark:border-blue-500/30",
+  reviewed:             "bg-sky-50 dark:bg-sky-500/20    text-sky-700 dark:text-sky-400    border-sky-200 dark:border-sky-500/30",
+  submitted:            "bg-green-50 dark:bg-green-500/20  text-green-700 dark:text-green-400  border-green-200 dark:border-green-500/30",
+  submitted_no_ticket:  "bg-orange-50 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-500/30",
 };
 
 const AGENT_STATUS_COLORS: Record<string, string> = {
-  pending:    "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  correlated: "bg-blue-500/20   text-blue-400   border-blue-500/30",
-  submitted:  "bg-green-500/20  text-green-400  border-green-500/30",
+  pending:    "bg-yellow-50 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-500/30",
+  correlated: "bg-blue-50 dark:bg-blue-500/20   text-blue-700 dark:text-blue-400   border-blue-200 dark:border-blue-500/30",
+  submitted:  "bg-green-50 dark:bg-green-500/20  text-green-700 dark:text-green-400  border-green-200 dark:border-green-500/30",
   skipped:    "bg-slate-500/20  text-muted-foreground  border-input/30",
 };
 
@@ -247,8 +247,8 @@ function BulkSubmitModal({ agents, reportId, onClose, onDone }: {
           </p>
           {rows.map(row => (
             <div key={row.hostname} className={`border rounded p-2.5 space-y-1.5 ${
-              row.status === "done"  ? "border-green-800/50 bg-green-900/10" :
-              row.status === "error" ? "border-red-800/50 bg-red-900/10" : "border-border"
+              row.status === "done"  ? "border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10" :
+              row.status === "error" ? "border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/10" : "border-border"
             }`}>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono font-bold text-foreground text-xs">{row.hostname}</span>
@@ -344,7 +344,7 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
               </div>
 
               {notDone.length > 0 && (
-                <div className="bg-yellow-900/20 border border-yellow-700/40 rounded p-3 space-y-1">
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/40 rounded p-3 space-y-1">
                   <div className="text-yellow-400 text-xs font-bold flex items-center gap-1">
                     <AlertTriangle size={12} /> {notDone.length} agent(s) not yet submitted
                   </div>
@@ -582,12 +582,12 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
 
           <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
             {effectiveRt && (
-              <a href={`https://tickets.int.untd.com/Ticket/Display.html?id=${effectiveRt}`} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-900/40 text-blue-300 border border-blue-800/50 px-1.5 py-0.5 rounded font-mono hover:text-blue-200 hover:underline">
+              <a href={`https://tickets.int.untd.com/Ticket/Display.html?id=${effectiveRt}`} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 px-1.5 py-0.5 rounded font-mono hover:text-blue-800 dark:hover:text-blue-200 hover:underline">
                 RT#{effectiveRt}
               </a>
             )}
             {agent.correlated_cmr && (
-              <span className="text-xs bg-cyan-900/40 text-cyan-300 border border-cyan-800/50 px-1.5 py-0.5 rounded font-mono">
+              <span className="text-xs bg-cyan-50 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/50 px-1.5 py-0.5 rounded font-mono">
                 CMR#{agent.correlated_cmr}
               </span>
             )}
@@ -595,7 +595,7 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
             {agent.status !== "submitted" && agent.status !== "skipped" && (
               <>
                 <button onClick={handleFindTickets} disabled={searching} title="Search RT & CMR"
-                  className="p-1.5 rounded bg-secondary text-cyan-400 hover:bg-cyan-900/40 disabled:opacity-50">
+                  className="p-1.5 rounded bg-secondary text-cyan-700 dark:text-cyan-400 hover:bg-cyan-100 dark:hover:bg-cyan-900/40 disabled:opacity-50">
                   {searching ? <RotateCcw size={13} className="animate-spin" /> : <Search size={13} />}
                 </button>
                 <button onClick={() => setEditModal(true)} title="Edit" className="p-1.5 rounded bg-secondary text-foreground/90 hover:bg-secondary/80">
@@ -739,7 +739,7 @@ function HostActionRow({ agent, report, selected = false, onToggleSelect }: {
         {agent.status !== "submitted" && agent.status !== "skipped" && (
           <div className="flex items-center gap-1 ml-auto">
             <button onClick={handleFindTickets} disabled={searching} title="Search RT & CMR"
-              className="p-1 rounded bg-secondary text-cyan-400 hover:bg-cyan-900/40 disabled:opacity-50">
+              className="p-1 rounded bg-secondary text-cyan-700 dark:text-cyan-400 hover:bg-cyan-100 dark:hover:bg-cyan-900/40 disabled:opacity-50">
               {searching ? <RotateCcw size={11} className="animate-spin" /> : <Search size={11} />}
             </button>
             <button onClick={() => setEditModal(true)} title="Edit" className="p-1 rounded bg-secondary text-foreground/90 hover:bg-secondary/80">
@@ -785,7 +785,7 @@ function HostGroupCard({ hostnames, changes, agentsByHostname, report, selectedA
 
   return (
     <div className="bg-card border border-violet-800/40 rounded-lg overflow-hidden mb-3">
-      <div className="p-3 bg-violet-900/10 border-b border-violet-800/30 cursor-pointer hover:bg-violet-900/20 transition-colors"
+      <div className="p-3 bg-violet-50 dark:bg-violet-900/10 border-b border-violet-200 dark:border-violet-800/30 cursor-pointer hover:bg-violet-100 dark:hover:bg-violet-900/20 transition-colors"
         onClick={() => setExpanded(p => !p)}>
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-col gap-1.5">
@@ -828,10 +828,10 @@ function HostGroupCard({ hostnames, changes, agentsByHostname, report, selectedA
 
 function TicketChip({ ticket, color }: { ticket: ReportTicket; color: "blue" | "cyan" | "violet" }) {
   const cls = color === "blue"
-    ? "border-blue-900/50 bg-blue-900/10 text-blue-400"
+    ? "border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400"
     : color === "cyan"
-    ? "border-cyan-900/50 bg-cyan-900/10 text-cyan-400"
-    : "border-violet-900/50 bg-violet-900/10 text-violet-400";
+    ? "border-cyan-200 dark:border-cyan-900/50 bg-cyan-50 dark:bg-cyan-900/10 text-cyan-700 dark:text-cyan-400"
+    : "border-violet-200 dark:border-violet-900/50 bg-violet-50 dark:bg-violet-900/10 text-violet-700 dark:text-violet-400";
   const label = color === "blue" ? "RT" : color === "cyan" ? "CMR" : "JIRA";
   return (
     <div className={`p-2 border rounded text-xs mb-1 ${cls}`}>
@@ -871,7 +871,7 @@ function PreCorrelationView({ report, viewMode }: { report: DailyReportDetail; v
 
   return (
     <div className="space-y-3">
-      <div className="bg-blue-900/10 border border-blue-800/40 rounded-lg p-4 flex items-start gap-3">
+      <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/40 rounded-lg p-4 flex items-start gap-3">
         <AlertTriangle size={18} className="text-yellow-400 shrink-0 mt-0.5" />
         <div>
           <div className="text-sm font-bold text-foreground mb-1">Correlation not yet run</div>
@@ -883,7 +883,7 @@ function PreCorrelationView({ report, viewMode }: { report: DailyReportDetail; v
 
       {viewMode === "grouped" && groups.map(g => (
         <div key={g.hostnames.join(",")} className="bg-card border border-violet-800/40 rounded-lg overflow-hidden">
-          <div className="px-4 py-2 bg-violet-900/10 border-b border-violet-800/30 flex flex-col gap-1.5">
+          <div className="px-4 py-2 bg-violet-50 dark:bg-violet-900/10 border-b border-violet-200 dark:border-violet-800/30 flex flex-col gap-1.5">
             <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
               Identical changes · {g.hostnames.length} hosts
             </span>
@@ -1166,7 +1166,7 @@ export default function ReportDetailPage() {
         </div>
 
         {corrError && (
-          <div className="bg-red-900/20 border border-red-800/50 rounded p-3 text-red-400 text-sm flex items-center gap-2">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded p-3 text-red-700 dark:text-red-400 text-sm flex items-center gap-2">
             <AlertTriangle size={14} /> {corrError}
           </div>
         )}
@@ -1219,7 +1219,7 @@ export default function ReportDetailPage() {
             </div>
 
             {selectedCount > 0 && (
-              <div className="sticky top-0 z-10 mb-3 bg-blue-900/30 border border-blue-700/50 rounded-lg px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="sticky top-0 z-10 mb-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700/50 rounded-lg px-4 py-2 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-blue-200">{selectedCount} agent{selectedCount === 1 ? "" : "s"} selected</span>
                 <div className="flex gap-2">
                   <button onClick={() => setSelectedAgents(new Set())}

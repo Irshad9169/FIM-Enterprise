@@ -244,14 +244,14 @@ export default function AgentsPage() {
                   <td className="px-3 py-2 font-medium">{a.hostname}</td>
                   <td className="px-3 py-2 text-foreground/90">{a.ip_address || "-"}</td>
                   <td className="px-3 py-2 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs ${a.status === "online" ? "bg-emerald-900/40 text-emerald-300 border border-emerald-700" : "bg-muted text-foreground/90 border border-input"}`}>
+                    <span className={`px-2 py-1 rounded-full text-xs ${a.status === "online" ? "bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700" : "bg-muted text-foreground/90 border border-input"}`}>
                       {a.status}
                     </span>
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-1">
                       {tags.map(tag => (
-                        <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 bg-sky-900/30 text-sky-300 border border-sky-800 rounded text-[10px]">
+                        <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded text-[10px]">
                           {tag}
                           <button onClick={() => handleRemoveTag(a.id, tags, tag)} className="text-sky-500 hover:text-red-400"><X size={10} /></button>
                         </span>
@@ -285,7 +285,7 @@ export default function AgentsPage() {
                         </button>
                         {a.scan_pause_requested ? (
                           <button onClick={() => resumeMutation.mutate(a.id)} disabled={resumeMutation.isPending}
-                            title="Resume scan" className="p-1.5 rounded bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-700">
+                            title="Resume scan" className="p-1.5 rounded bg-emerald-50 dark:bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700">
                             <Play size={13} />
                           </button>
                         ) : a.scan_status === "running" ? (

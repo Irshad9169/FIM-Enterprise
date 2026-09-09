@@ -150,7 +150,7 @@ export default function ExclusionsPage() {
       <div className="fixed top-4 right-4 z-50 space-y-2">
         {toasts.map(t => (
           <div key={t.id} className={`px-4 py-3 rounded-lg border text-sm shadow-lg ${
-            t.ok ? "bg-green-900/90 border-green-700 text-green-200" : "bg-red-900/90 border-red-700 text-red-200"
+            t.ok ? "bg-green-600 dark:bg-green-900/90 border-green-700 text-white dark:text-green-200" : "bg-red-600 dark:bg-red-900/90 border-red-700 text-white dark:text-red-200"
           }`}>
             {t.ok ? "✅" : "❌"} {t.msg}
           </div>
@@ -240,7 +240,7 @@ export default function ExclusionsPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {pending.map((rule: any) => (
-                  <tr key={rule.id} className="hover:bg-muted/50 bg-yellow-900/5">
+                  <tr key={rule.id} className="hover:bg-muted/50 bg-yellow-50 dark:bg-yellow-900/5">
                     <td className="px-6 py-4 font-medium text-foreground">{rule.rule_name}</td>
                     <td className="px-6 py-4">
                       <span className="px-2 py-1 bg-muted rounded text-xs border border-input">
@@ -252,8 +252,8 @@ export default function ExclusionsPage() {
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded text-xs border ${
                         rule.scope === 'global'
-                          ? 'bg-blue-900/20 border-blue-800 text-blue-400'
-                          : 'bg-green-900/20 border-green-800 text-green-400'
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400'
+                          : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400'
                       }`}>
                         {rule.scope}
                       </span>
@@ -272,13 +272,13 @@ export default function ExclusionsPage() {
                         <button
                           onClick={() => approveMutation.mutate(rule.id)}
                           disabled={approveMutation.isPending}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-green-900/30 border border-green-700 text-green-300 hover:bg-green-900/60"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/60"
                         >
                           <CheckCircle size={12} /> Approve
                         </button>
                         <button
                           onClick={() => { setRejectModal({ id: rule.id, name: rule.rule_name }); setRejectReason(""); }}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-red-900/30 border border-red-700 text-red-300 hover:bg-red-900/60"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/60"
                         >
                           <XCircle size={12} /> Reject
                         </button>
@@ -319,7 +319,7 @@ export default function ExclusionsPage() {
                   <td className="px-6 py-4 text-right">
                     <button
                       onClick={() => { if (confirm('Delete rule?')) deleteMutation.mutate(rule.id); }}
-                      className="p-2 text-red-400 hover:bg-red-900/20 rounded"
+                      className="p-2 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20 rounded"
                     >
                       <Trash2 size={16} />
                     </button>

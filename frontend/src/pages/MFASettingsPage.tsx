@@ -63,7 +63,7 @@ export default function MFASettingsPage() {
     <div className="space-y-6 max-w-2xl">
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg border text-sm shadow-lg ${
-          toast.ok ? "bg-green-900/90 border-green-700 text-green-200" : "bg-red-900/90 border-red-700 text-red-200"
+          toast.ok ? "bg-green-600 dark:bg-green-900/90 border-green-700 text-white dark:text-green-200" : "bg-red-600 dark:bg-red-900/90 border-red-700 text-white dark:text-red-200"
         }`}>
           {toast.ok ? "✅" : "❌"} {toast.msg}
         </div>
@@ -82,7 +82,7 @@ export default function MFASettingsPage() {
       {/* Status card */}
       <div className={`rounded-lg border p-6 flex items-center justify-between ${
         mfaEnabled
-          ? "bg-green-900/10 border-green-800"
+          ? "bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800"
           : "bg-card border-border"
       }`}>
         <div className="flex items-center gap-4">
@@ -103,7 +103,7 @@ export default function MFASettingsPage() {
         {step === "idle" && (
           mfaEnabled ? (
             <button onClick={() => setStep("disable")}
-              className="px-4 py-2 bg-red-900/30 border border-red-700 text-red-300 rounded-lg text-sm hover:bg-red-900/50">
+              className="px-4 py-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 rounded-lg text-sm hover:bg-red-100 dark:hover:bg-red-900/50">
               Disable MFA
             </button>
           ) : (

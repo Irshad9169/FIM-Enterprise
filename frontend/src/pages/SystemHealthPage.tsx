@@ -12,9 +12,9 @@ function formatBytes(bytes: number): string {
 }
 
 const STATUS_STYLE: Record<DiskHealthStatus, { bar: string; text: string; badge: string; label: string }> = {
-  ok:       { bar: "bg-green-500",  text: "text-green-400",  badge: "bg-green-900/20 border-green-800 text-green-400",   label: "Healthy" },
-  warning:  { bar: "bg-yellow-500", text: "text-yellow-400", badge: "bg-yellow-900/20 border-yellow-800 text-yellow-400", label: "Warning" },
-  critical: { bar: "bg-red-500",    text: "text-red-400",    badge: "bg-red-900/20 border-red-800 text-red-400 fim-attn-pulse", label: "Critical" },
+  ok:       { bar: "bg-green-500",  text: "text-green-700 dark:text-green-400",  badge: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400",   label: "Healthy" },
+  warning:  { bar: "bg-yellow-500", text: "text-yellow-700 dark:text-yellow-400", badge: "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400", label: "Warning" },
+  critical: { bar: "bg-red-500",    text: "text-red-700 dark:text-red-400",    badge: "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 fim-attn-pulse", label: "Critical" },
 };
 
 function ThresholdSettings({ isAdmin }: { isAdmin: boolean }) {

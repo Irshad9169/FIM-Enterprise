@@ -171,7 +171,7 @@ export default function AlertsPage() {
           </thead>
           <tbody>
             {sortedAlerts.map((a: any) => (
-              <tr key={a.id} className={`border-t border-border hover:bg-muted/50 ${selectedIds.has(a.id) ? "bg-sky-900/20" : ""}`}>
+              <tr key={a.id} className={`border-t border-border hover:bg-muted/50 ${selectedIds.has(a.id) ? "bg-sky-50 dark:bg-sky-900/20" : ""}`}>
                 <td className="px-3 py-2">
                   {a.status === "open" && (
                     <input type="checkbox" checked={selectedIds.has(a.id)} onChange={() => toggleSelect(a.id)} className="accent-sky-500" />
@@ -179,9 +179,9 @@ export default function AlertsPage() {
                 </td>
                 <td className="px-3 py-2">
                   <span className={`px-2 py-1 rounded-full text-xs border ${
-                    a.severity === "critical" ? "bg-red-900/40 text-red-300 border-red-700"
-                    : a.severity === "high" ? "bg-orange-900/40 text-orange-300 border-orange-700"
-                    : a.severity === "medium" ? "bg-yellow-900/40 text-yellow-300 border-yellow-700"
+                    a.severity === "critical" ? "bg-red-50 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-700"
+                    : a.severity === "high" ? "bg-orange-50 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-700"
+                    : a.severity === "medium" ? "bg-yellow-50 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700"
                     : "bg-muted text-foreground border-input"
                   }`}>{a.severity}</span>
                 </td>

@@ -43,7 +43,7 @@ export default function LoginPage() {
         {/* Card */}
         <div className="bg-card border border-border rounded-xl p-8 shadow-2xl space-y-6">
           {/* Info Box */}
-          <div className="bg-blue-900/20 border border-blue-800/50 rounded-lg p-4">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-lg p-4">
             <p className="text-blue-200 text-center text-sm">
               Sign in with your corporate credentials
             </p>

@@ -31,9 +31,9 @@ export default function BaselinesPage() {
   const baselines = data?.baselines || [];
 
   const statusColors: Record<string, string> = {
-    approved: "bg-green-900/30 text-green-400 border-green-800",
-    pending: "bg-yellow-900/30 text-yellow-400 border-yellow-800",
-    integrity_failed: "bg-red-900/30 text-red-400 border-red-800",
+    approved: "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800",
+    pending: "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800",
+    integrity_failed: "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800",
     superseded: "bg-muted text-muted-foreground border-input",
     replaced: "bg-muted text-muted-foreground border-input",
   };
@@ -64,7 +64,7 @@ export default function BaselinesPage() {
             {baselines.map((b: any) => {
               const needsApproval = !["approved", "integrity_failed", "superseded", "replaced"].includes(b.status);
               return (
-              <tr key={b.id} className={`hover:bg-muted/50 ${needsApproval ? "border-l-2 border-l-yellow-500 bg-yellow-900/10" : ""}`}>
+              <tr key={b.id} className={`hover:bg-muted/50 ${needsApproval ? "border-l-2 border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/10" : ""}`}>
                 <td className="px-6 py-4">
                   <div className="text-foreground text-xs font-medium">{b.agent_hostname}</div>
                   <div className="text-muted-foreground text-[10px] font-mono">{b.agent_id.slice(0, 8)}...</div>
@@ -127,7 +127,7 @@ export default function BaselinesPage() {
                     {!(b.is_active && b.status === "approved") && (
                       <button
                         onClick={() => { if (confirm("Delete this baseline?")) deleteMutation.mutate(b.id); }}
-                        className="p-2 text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                        className="p-2 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-colors"
                         title="Delete"
                       >
                         <Trash2 size={14} />
@@ -217,7 +217,7 @@ function RebaselineModal({ baseline, onClose, onSuccess }: { baseline: any; onCl
                 <div className="text-muted-foreground">Checksum : <span className="text-foreground">{baseline.checksum || "N/A"}</span></div>
               </div>
 
-              <div className="bg-amber-900/20 border border-amber-700/40 rounded p-3">
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded p-3">
                 <div className="text-amber-400 text-xs font-bold flex items-center gap-1 mb-1">
                   <AlertTriangle size={12} /> This will replace the current active baseline
                 </div>
@@ -356,15 +356,15 @@ function DiffModal({ baseline1, baseline2, onClose }: { baseline1: any; baseline
           {diff && (
             <>
               <div className="grid grid-cols-3 gap-3">
-                <div className="bg-green-900/20 border border-green-800 rounded p-3 text-center">
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded p-3 text-center">
                   <div className="text-2xl font-bold text-green-400">{diff.added}</div>
                   <div className="text-xs text-green-300">Files Added</div>
                 </div>
-                <div className="bg-red-900/20 border border-red-800 rounded p-3 text-center">
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3 text-center">
                   <div className="text-2xl font-bold text-red-400">{diff.removed}</div>
                   <div className="text-xs text-red-300">Files Removed</div>
                 </div>
-                <div className="bg-orange-900/20 border border-orange-800 rounded p-3 text-center">
+                <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded p-3 text-center">
                   <div className="text-2xl font-bold text-orange-400">{diff.modified}</div>
                   <div className="text-xs text-orange-300">Files Modified</div>
                 </div>
