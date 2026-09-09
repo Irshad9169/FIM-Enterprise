@@ -135,7 +135,7 @@ function EditAgentModal({ agent, reportId, onClose }: { agent: ReportAgent; repo
 
 function SubmitAgentModal({ agent, reportId, onClose }: { agent: ReportAgent; reportId: string; onClose: () => void }) {
   const qc = useQueryClient();
-  const [rt,    setRt]    = useState(agent.manual_rt || agent.correlated_rt || "");
+  const [rt,    setRt]    = useState(resolveEffectiveRt(agent) || "");
   const [note,  setNote]  = useState(agent.correlation_note || "");
   const [busy,  setBusy]  = useState(false);
   const [error, setError] = useState("");
@@ -143,7 +143,10 @@ function SubmitAgentModal({ agent, reportId, onClose }: { agent: ReportAgent; re
   const doSubmit = async () => {
     setBusy(true); setError("");
     try {
-      await submitAgent(reportId, agent.agent_hostname, { rt_number: rt || undefined, note: note || undefined });
+      // rt/note sent unconditionally (not `|| undefined`) -- JSON.stringify drops
+      // undefined-valued keys, which would silently prevent an explicit clear
+      // (blank field, rejecting an auto-correlated RT) from ever reaching the backend.
+      await submitAgent(reportId, agent.agent_hostname, { rt_number: rt, note });
       qc.invalidateQueries({ queryKey: ["report", reportId] });
       onClose();
     } catch (e: any) {
@@ -199,7 +202,7 @@ function BulkSubmitModal({ agents, reportId, onClose, onDone }: {
   const qc = useQueryClient();
   const [rows, setRows] = useState<BulkRow[]>(() => agents.map(a => ({
     hostname: a.agent_hostname,
-    rt:       a.manual_rt || a.correlated_rt || "",
+    rt:       resolveEffectiveRt(a) || "",
     note:     a.correlation_note || "",
     status:   "pending",
     error:    "",
@@ -216,7 +219,7 @@ function BulkSubmitModal({ agents, reportId, onClose, onDone }: {
       if (row.status === "done") continue;
       updateRow(row.hostname, { status: "busy", error: "" });
       try {
-        await submitAgent(reportId, row.hostname, { rt_number: row.rt || undefined, note: row.note || undefined });
+        await submitAgent(reportId, row.hostname, { rt_number: row.rt, note: row.note });
         updateRow(row.hostname, { status: "done" });
       } catch (e: any) {
         updateRow(row.hostname, { status: "error", error: e.message || "Submit failed" });
@@ -292,7 +295,7 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
   const [force,  setForce]  = useState(false);
   const [busy,   setBusy]   = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
 
   const notDone = report.report_agents.filter(a => a.status !== "submitted" && a.status !== "skipped");
 
@@ -314,25 +317,27 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-lg shadow-2xl">
-        <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-          <h3 className="font-bold text-white text-sm flex items-center gap-2"><Send size={14} className="text-green-400" /> Publish to RT</h3>
-          <button onClick={onClose}><X size={18} className="text-slate-400 hover:text-white" /></button>
-        </div>
+    <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col">
+      <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center shrink-0">
+        <h3 className="font-bold text-white text-base flex items-center gap-2"><Send size={16} className="text-green-400" /> Publish to RT</h3>
+        <button onClick={onClose}><X size={22} className="text-slate-400 hover:text-white" /></button>
+      </div>
 
-        {result ? (
-          <div className="p-6 text-center space-y-3">
+      {result ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-3">
             {result.success
               ? <CheckCircle size={48} className="text-green-400 mx-auto" />
               : <AlertTriangle size={48} className="text-orange-400 mx-auto" />}
             <p className={`text-sm font-medium ${result.success ? "text-green-300" : "text-orange-300"}`}>{result.message}</p>
             <button onClick={() => { onClose(); window.location.href = "/reports"; }} className="px-6 py-2 bg-slate-700 text-white rounded text-sm hover:bg-slate-600">Close</button>
           </div>
-        ) : (
-          <>
-            <div className="p-4 space-y-3">
-              <div className="bg-slate-950 rounded p-3 text-xs space-y-1 font-mono">
+        </div>
+      ) : (
+        <>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="max-w-4xl mx-auto p-6 space-y-3">
+              <div className="bg-slate-900 border border-slate-800 rounded p-3 text-xs space-y-1 font-mono">
                 <div className="text-slate-400">Report  : <span className="text-white">FIM-report-{report.report_date}.htm</span></div>
                 <div className="text-slate-400">Agents  : <span className="text-white">{report.agents_submitted}/{report.agents_total} submitted</span></div>
                 <div className="text-slate-400">Status  : <span className="text-white">{report.status}</span></div>
@@ -361,13 +366,13 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
 
               <button
                 onClick={() => setShowPreview(v => !v)}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs bg-slate-800 text-slate-300 rounded hover:bg-slate-700"
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs bg-slate-900 border border-slate-800 text-slate-300 rounded hover:bg-slate-800"
               >
                 <Eye size={12} />{showPreview ? "Hide preview" : "Preview exact content before publishing"}
               </button>
 
               {showPreview && (
-                <div className="bg-slate-950 rounded p-3 space-y-2 max-h-72 overflow-y-auto">
+                <div className="bg-slate-900 border border-slate-800 rounded p-4 space-y-2">
                   {preview.isLoading && <div className="text-xs text-slate-500">Loading preview…</div>}
                   {preview.isError && (
                     <div className="text-xs text-orange-300">
@@ -381,7 +386,7 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
                           ? <span className="text-green-300">Will post to RT#{preview.data.ticket_id}</span>
                           : <span className="text-orange-300">No RT ticket found — report will be marked submitted_no_ticket</span>}
                       </div>
-                      <pre className="text-[11px] text-slate-300 font-mono whitespace-pre-wrap break-words">
+                      <pre className="text-[12px] text-slate-300 font-mono whitespace-pre-wrap break-words leading-relaxed">
                         {preview.data.content}
                       </pre>
                     </>
@@ -389,16 +394,16 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
                 </div>
               )}
             </div>
-            <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
-              <button onClick={onClose} className="px-4 py-2 text-sm bg-slate-800 text-slate-300 rounded hover:bg-slate-700">Cancel</button>
-              <button onClick={doPublish} disabled={busy || (notDone.length > 0 && !force)}
-                className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-40 flex items-center gap-2">
-                <Send size={14} />{busy ? "Publishing…" : "Publish"}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+          </div>
+          <div className="px-6 py-4 border-t border-slate-800 flex justify-end gap-2 shrink-0">
+            <button onClick={onClose} className="px-4 py-2 text-sm bg-slate-800 text-slate-300 rounded hover:bg-slate-700">Cancel</button>
+            <button onClick={doPublish} disabled={busy || (notDone.length > 0 && !force)}
+              className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-40 flex items-center gap-2">
+              <Send size={14} />{busy ? "Publishing…" : "Publish"}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

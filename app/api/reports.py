@@ -430,8 +430,10 @@ async def submit_agent(
     if not agent:
         raise HTTPException(404, "Agent record not found — run Correlate All first")
 
-    if req.rt_number: agent.manual_rt        = req.rt_number
-    if req.note:      agent.correlation_note = req.note
+    # `is not None` (not truthy) so an explicit empty string -- rejecting an
+    # auto-correlated RT -- is actually saved instead of silently ignored.
+    if req.rt_number is not None: agent.manual_rt        = req.rt_number
+    if req.note      is not None: agent.correlation_note = req.note
     agent.status       = "submitted"
     agent.submitted_at = datetime.utcnow()
 
