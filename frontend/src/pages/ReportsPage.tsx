@@ -57,25 +57,25 @@ export default function ReportsPage() {
     }
   };
 
-  if (isLoading) return <div className="text-center py-12 text-slate-400 text-sm">Loading reports…</div>;
+  if (isLoading) return <div className="text-center py-12 text-muted-foreground text-sm">Loading reports…</div>;
   const reports = data || [];
 
   return (
     <div className="w-full space-y-5">
 
       {/* Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3">
-        <h1 className="text-lg font-bold text-white">Daily Reports</h1>
+      <div className="bg-card border border-border rounded-lg p-4 flex flex-wrap justify-between items-center gap-3">
+        <h1 className="text-lg font-bold text-foreground">Daily Reports</h1>
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Date picker */}
-          <div className="flex items-center gap-1 bg-slate-950 border border-slate-700 rounded p-1.5">
-            <Calendar size={14} className="text-slate-500 ml-1" />
+          <div className="flex items-center gap-1 bg-background border border-input rounded p-1.5">
+            <Calendar size={14} className="text-muted-foreground ml-1" />
             <input
               type="date"
               value={selectedDate}
               onChange={e => setSelectedDate(e.target.value)}
-              className="bg-transparent text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert px-2"
+              className="bg-transparent text-sm text-foreground outline-none [&::-webkit-calendar-picker-indicator]:invert px-2"
             />
             <button
               onClick={() => handleGenerate()}
@@ -109,11 +109,11 @@ export default function ReportsPage() {
             const days = prompt("Archive reports older than how many days?", "90");
             if (days) { await archiveReports(Number(days)); refetch(); }
           }}
-            className="px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded hover:bg-slate-600 flex items-center gap-1.5">
+            className="px-3 py-2 bg-secondary text-foreground/90 text-xs rounded hover:bg-secondary/80 flex items-center gap-1.5">
             <Archive size={14} /> Archive
           </button>
 
-          <button onClick={() => refetch()} className="px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded hover:bg-slate-600 flex items-center gap-1.5">
+          <button onClick={() => refetch()} className="px-3 py-2 bg-secondary text-foreground/90 text-xs rounded hover:bg-secondary/80 flex items-center gap-1.5">
             <RefreshCw size={14} /> Refresh
           </button>
         </div>
@@ -124,21 +124,21 @@ export default function ReportsPage() {
       )}
 
       {/* Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-800">
-          <h2 className="text-sm font-semibold text-slate-300">
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <div className="px-5 py-3 border-b border-border">
+          <h2 className="text-sm font-semibold text-foreground/90">
             {reports.length} report{reports.length !== 1 ? "s" : ""}
           </h2>
         </div>
 
         {reports.length === 0 ? (
-          <div className="text-center py-16 text-slate-500 text-sm">
+          <div className="text-center py-16 text-muted-foreground text-sm">
             No reports yet. Generate one above.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left text-slate-300">
-              <thead className="bg-slate-950/60 text-slate-500 text-xs uppercase border-b border-slate-800">
+            <table className="w-full text-sm text-left text-foreground/90">
+              <thead className="bg-background/60 text-muted-foreground text-xs uppercase border-b border-border">
                 <tr>
                   <th className="px-5 py-3">Report File</th>
                   <th className="px-5 py-3">Date</th>
@@ -148,35 +148,35 @@ export default function ReportsPage() {
                   <th className="px-5 py-3 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/70">
+              <tbody className="divide-y divide-border/70">
                 {reports.map(report => {
                   const submitted = report.agents_submitted || 0;
                   const total     = report.agents_total     || 0;
 
                   return (
-                    <tr key={report.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="px-5 py-3.5 font-medium text-slate-200 font-mono text-xs">
+                    <tr key={report.id} className="hover:bg-muted/40 transition-colors">
+                      <td className="px-5 py-3.5 font-medium text-foreground font-mono text-xs">
                         {getReportName(report.report_date)}
                       </td>
-                      <td className="px-5 py-3.5 font-mono text-slate-400 text-xs">{report.report_date}</td>
+                      <td className="px-5 py-3.5 font-mono text-muted-foreground text-xs">{report.report_date}</td>
                       <td className="px-5 py-3.5">
-                        <span className={report.total_changes > 0 ? "text-red-400 font-bold" : "text-slate-500"}>
+                        <span className={report.total_changes > 0 ? "text-red-400 font-bold" : "text-muted-foreground"}>
                           {report.total_changes}
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
                         {total > 0 ? (
                           <div className="flex items-center gap-2 min-w-[120px]">
-                            <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-green-500 rounded-full"
                                 style={{ width: `${Math.round((submitted / total) * 100)}%` }}
                               />
                             </div>
-                            <span className="text-xs text-slate-400 shrink-0">{submitted}/{total}</span>
+                            <span className="text-xs text-muted-foreground shrink-0">{submitted}/{total}</span>
                           </div>
                         ) : (
-                          <span className="text-slate-600 text-xs">—</span>
+                          <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </td>
                       <td className="px-5 py-3.5">
@@ -220,51 +220,51 @@ export default function ReportsPage() {
 
       {/* Recent activity — RT (Production Systems queue) + implemented CMRs, last 5 days */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center">
-            <h2 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-border flex justify-between items-center">
+            <h2 className="text-sm font-semibold text-foreground/90 flex items-center gap-2">
               <Ticket size={15} className="text-sky-400" />
               Tickets in Production Systems queue — updated in the last 5 days
             </h2>
-            <button onClick={() => refetchActivity()} title="Refresh" className="text-slate-500 hover:text-slate-300">
+            <button onClick={() => refetchActivity()} title="Refresh" className="text-muted-foreground hover:text-foreground/90">
               <RefreshCw size={13} />
             </button>
           </div>
           {activityLoading ? (
-            <div className="text-center py-10 text-slate-500 text-xs">Loading…</div>
+            <div className="text-center py-10 text-muted-foreground text-xs">Loading…</div>
           ) : (recentActivity?.rt_tickets || []).length === 0 ? (
-            <div className="text-center py-10 text-slate-500 text-xs">No tickets in the last 5 days.</div>
+            <div className="text-center py-10 text-muted-foreground text-xs">No tickets in the last 5 days.</div>
           ) : (
-            <div className="divide-y divide-slate-800/70 max-h-96 overflow-y-auto">
+            <div className="divide-y divide-border/70 max-h-96 overflow-y-auto">
               {recentActivity!.rt_tickets.map(t => (
                 <a key={t.ticket_id} href={t.url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-start gap-3 px-5 py-2.5 text-xs hover:bg-slate-800/40 transition-colors">
+                  className="flex items-start gap-3 px-5 py-2.5 text-xs hover:bg-muted/40 transition-colors">
                   <span className="text-sky-400 font-mono font-bold shrink-0">#{t.ticket_id}</span>
-                  <span className="text-slate-300">{t.subject}</span>
+                  <span className="text-foreground/90">{t.subject}</span>
                 </a>
               ))}
             </div>
           )}
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center">
-            <h2 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-border flex justify-between items-center">
+            <h2 className="text-sm font-semibold text-foreground/90 flex items-center gap-2">
               <GitPullRequest size={15} className="text-violet-400" />
               CMRs implemented in the last 5 days
             </h2>
-            <button onClick={() => refetchActivity()} title="Refresh" className="text-slate-500 hover:text-slate-300">
+            <button onClick={() => refetchActivity()} title="Refresh" className="text-muted-foreground hover:text-foreground/90">
               <RefreshCw size={13} />
             </button>
           </div>
           {activityLoading ? (
-            <div className="text-center py-10 text-slate-500 text-xs">Loading…</div>
+            <div className="text-center py-10 text-muted-foreground text-xs">Loading…</div>
           ) : (recentActivity?.cmrs || []).length === 0 ? (
-            <div className="text-center py-10 text-slate-500 text-xs">No CMRs in the last 5 days.</div>
+            <div className="text-center py-10 text-muted-foreground text-xs">No CMRs in the last 5 days.</div>
           ) : (
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
-              <table className="w-full text-xs text-left text-slate-300">
-                <thead className="bg-slate-950/60 text-slate-500 uppercase border-b border-slate-800 sticky top-0">
+              <table className="w-full text-xs text-left text-foreground/90">
+                <thead className="bg-background/60 text-muted-foreground uppercase border-b border-border sticky top-0">
                   <tr>
                     <th className="px-4 py-2">Request ID</th>
                     <th className="px-4 py-2">Owner</th>
@@ -273,9 +273,9 @@ export default function ReportsPage() {
                     <th className="px-4 py-2">Description</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/70">
+                <tbody className="divide-y divide-border/70">
                   {recentActivity!.cmrs.map(c => (
-                    <tr key={c.ticket_id} className="hover:bg-slate-800/40 transition-colors">
+                    <tr key={c.ticket_id} className="hover:bg-muted/40 transition-colors">
                       <td className="px-4 py-2.5">
                         <a href={c.url} target="_blank" rel="noopener noreferrer"
                           className="text-violet-400 font-mono font-bold hover:underline">#{c.ticket_id}</a>
@@ -286,7 +286,7 @@ export default function ReportsPage() {
                           {c.status}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-slate-400 whitespace-nowrap">{c.start_time}</td>
+                      <td className="px-4 py-2.5 font-mono text-muted-foreground whitespace-nowrap">{c.start_time}</td>
                       <td className="px-4 py-2.5 max-w-xs truncate" title={c.description}>{c.description}</td>
                     </tr>
                   ))}

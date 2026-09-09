@@ -36,7 +36,7 @@ const AGENT_STATUS_COLORS: Record<string, string> = {
   pending:    "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   correlated: "bg-blue-500/20   text-blue-400   border-blue-500/30",
   submitted:  "bg-green-500/20  text-green-400  border-green-500/30",
-  skipped:    "bg-slate-500/20  text-slate-400  border-slate-500/30",
+  skipped:    "bg-slate-500/20  text-muted-foreground  border-input/30",
 };
 
 function StatusBadge({ status, map }: { status: string; map: Record<string, string> }) {
@@ -98,28 +98,28 @@ function EditAgentModal({ agent, reportId, onClose }: { agent: ReportAgent; repo
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-md shadow-2xl">
-        <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-          <h3 className="font-bold text-white text-sm">Edit — {agent.agent_hostname}</h3>
-          <button onClick={onClose}><X size={18} className="text-slate-400 hover:text-white" /></button>
+      <div className="bg-card border border-input rounded-lg w-full max-w-md shadow-2xl">
+        <div className="p-4 border-b border-border flex justify-between items-center">
+          <h3 className="font-bold text-foreground text-sm">Edit — {agent.agent_hostname}</h3>
+          <button onClick={onClose}><X size={18} className="text-muted-foreground hover:text-foreground" /></button>
         </div>
         <div className="p-4 space-y-3">
           {[["RT Ticket #", rt, setRt, "e.g. 12345"], ["CMR #", cmr, setCmr, "e.g. 123456"]].map(([label, val, setter, ph]) => (
             <div key={label as string}>
-              <label className="block text-xs text-slate-400 font-bold uppercase mb-1">{label as string}</label>
+              <label className="block text-xs text-muted-foreground font-bold uppercase mb-1">{label as string}</label>
               <input value={val as string} onChange={e => (setter as any)(e.target.value)} placeholder={ph as string}
-                className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500" />
+                className="w-full bg-background border border-input rounded px-3 py-2 text-sm text-foreground outline-none focus:border-blue-500" />
             </div>
           ))}
           <div>
-            <label className="block text-xs text-slate-400 font-bold uppercase mb-1">Justification Note</label>
+            <label className="block text-xs text-muted-foreground font-bold uppercase mb-1">Justification Note</label>
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
               placeholder="Why these changes are expected / approved…"
-              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500 resize-none" />
+              className="w-full bg-background border border-input rounded px-3 py-2 text-sm text-foreground outline-none focus:border-blue-500 resize-none" />
           </div>
         </div>
-        <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm bg-slate-800 text-slate-300 rounded hover:bg-slate-700">Cancel</button>
+        <div className="p-4 border-t border-border flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm bg-muted text-foreground/90 rounded hover:bg-secondary/80">Cancel</button>
           <button onClick={save} disabled={busy} className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
             {busy ? "Saving…" : "Save"}
           </button>
@@ -156,27 +156,27 @@ function SubmitAgentModal({ agent, reportId, onClose }: { agent: ReportAgent; re
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-md shadow-2xl">
-        <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-          <h3 className="font-bold text-white text-sm flex items-center gap-2"><Send size={14} className="text-green-400" /> Submit — {agent.agent_hostname}</h3>
-          <button onClick={onClose}><X size={18} className="text-slate-400 hover:text-white" /></button>
+      <div className="bg-card border border-input rounded-lg w-full max-w-md shadow-2xl">
+        <div className="p-4 border-b border-border flex justify-between items-center">
+          <h3 className="font-bold text-foreground text-sm flex items-center gap-2"><Send size={14} className="text-green-400" /> Submit — {agent.agent_hostname}</h3>
+          <button onClick={onClose}><X size={18} className="text-muted-foreground hover:text-foreground" /></button>
         </div>
         <div className="p-4 space-y-3">
-          <p className="text-xs text-slate-400">Confirm the RT ticket and note before submitting this agent.</p>
+          <p className="text-xs text-muted-foreground">Confirm the RT ticket and note before submitting this agent.</p>
           <div>
-            <label className="block text-xs text-slate-400 font-bold uppercase mb-1">RT Ticket #</label>
+            <label className="block text-xs text-muted-foreground font-bold uppercase mb-1">RT Ticket #</label>
             <input value={rt} onChange={e => setRt(e.target.value)} placeholder="e.g. 12345"
-              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500" />
+              className="w-full bg-background border border-input rounded px-3 py-2 text-sm text-foreground outline-none focus:border-blue-500" />
           </div>
           <div>
-            <label className="block text-xs text-slate-400 font-bold uppercase mb-1">Note</label>
+            <label className="block text-xs text-muted-foreground font-bold uppercase mb-1">Note</label>
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
-              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500 resize-none" />
+              className="w-full bg-background border border-input rounded px-3 py-2 text-sm text-foreground outline-none focus:border-blue-500 resize-none" />
           </div>
           {error && <div className="text-red-400 text-xs">{error}</div>}
         </div>
-        <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm bg-slate-800 text-slate-300 rounded hover:bg-slate-700">Cancel</button>
+        <div className="p-4 border-t border-border flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm bg-muted text-foreground/90 rounded hover:bg-secondary/80">Cancel</button>
           <button onClick={doSubmit} disabled={busy} className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-2">
             <Send size={14} />{busy ? "Submitting…" : "Submit"}
           </button>
@@ -234,25 +234,25 @@ function BulkSubmitModal({ agents, reportId, onClose, onDone }: {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-2xl shadow-2xl max-h-[85vh] flex flex-col">
-        <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
-          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+      <div className="bg-card border border-input rounded-lg w-full max-w-2xl shadow-2xl max-h-[85vh] flex flex-col">
+        <div className="p-4 border-b border-border flex justify-between items-center shrink-0">
+          <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
             <Send size={14} className="text-green-400" /> Bulk Submit — {rows.length} agent{rows.length === 1 ? "" : "s"}
           </h3>
-          <button onClick={onClose}><X size={18} className="text-slate-400 hover:text-white" /></button>
+          <button onClick={onClose}><X size={18} className="text-muted-foreground hover:text-foreground" /></button>
         </div>
         <div className="p-4 space-y-2.5 overflow-y-auto">
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted-foreground">
             Each agent keeps its own RT ticket # and note — pre-filled from correlation where available. Edit any row, then submit all at once.
           </p>
           {rows.map(row => (
             <div key={row.hostname} className={`border rounded p-2.5 space-y-1.5 ${
               row.status === "done"  ? "border-green-800/50 bg-green-900/10" :
-              row.status === "error" ? "border-red-800/50 bg-red-900/10" : "border-slate-800"
+              row.status === "error" ? "border-red-800/50 bg-red-900/10" : "border-border"
             }`}>
               <div className="flex items-center justify-between gap-2">
-                <span className="font-mono font-bold text-white text-xs">{row.hostname}</span>
-                {row.status === "busy"  && <RotateCcw size={12} className="animate-spin text-slate-400" />}
+                <span className="font-mono font-bold text-foreground text-xs">{row.hostname}</span>
+                {row.status === "busy"  && <RotateCcw size={12} className="animate-spin text-muted-foreground" />}
                 {row.status === "done"  && <span className="text-green-400 text-xs flex items-center gap-1"><Check size={12} /> Submitted</span>}
                 {row.status === "error" && <span className="text-red-400 text-[10px]">{row.error}</span>}
               </div>
@@ -260,18 +260,18 @@ function BulkSubmitModal({ agents, reportId, onClose, onDone }: {
                 <div className="flex gap-2">
                   <input value={row.rt} onChange={e => updateRow(row.hostname, { rt: e.target.value })}
                     placeholder="RT #" disabled={submitting}
-                    className="w-28 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500 disabled:opacity-50" />
+                    className="w-28 bg-background border border-input rounded px-2 py-1 text-xs text-foreground outline-none focus:border-blue-500 disabled:opacity-50" />
                   <input value={row.note} onChange={e => updateRow(row.hostname, { note: e.target.value })}
                     placeholder="Note (optional)" disabled={submitting}
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500 disabled:opacity-50" />
+                    className="flex-1 bg-background border border-input rounded px-2 py-1 text-xs text-foreground outline-none focus:border-blue-500 disabled:opacity-50" />
                 </div>
               )}
             </div>
           ))}
         </div>
-        <div className="p-4 border-t border-slate-800 flex justify-end gap-2 shrink-0">
+        <div className="p-4 border-t border-border flex justify-end gap-2 shrink-0">
           <button onClick={() => { if (allDone) onDone(); onClose(); }}
-            className="px-4 py-2 text-sm bg-slate-800 text-slate-300 rounded hover:bg-slate-700">
+            className="px-4 py-2 text-sm bg-muted text-foreground/90 rounded hover:bg-secondary/80">
             {allDone ? "Close" : "Cancel"}
           </button>
           {!allDone && (
@@ -317,10 +317,10 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col">
-      <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center shrink-0">
-        <h3 className="font-bold text-white text-base flex items-center gap-2"><Send size={16} className="text-green-400" /> Publish to RT</h3>
-        <button onClick={onClose}><X size={22} className="text-slate-400 hover:text-white" /></button>
+    <div className="fixed inset-0 bg-background z-50 flex flex-col">
+      <div className="px-6 py-4 border-b border-border flex justify-between items-center shrink-0">
+        <h3 className="font-bold text-foreground text-base flex items-center gap-2"><Send size={16} className="text-green-400" /> Publish to RT</h3>
+        <button onClick={onClose}><X size={22} className="text-muted-foreground hover:text-foreground" /></button>
       </div>
 
       {result ? (
@@ -330,17 +330,17 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
               ? <CheckCircle size={48} className="text-green-400 mx-auto" />
               : <AlertTriangle size={48} className="text-orange-400 mx-auto" />}
             <p className={`text-sm font-medium ${result.success ? "text-green-300" : "text-orange-300"}`}>{result.message}</p>
-            <button onClick={() => { onClose(); window.location.href = "/reports"; }} className="px-6 py-2 bg-slate-700 text-white rounded text-sm hover:bg-slate-600">Close</button>
+            <button onClick={() => { onClose(); window.location.href = "/reports"; }} className="px-6 py-2 bg-secondary text-secondary-foreground rounded text-sm hover:bg-secondary/80">Close</button>
           </div>
         </div>
       ) : (
         <>
           <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="max-w-4xl mx-auto p-6 space-y-3">
-              <div className="bg-slate-900 border border-slate-800 rounded p-3 text-xs space-y-1 font-mono">
-                <div className="text-slate-400">Report  : <span className="text-white">FIM-report-{report.report_date}.htm</span></div>
-                <div className="text-slate-400">Agents  : <span className="text-white">{report.agents_submitted}/{report.agents_total} submitted</span></div>
-                <div className="text-slate-400">Status  : <span className="text-white">{report.status}</span></div>
+              <div className="bg-card border border-border rounded p-3 text-xs space-y-1 font-mono">
+                <div className="text-muted-foreground">Report  : <span className="text-foreground">FIM-report-{report.report_date}.htm</span></div>
+                <div className="text-muted-foreground">Agents  : <span className="text-foreground">{report.agents_submitted}/{report.agents_total} submitted</span></div>
+                <div className="text-muted-foreground">Status  : <span className="text-foreground">{report.status}</span></div>
               </div>
 
               {notDone.length > 0 && (
@@ -349,7 +349,7 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
                     <AlertTriangle size={12} /> {notDone.length} agent(s) not yet submitted
                   </div>
                   {notDone.map(a => (
-                    <div key={a.agent_hostname} className="text-xs text-slate-400 ml-4">• {a.agent_hostname}</div>
+                    <div key={a.agent_hostname} className="text-xs text-muted-foreground ml-4">• {a.agent_hostname}</div>
                   ))}
                   <label className="flex items-center gap-2 mt-2 cursor-pointer">
                     <input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} className="accent-yellow-400" />
@@ -358,22 +358,22 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
                 </div>
               )}
 
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 Posts a consolidated FIM summary comment to the daily RT review ticket for{" "}
-                <span className="text-white font-mono">{report.report_date}</span>.
+                <span className="text-foreground font-mono">{report.report_date}</span>.
                 If no RT ticket is found, report will be marked as <span className="text-orange-300">submitted_no_ticket</span>.
               </p>
 
               <button
                 onClick={() => setShowPreview(v => !v)}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs bg-slate-900 border border-slate-800 text-slate-300 rounded hover:bg-slate-800"
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs bg-card border border-border text-foreground/90 rounded hover:bg-muted"
               >
                 <Eye size={12} />{showPreview ? "Hide preview" : "Preview exact content before publishing"}
               </button>
 
               {showPreview && (
-                <div className="bg-slate-900 border border-slate-800 rounded p-4 space-y-2">
-                  {preview.isLoading && <div className="text-xs text-slate-500">Loading preview…</div>}
+                <div className="bg-card border border-border rounded p-4 space-y-2">
+                  {preview.isLoading && <div className="text-xs text-muted-foreground">Loading preview…</div>}
                   {preview.isError && (
                     <div className="text-xs text-orange-300">
                       Failed to load preview: {(preview.error as Error).message}
@@ -386,7 +386,7 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
                           ? <span className="text-green-300">Will post to RT#{preview.data.ticket_id}</span>
                           : <span className="text-orange-300">No RT ticket found — report will be marked submitted_no_ticket</span>}
                       </div>
-                      <pre className="text-[12px] text-slate-300 font-mono whitespace-pre-wrap break-words leading-relaxed">
+                      <pre className="text-[12px] text-foreground/90 font-mono whitespace-pre-wrap break-words leading-relaxed">
                         {preview.data.content}
                       </pre>
                     </>
@@ -395,8 +395,8 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
               )}
             </div>
           </div>
-          <div className="px-6 py-4 border-t border-slate-800 flex justify-end gap-2 shrink-0">
-            <button onClick={onClose} className="px-4 py-2 text-sm bg-slate-800 text-slate-300 rounded hover:bg-slate-700">Cancel</button>
+          <div className="px-6 py-4 border-t border-border flex justify-end gap-2 shrink-0">
+            <button onClick={onClose} className="px-4 py-2 text-sm bg-muted text-foreground/90 rounded hover:bg-secondary/80">Cancel</button>
             <button onClick={doPublish} disabled={busy || (notDone.length > 0 && !force)}
               className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-40 flex items-center gap-2">
               <Send size={14} />{busy ? "Publishing…" : "Publish"}
@@ -437,13 +437,13 @@ function ChangeRow({ change, reportId }: { change: ReportChangeDetail; reportId:
 
   const isLinked = !!(change.external_ticket_id || (change.linked_rt_tickets || []).length > 0);
   const kindKey = (change.change_type || "").toLowerCase();
-  const kindStyle = CHANGE_KIND_STYLE[kindKey] || { label: change.change_type || "unknown", color: "text-slate-400" };
+  const kindStyle = CHANGE_KIND_STYLE[kindKey] || { label: change.change_type || "unknown", color: "text-muted-foreground" };
 
   return (
     <div className={`border-l-2 pl-3 py-1.5 text-xs font-mono ${
       change.requires_investigation ? "border-red-500" :
       isLinked ? "border-green-500" :
-      change.is_known_change ? "border-blue-500" : "border-slate-700"}`}>
+      change.is_known_change ? "border-blue-500" : "border-input"}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
@@ -455,49 +455,49 @@ function ChangeRow({ change, reportId }: { change: ReportChangeDetail; reportId:
               <a href={`https://tickets.int.untd.com/Ticket/Display.html?id=${change.external_ticket_id}`} target="_blank" rel="noopener noreferrer" className="text-green-400 text-[10px] font-bold hover:text-green-300 hover:underline">RT#{change.external_ticket_id}</a>
             )}
             {change.rt_ticket_manually_added && (
-              <span className="text-slate-500 text-[10px]">(manual)</span>
+              <span className="text-muted-foreground text-[10px]">(manual)</span>
             )}
           </div>
           <div className="text-pink-400 truncate">{change.file_path}</div>
           {(change.baseline_hash || change.current_hash) && (
-            <div className="text-slate-600 text-[10px] mt-0.5">
+            <div className="text-muted-foreground text-[10px] mt-0.5">
               <span className="text-orange-400/80 font-semibold">Hash: </span>
               {change.baseline_hash?.slice(0, 12) || "—"} → {change.current_hash?.slice(0, 12) || "—"}
             </div>
           )}
           {(change.baseline_mtime || change.current_mtime) && (
-            <div className="text-slate-600 text-[10px] mt-0.5">
+            <div className="text-muted-foreground text-[10px] mt-0.5">
               <span className="text-green-400/80 font-semibold">Mtime: </span>
               {change.baseline_mtime?.slice(0, 19) || "N/A"} → {change.current_mtime?.slice(0, 19) || "N/A"}
             </div>
           )}
           {change.analyst_notes && (
-            <div className="text-slate-400 italic text-[10px] mt-0.5 truncate">{change.analyst_notes}</div>
+            <div className="text-muted-foreground italic text-[10px] mt-0.5 truncate">{change.analyst_notes}</div>
           )}
         </div>
         <button onClick={() => setShowLink(p => !p)} title="Link / annotate"
-          className="text-slate-600 hover:text-blue-400 shrink-0 mt-0.5">
+          className="text-muted-foreground hover:text-blue-400 shrink-0 mt-0.5">
           <LinkIcon size={12} />
         </button>
       </div>
 
       {showLink && (
-        <div className="mt-2 space-y-1.5 border-t border-slate-800 pt-2">
+        <div className="mt-2 space-y-1.5 border-t border-border pt-2">
           <input value={rtInput} onChange={e => setRtInput(e.target.value)} placeholder="RT # (optional)"
-            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none" />
+            className="w-full bg-muted border border-input rounded px-2 py-1 text-xs text-foreground outline-none" />
           <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
             placeholder={`Analyst note${known ? " (required for known change)" : " (optional)"}`}
-            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none resize-none" />
+            className="w-full bg-muted border border-input rounded px-2 py-1 text-xs text-foreground outline-none resize-none" />
           <label className="flex items-center gap-1.5 cursor-pointer">
             <input type="checkbox" checked={known} onChange={e => setKnown(e.target.checked)} className="accent-blue-400" />
-            <span className="text-slate-300">Mark as known/expected change</span>
+            <span className="text-foreground/90">Mark as known/expected change</span>
           </label>
           <div className="flex gap-1">
             <button onClick={doLink} disabled={busy}
               className="px-3 py-1 bg-blue-600 text-white rounded text-[10px] hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1">
               {busy ? "…" : <><Check size={10} /> Save</>}
             </button>
-            <button onClick={() => setShowLink(false)} className="px-2 py-1 text-slate-500 hover:text-white">
+            <button onClick={() => setShowLink(false)} className="px-2 py-1 text-muted-foreground hover:text-foreground">
               <X size={12} />
             </button>
           </div>
@@ -559,14 +559,14 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
       {editModal   && <EditAgentModal   agent={agent} reportId={report.id} onClose={() => setEditModal(false)} />}
       {submitModal && <SubmitAgentModal agent={agent} reportId={report.id} onClose={() => setSubmitModal(false)} />}
 
-      <div className={`bg-slate-900 border rounded-lg overflow-hidden mb-3 ${
+      <div className={`bg-card border rounded-lg overflow-hidden mb-3 ${
         agent.status === "submitted" ? "border-green-800/60" :
-        agent.status === "skipped"  ? "border-slate-700/40" :
+        agent.status === "skipped"  ? "border-input/40" :
         agent.status === "correlated" ? "border-blue-800/40" :
-        selected ? "border-blue-600/70" : "border-slate-800"
+        selected ? "border-blue-600/70" : "border-border"
       }`}>
         {/* Header */}
-        <div className="p-3 bg-slate-800/50 flex items-center justify-between cursor-pointer hover:bg-slate-800 transition-colors"
+        <div className="p-3 bg-muted/50 flex items-center justify-between cursor-pointer hover:bg-muted transition-colors"
           onClick={() => setExpanded(p => !p)}>
           <div className="flex items-center gap-2.5 min-w-0">
             {selectable && (
@@ -574,9 +574,9 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
                 title="Select for bulk submit" className="accent-green-500 shrink-0" />
             )}
             <StatusBadge status={agent.status} map={AGENT_STATUS_COLORS} />
-            <span className="font-mono font-bold text-white text-sm truncate">{agent.agent_hostname}</span>
-            {agent.ip_address && <span className="text-slate-500 text-xs hidden md:block">{agent.ip_address}</span>}
-            <span className="text-slate-500 text-xs">{displayChangeCount} changes</span>
+            <span className="font-mono font-bold text-foreground text-sm truncate">{agent.agent_hostname}</span>
+            {agent.ip_address && <span className="text-muted-foreground text-xs hidden md:block">{agent.ip_address}</span>}
+            <span className="text-muted-foreground text-xs">{displayChangeCount} changes</span>
             {isSubmittedInReport && <span className="text-green-400 text-xs">✓</span>}
           </div>
 
@@ -595,39 +595,39 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
             {agent.status !== "submitted" && agent.status !== "skipped" && (
               <>
                 <button onClick={handleFindTickets} disabled={searching} title="Search RT & CMR"
-                  className="p-1.5 rounded bg-slate-700 text-cyan-400 hover:bg-cyan-900/40 disabled:opacity-50">
+                  className="p-1.5 rounded bg-secondary text-cyan-400 hover:bg-cyan-900/40 disabled:opacity-50">
                   {searching ? <RotateCcw size={13} className="animate-spin" /> : <Search size={13} />}
                 </button>
-                <button onClick={() => setEditModal(true)} title="Edit" className="p-1.5 rounded bg-slate-700 text-slate-300 hover:bg-slate-600">
+                <button onClick={() => setEditModal(true)} title="Edit" className="p-1.5 rounded bg-secondary text-foreground/90 hover:bg-secondary/80">
                   <Edit2 size={13} />
                 </button>
                 <button onClick={() => setSubmitModal(true)}
                   className="p-1.5 rounded bg-green-700 text-white hover:bg-green-600 flex items-center gap-1 text-xs px-2">
                   <Send size={12} /> Submit
                 </button>
-                <button onClick={handleSkip} disabled={skipping} title="Skip" className="p-1.5 rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-50">
+                <button onClick={handleSkip} disabled={skipping} title="Skip" className="p-1.5 rounded bg-secondary text-muted-foreground hover:bg-secondary/80 disabled:opacity-50">
                   <SkipForward size={13} />
                 </button>
               </>
             )}
 
             {agent.status === "submitted" && <span className="text-green-400 text-xs flex items-center gap-1"><Check size={13} /> Done</span>}
-            {agent.status === "skipped"   && <span className="text-slate-400 text-xs flex items-center gap-1"><SkipForward size={13} /> Skipped</span>}
+            {agent.status === "skipped"   && <span className="text-muted-foreground text-xs flex items-center gap-1"><SkipForward size={13} /> Skipped</span>}
 
-            {expanded ? <ChevronUp size={15} className="text-slate-500 ml-1" /> : <ChevronDown size={15} className="text-slate-500 ml-1" />}
+            {expanded ? <ChevronUp size={15} className="text-muted-foreground ml-1" /> : <ChevronDown size={15} className="text-muted-foreground ml-1" />}
           </div>
         </div>
 
         {expanded && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+          <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-border">
             {/* Changes */}
-            <div className="lg:col-span-2 max-h-72 overflow-y-auto bg-slate-950 p-3 space-y-2">
+            <div className="lg:col-span-2 max-h-72 overflow-y-auto bg-background p-3 space-y-2">
               {viewMode === "grouped" ? (
                 <GroupedChangesView changes={agent.changes} />
               ) : (
                 <>
                   {agent.changes.length === 0 && (
-                    <div className="text-slate-500 text-xs italic py-4 text-center">No changes for this agent.</div>
+                    <div className="text-muted-foreground text-xs italic py-4 text-center">No changes for this agent.</div>
                   )}
                   {agent.changes.map((ch, idx) => (
                     <ChangeRow key={ch.id || idx} change={ch} reportId={report.id} />
@@ -637,16 +637,16 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
             </div>
 
             {/* Tickets + note */}
-            <div className="p-3 space-y-3 bg-slate-900/50">
+            <div className="p-3 space-y-3 bg-card/50">
               {agent.correlation_note && (
-                <div className="bg-slate-800/50 rounded p-2 text-xs text-slate-300 italic border-l-2 border-slate-600">
+                <div className="bg-muted/50 rounded p-2 text-xs text-foreground/90 italic border-l-2 border-input">
                   {agent.correlation_note}
                 </div>
               )}
 
               {rtTickets.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
+                  <div className="text-xs font-bold text-muted-foreground uppercase mb-1 flex items-center gap-1">
                     <LinkIcon size={10} className="text-blue-400" /> RT Tickets
                   </div>
                   {rtTickets.map(t => <TicketChip key={t.external_id} ticket={t} color="blue" />)}
@@ -655,7 +655,7 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
 
               {cmrTickets.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
+                  <div className="text-xs font-bold text-muted-foreground uppercase mb-1 flex items-center gap-1">
                     <LinkIcon size={10} className="text-cyan-400" /> CMR Tickets
                   </div>
                   {cmrTickets.map(t => <TicketChip key={t.external_id} ticket={t} color="cyan" />)}
@@ -664,7 +664,7 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
 
               {jiraTickets.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
+                  <div className="text-xs font-bold text-muted-foreground uppercase mb-1 flex items-center gap-1">
                     <LinkIcon size={10} className="text-violet-400" /> JIRA Issues
                   </div>
                   {jiraTickets.map(t => <TicketChip key={t.external_id} ticket={t} color="violet" />)}
@@ -672,7 +672,7 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
               )}
 
               {rtTickets.length === 0 && cmrTickets.length === 0 && jiraTickets.length === 0 && (
-                <div className="text-slate-500 text-xs italic text-center py-3">
+                <div className="text-muted-foreground text-xs italic text-center py-3">
                   No tickets found. Use <Search size={10} className="inline" /> to search.
                 </div>
               )}
@@ -728,7 +728,7 @@ function HostActionRow({ agent, report, selected = false, onToggleSelect }: {
           <input type="checkbox" checked={selected} onChange={onToggleSelect}
             title="Select for bulk submit" className="accent-green-500 shrink-0" />
         )}
-        <span className="font-mono font-bold text-white min-w-[15ch]">{agent.agent_hostname}</span>
+        <span className="font-mono font-bold text-foreground min-w-[15ch]">{agent.agent_hostname}</span>
         <StatusBadge status={agent.status} map={AGENT_STATUS_COLORS} />
         {effectiveRt && (
           <a href={`https://tickets.int.untd.com/Ticket/Display.html?id=${effectiveRt}`} target="_blank" rel="noopener noreferrer"
@@ -739,23 +739,23 @@ function HostActionRow({ agent, report, selected = false, onToggleSelect }: {
         {agent.status !== "submitted" && agent.status !== "skipped" && (
           <div className="flex items-center gap-1 ml-auto">
             <button onClick={handleFindTickets} disabled={searching} title="Search RT & CMR"
-              className="p-1 rounded bg-slate-700 text-cyan-400 hover:bg-cyan-900/40 disabled:opacity-50">
+              className="p-1 rounded bg-secondary text-cyan-400 hover:bg-cyan-900/40 disabled:opacity-50">
               {searching ? <RotateCcw size={11} className="animate-spin" /> : <Search size={11} />}
             </button>
-            <button onClick={() => setEditModal(true)} title="Edit" className="p-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600">
+            <button onClick={() => setEditModal(true)} title="Edit" className="p-1 rounded bg-secondary text-foreground/90 hover:bg-secondary/80">
               <Edit2 size={11} />
             </button>
             <button onClick={() => setSubmitModal(true)}
               className="px-2 py-1 rounded bg-green-700 text-white hover:bg-green-600 flex items-center gap-1">
               <Send size={11} /> Submit
             </button>
-            <button onClick={handleSkip} title="Skip" className="p-1 rounded bg-slate-700 text-slate-400 hover:bg-slate-600">
+            <button onClick={handleSkip} title="Skip" className="p-1 rounded bg-secondary text-muted-foreground hover:bg-secondary/80">
               <SkipForward size={11} />
             </button>
           </div>
         )}
         {agent.status === "submitted" && <span className="ml-auto text-green-400 flex items-center gap-1"><Check size={11} /> Done</span>}
-        {agent.status === "skipped"   && <span className="ml-auto text-slate-400 flex items-center gap-1"><SkipForward size={11} /> Skipped</span>}
+        {agent.status === "skipped"   && <span className="ml-auto text-muted-foreground flex items-center gap-1"><SkipForward size={11} /> Skipped</span>}
       </div>
     </>
   );
@@ -784,7 +784,7 @@ function HostGroupCard({ hostnames, changes, agentsByHostname, report, selectedA
   };
 
   return (
-    <div className="bg-slate-900 border border-violet-800/40 rounded-lg overflow-hidden mb-3">
+    <div className="bg-card border border-violet-800/40 rounded-lg overflow-hidden mb-3">
       <div className="p-3 bg-violet-900/10 border-b border-violet-800/30 cursor-pointer hover:bg-violet-900/20 transition-colors"
         onClick={() => setExpanded(p => !p)}>
         <div className="flex items-start justify-between gap-2">
@@ -800,19 +800,19 @@ function HostGroupCard({ hostnames, changes, agentsByHostname, report, selectedA
             </div>
             <div className="flex flex-col gap-1 items-start">
               {hostnames.map(h => (
-                <span key={h} className="font-mono text-xs font-bold text-white bg-slate-950/50 border border-violet-800/40 rounded px-2 py-0.5">
+                <span key={h} className="font-mono text-xs font-bold text-foreground bg-background/50 border border-violet-800/40 rounded px-2 py-0.5">
                   {h}
                 </span>
               ))}
             </div>
           </div>
-          {expanded ? <ChevronUp size={15} className="text-slate-500 shrink-0" /> : <ChevronDown size={15} className="text-slate-500 shrink-0" />}
+          {expanded ? <ChevronUp size={15} className="text-muted-foreground shrink-0" /> : <ChevronDown size={15} className="text-muted-foreground shrink-0" />}
         </div>
       </div>
 
       {expanded && (
         <>
-          <div className="p-3 bg-slate-950/30 border-b border-slate-800 space-y-1">
+          <div className="p-3 bg-background/30 border-b border-border space-y-1">
             {hostnames.map(h => agentsByHostname[h] && (
               <HostActionRow key={h} agent={agentsByHostname[h]} report={report}
                 selected={!!selectedAgents?.has(h)}
@@ -839,7 +839,7 @@ function TicketChip({ ticket, color }: { ticket: ReportTicket; color: "blue" | "
         <span className="font-bold font-mono">#{ticket.external_id}</span>
         {ticket.is_linked && <Check size={10} className="text-green-400 mt-0.5" />}
       </div>
-      {ticket.summary && <div className="text-slate-400 mt-0.5 text-[10px] line-clamp-2">{ticket.summary}</div>}
+      {ticket.summary && <div className="text-muted-foreground mt-0.5 text-[10px] line-clamp-2">{ticket.summary}</div>}
       {ticket.url && (
         <a href={ticket.url} target="_blank" rel="noreferrer"
           className="text-[10px] flex items-center gap-1 mt-1 hover:underline opacity-60">
@@ -874,22 +874,22 @@ function PreCorrelationView({ report, viewMode }: { report: DailyReportDetail; v
       <div className="bg-blue-900/10 border border-blue-800/40 rounded-lg p-4 flex items-start gap-3">
         <AlertTriangle size={18} className="text-yellow-400 shrink-0 mt-0.5" />
         <div>
-          <div className="text-sm font-bold text-white mb-1">Correlation not yet run</div>
-          <div className="text-xs text-slate-400">
-            Click <strong className="text-white">Correlate All</strong> above to search RT and CMR for each agent automatically.
+          <div className="text-sm font-bold text-foreground mb-1">Correlation not yet run</div>
+          <div className="text-xs text-muted-foreground">
+            Click <strong className="text-foreground">Correlate All</strong> above to search RT and CMR for each agent automatically.
           </div>
         </div>
       </div>
 
       {viewMode === "grouped" && groups.map(g => (
-        <div key={g.hostnames.join(",")} className="bg-slate-900 border border-violet-800/40 rounded-lg overflow-hidden">
+        <div key={g.hostnames.join(",")} className="bg-card border border-violet-800/40 rounded-lg overflow-hidden">
           <div className="px-4 py-2 bg-violet-900/10 border-b border-violet-800/30 flex flex-col gap-1.5">
             <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
               Identical changes · {g.hostnames.length} hosts
             </span>
             <div className="flex flex-col gap-1 items-start">
               {g.hostnames.map(h => (
-                <span key={h} className="font-mono text-xs font-bold text-white bg-slate-950/50 border border-violet-800/40 rounded px-2 py-0.5">
+                <span key={h} className="font-mono text-xs font-bold text-foreground bg-background/50 border border-violet-800/40 rounded px-2 py-0.5">
                   {h}
                 </span>
               ))}
@@ -900,22 +900,22 @@ function PreCorrelationView({ report, viewMode }: { report: DailyReportDetail; v
       ))}
 
       {solos.map(({ hostname, changes }) => (
-        <div key={hostname} className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-          <div className="px-4 py-2 bg-slate-800/50 border-b border-slate-800 flex justify-between">
-            <span className="font-mono font-bold text-white text-sm">{hostname}</span>
-            <span className="text-slate-400 text-xs">{changes.length} changes</span>
+        <div key={hostname} className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-muted/50 border-b border-border flex justify-between">
+            <span className="font-mono font-bold text-foreground text-sm">{hostname}</span>
+            <span className="text-muted-foreground text-xs">{changes.length} changes</span>
           </div>
 
           {viewMode === "grouped" ? (
             <GroupedChangesView changes={changes} />
           ) : (
-            <div className="divide-y divide-slate-800/50">
+            <div className="divide-y divide-border/50">
               {changes.map((c, idx) => (
                 <div key={idx} className="px-4 py-2.5 text-xs font-mono">
                   {/* File path + type */}
                   <div className="flex items-center gap-2 mb-1.5">
                     <SeverityDot severity={c.severity} />
-                    <span className="text-slate-500 uppercase w-16">{c.change_type}</span>
+                    <span className="text-muted-foreground uppercase w-16">{c.change_type}</span>
                     <span className="text-pink-400 truncate">{c.file_path}</span>
                   </div>
                   {/* Hash diff */}
@@ -923,26 +923,26 @@ function PreCorrelationView({ report, viewMode }: { report: DailyReportDetail; v
                     <div className="ml-[4.5rem] space-y-0.5 text-[10px]">
                       <div>
                         <span className="text-orange-400 font-bold">Hash: </span>
-                        <span className="text-slate-500">{c.baseline_hash?.slice(0, 16) || 'N/A'}</span>
-                        <span className="text-slate-600"> → </span>
-                        <span className="text-slate-300">{c.current_hash?.slice(0, 16) || 'N/A'}</span>
+                        <span className="text-muted-foreground">{c.baseline_hash?.slice(0, 16) || 'N/A'}</span>
+                        <span className="text-muted-foreground"> → </span>
+                        <span className="text-foreground/90">{c.current_hash?.slice(0, 16) || 'N/A'}</span>
                       </div>
                       {/* Size diff */}
                       {(c.baseline_size != null || c.current_size != null) && (
                         <div>
                           <span className="text-sky-400 font-bold">Size: </span>
-                          <span className="text-slate-500">{c.baseline_size ?? 'N/A'}</span>
-                          <span className="text-slate-600"> → </span>
-                          <span className="text-slate-300">{c.current_size ?? 'N/A'} bytes</span>
+                          <span className="text-muted-foreground">{c.baseline_size ?? 'N/A'}</span>
+                          <span className="text-muted-foreground"> → </span>
+                          <span className="text-foreground/90">{c.current_size ?? 'N/A'} bytes</span>
                         </div>
                       )}
                       {/* Mtime diff */}
                       {(c.baseline_mtime || c.current_mtime) && (
                         <div>
                           <span className="text-green-400 font-bold">Mtime: </span>
-                          <span className="text-slate-500">{c.baseline_mtime?.slice(0, 19) || 'N/A'}</span>
-                          <span className="text-slate-600"> → </span>
-                          <span className="text-slate-300">{c.current_mtime?.slice(0, 19) || 'N/A'}</span>
+                          <span className="text-muted-foreground">{c.baseline_mtime?.slice(0, 19) || 'N/A'}</span>
+                          <span className="text-muted-foreground"> → </span>
+                          <span className="text-foreground/90">{c.current_mtime?.slice(0, 19) || 'N/A'}</span>
                         </div>
                       )}
                     </div>
@@ -978,15 +978,15 @@ function AnalystNotesPanel({ report }: { report: DailyReportDetail }) {
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-      <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2">
+    <div className="bg-card border border-border rounded-lg p-4">
+      <h3 className="text-xs font-bold text-muted-foreground uppercase mb-2 flex items-center gap-2">
         <BookOpen size={12} /> Report-Level Analyst Notes
       </h3>
       <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={4}
         placeholder="Overall justification, change window, approver, ticket reference…"
-        className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200 outline-none resize-none focus:border-blue-500" />
+        className="w-full bg-background border border-border rounded p-2 text-xs text-foreground outline-none resize-none focus:border-blue-500" />
       <button onClick={save} disabled={busy}
-        className="mt-2 px-4 py-1.5 bg-slate-700 text-white text-xs rounded border border-slate-600 hover:bg-slate-600 disabled:opacity-50 flex items-center gap-1">
+        className="mt-2 px-4 py-1.5 bg-secondary text-secondary-foreground text-xs rounded border border-input hover:bg-secondary/80 disabled:opacity-50 flex items-center gap-1">
         {saved ? <><Check size={12} className="text-green-400" /> Saved!</> : busy ? "Saving…" : "Save Notes"}
       </button>
     </div>
@@ -1089,7 +1089,7 @@ export default function ReportDetailPage() {
   };
 
   if (isLoading) return (
-    <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
+    <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
       <RotateCcw size={18} className="animate-spin mr-2" /> Loading report…
     </div>
   );
@@ -1128,17 +1128,17 @@ export default function ReportDetailPage() {
       <div className="space-y-5">
         {/* Toolbar */}
         <div className="flex flex-wrap justify-between items-center gap-2 print:hidden">
-          <button onClick={() => navigate("/reports")} className="px-3 py-2 bg-slate-800 text-white rounded text-sm flex items-center gap-2 hover:bg-slate-700">
+          <button onClick={() => navigate("/reports")} className="px-3 py-2 bg-muted text-secondary-foreground rounded text-sm flex items-center gap-2 hover:bg-secondary/80">
             <ArrowLeft size={14} /> Back
           </button>
           <div className="flex flex-wrap gap-2">
-            <div className="flex rounded overflow-hidden border border-slate-700">
+            <div className="flex rounded overflow-hidden border border-input">
               <button onClick={() => setViewMode("grouped")} title="Categorized view — grouped by pattern"
-                className={`px-2.5 py-2 text-xs flex items-center gap-1.5 ${viewMode === "grouped" ? "bg-violet-700 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"}`}>
+                className={`px-2.5 py-2 text-xs flex items-center gap-1.5 ${viewMode === "grouped" ? "bg-violet-700 text-white" : "bg-muted text-muted-foreground hover:bg-secondary/80"}`}>
                 <LayoutGrid size={13} /> Grouped
               </button>
               <button onClick={() => setViewMode("classic")} title="Flat per-host list — every change shown individually"
-                className={`px-2.5 py-2 text-xs flex items-center gap-1.5 ${viewMode === "classic" ? "bg-slate-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"}`}>
+                className={`px-2.5 py-2 text-xs flex items-center gap-1.5 ${viewMode === "classic" ? "bg-secondary text-secondary-foreground" : "bg-muted text-muted-foreground hover:bg-secondary/80"}`}>
                 <List size={13} /> Classic
               </button>
             </div>
@@ -1149,14 +1149,14 @@ export default function ReportDetailPage() {
             </button>
             {report.status === "in_review" && (
               <button onClick={() => updateReportStatus(report.id, "reviewed").then(() => qc.invalidateQueries({ queryKey: ["report", reportId] }))}
-                className="px-3 py-2 bg-slate-700 text-slate-200 text-xs rounded flex items-center gap-1.5 hover:bg-slate-600 border border-slate-600">
+                className="px-3 py-2 bg-secondary text-foreground text-xs rounded flex items-center gap-1.5 hover:bg-secondary/80 border border-input">
                 <CheckCircle size={13} /> Mark Reviewed
               </button>
             )}
-            <button onClick={handleExport} disabled={exporting} className="px-3 py-2 bg-slate-800 text-slate-200 border border-slate-700 text-xs rounded flex items-center gap-1.5 hover:bg-slate-700">
+            <button onClick={handleExport} disabled={exporting} className="px-3 py-2 bg-muted text-foreground border border-input text-xs rounded flex items-center gap-1.5 hover:bg-secondary/80">
               <Download size={13} /> {exporting ? "…" : "Export TXT"}
             </button>
-            <button onClick={handleExportPdf} disabled={exportingPdf} className="px-3 py-2 bg-slate-800 text-slate-200 border border-slate-700 text-xs rounded flex items-center gap-1.5 hover:bg-slate-700">
+            <button onClick={handleExportPdf} disabled={exportingPdf} className="px-3 py-2 bg-muted text-foreground border border-input text-xs rounded flex items-center gap-1.5 hover:bg-secondary/80">
               <Download size={13} /> {exportingPdf ? "…" : "Export PDF"}
             </button>
             <button onClick={() => setPublishModal(true)} className="px-3 py-2 bg-green-700 text-white text-xs rounded flex items-center gap-1.5 hover:bg-green-600">
@@ -1172,12 +1172,12 @@ export default function ReportDetailPage() {
         )}
 
         {/* Report header */}
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
+        <div className="bg-card border border-border rounded-lg p-5">
           <div className="flex flex-wrap justify-between items-start gap-3">
             <div>
-              <h1 className="text-xl font-bold text-white font-mono">FIM-report-{report.report_date}.htm</h1>
+              <h1 className="text-xl font-bold text-foreground font-mono">FIM-report-{report.report_date}.htm</h1>
               <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                <span className="text-sm text-slate-400">{report.report_date}</span>
+                <span className="text-sm text-muted-foreground">{report.report_date}</span>
                 <StatusBadge status={report.status} map={REPORT_STATUS_COLORS} />
                 {report.rt_ticket_id && (
                   <a href={`https://tickets.int.untd.com/Ticket/Display.html?id=${report.rt_ticket_id}`} target="_blank" rel="noopener noreferrer" className="text-green-300 text-xs font-mono hover:text-green-200 hover:underline">RT#{report.rt_ticket_id}</a>
@@ -1185,18 +1185,18 @@ export default function ReportDetailPage() {
               </div>
             </div>
             <div className="flex gap-5 text-center">
-              <div><div className="text-2xl font-bold text-red-400">{report.total_changes}</div><div className="text-xs text-slate-500 uppercase">Alerts</div></div>
-              <div><div className="text-2xl font-bold text-blue-400">{report.agents.length}</div><div className="text-xs text-slate-500 uppercase">Agents</div></div>
-              {hasWorkflow && <div><div className="text-2xl font-bold text-green-400">{submittedCount}/{totalCount}</div><div className="text-xs text-slate-500 uppercase">Submitted</div></div>}
+              <div><div className="text-2xl font-bold text-red-400">{report.total_changes}</div><div className="text-xs text-muted-foreground uppercase">Alerts</div></div>
+              <div><div className="text-2xl font-bold text-blue-400">{report.agents.length}</div><div className="text-xs text-muted-foreground uppercase">Agents</div></div>
+              {hasWorkflow && <div><div className="text-2xl font-bold text-green-400">{submittedCount}/{totalCount}</div><div className="text-xs text-muted-foreground uppercase">Submitted</div></div>}
             </div>
           </div>
 
           {hasWorkflow && totalCount > 0 && (
             <div className="mt-4">
-              <div className="flex justify-between text-xs text-slate-400 mb-1">
+              <div className="flex justify-between text-xs text-muted-foreground mb-1">
                 <span>Review progress</span><span>{pct}%</span>
               </div>
-              <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                 <div className="h-full bg-green-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
               </div>
             </div>
@@ -1207,11 +1207,11 @@ export default function ReportDetailPage() {
         {hasWorkflow ? (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
                 Agents ({report.report_agents.length})
               </h2>
               {pendingAgents.length > 0 && (
-                <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                   <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAllPending} className="accent-green-500" />
                   Select all pending ({pendingAgents.length})
                 </label>
@@ -1223,7 +1223,7 @@ export default function ReportDetailPage() {
                 <span className="text-sm text-blue-200">{selectedCount} agent{selectedCount === 1 ? "" : "s"} selected</span>
                 <div className="flex gap-2">
                   <button onClick={() => setSelectedAgents(new Set())}
-                    className="px-3 py-1.5 text-xs bg-slate-800 text-slate-300 rounded hover:bg-slate-700">
+                    className="px-3 py-1.5 text-xs bg-muted text-foreground/90 rounded hover:bg-secondary/80">
                     Clear
                   </button>
                   <button onClick={() => setBulkSubmitOpen(true)}

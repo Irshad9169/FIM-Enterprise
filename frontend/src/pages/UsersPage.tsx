@@ -63,7 +63,7 @@ export default function UsersPage() {
     updateMutation.mutate({ userId: selectedUser.id, data });
   };
 
-  if (isLoading) return <div className="text-center py-12 text-slate-400">Loading users...</div>;
+  if (isLoading) return <div className="text-center py-12 text-muted-foreground">Loading users...</div>;
 
   return (
     <div className="space-y-6">
@@ -75,10 +75,10 @@ export default function UsersPage() {
           {toast.ok ? "✅" : "❌"} {toast.msg}
         </div>
       )}
-      <div className="flex justify-between items-center bg-slate-900 p-4 rounded-lg border border-slate-800">
+      <div className="flex justify-between items-center bg-card p-4 rounded-lg border border-border">
         <div>
-          <h1 className="text-xl font-bold text-white">User Management</h1>
-          <p className="text-slate-400 text-sm">Manage system access and roles</p>
+          <h1 className="text-xl font-bold text-foreground">User Management</h1>
+          <p className="text-muted-foreground text-sm">Manage system access and roles</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
@@ -88,9 +88,9 @@ export default function UsersPage() {
         </button>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-        <table className="w-full text-sm text-left text-slate-300">
-          <thead className="bg-slate-950/50 text-slate-400 font-semibold uppercase text-xs border-b border-slate-800">
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <table className="w-full text-sm text-left text-foreground/90">
+          <thead className="bg-background/50 text-muted-foreground font-semibold uppercase text-xs border-b border-border">
             <tr>
               <th className="px-6 py-4">User</th>
               <th className="px-6 py-4">Role</th>
@@ -99,16 +99,16 @@ export default function UsersPage() {
               <th className="px-6 py-4 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-border">
             {users?.map((user: any) => (
-              <tr key={user.id} className="hover:bg-slate-800/50">
+              <tr key={user.id} className="hover:bg-muted/50">
                 <td className="px-6 py-4">
-                  <div className="font-medium text-white">{user.username}</div>
-                  <div className="text-xs text-slate-500">{user.email}</div>
+                  <div className="font-medium text-foreground">{user.username}</div>
+                  <div className="text-xs text-muted-foreground">{user.email}</div>
                 </td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded text-xs border uppercase ${
-                    user.role === 'admin' ? 'bg-purple-900/30 text-purple-400 border-purple-800' : 'bg-slate-800 text-slate-300 border-slate-700'
+                    user.role === 'admin' ? 'bg-purple-900/30 text-purple-400 border-purple-800' : 'bg-muted text-foreground/90 border-input'
                   }`}>
                     {user.role}
                   </span>
@@ -124,7 +124,7 @@ export default function UsersPage() {
                     </span>
                   )}
                 </td>
-                <td className="px-6 py-4 text-slate-500">
+                <td className="px-6 py-4 text-muted-foreground">
                   {new Date(user.created_at).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4 text-right">
@@ -160,38 +160,38 @@ export default function UsersPage() {
       {/* Add User Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-slate-900 border border-slate-700 rounded-lg p-6 w-96 shadow-xl">
-            <h2 className="text-lg font-bold text-white mb-4">Add New User</h2>
+          <div className="bg-card border border-input rounded-lg p-6 w-96 shadow-xl">
+            <h2 className="text-lg font-bold text-foreground mb-4">Add New User</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Username</label>
+                <label className="block text-xs text-muted-foreground mb-1">Username</label>
                 <input
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  className="w-full bg-background border border-input rounded p-2 text-foreground"
                   value={newUser.username}
                   onChange={e => setNewUser({...newUser, username: e.target.value})}
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Email</label>
+                <label className="block text-xs text-muted-foreground mb-1">Email</label>
                 <input
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  className="w-full bg-background border border-input rounded p-2 text-foreground"
                   value={newUser.email}
                   onChange={e => setNewUser({...newUser, email: e.target.value})}
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Password</label>
+                <label className="block text-xs text-muted-foreground mb-1">Password</label>
                 <input
                   type="password"
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  className="w-full bg-background border border-input rounded p-2 text-foreground"
                   value={newUser.password}
                   onChange={e => setNewUser({...newUser, password: e.target.value})}
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Role</label>
+                <label className="block text-xs text-muted-foreground mb-1">Role</label>
                 <select
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  className="w-full bg-background border border-input rounded p-2 text-foreground"
                   value={newUser.role}
                   onChange={e => setNewUser({...newUser, role: e.target.value})}
                 >
@@ -205,7 +205,7 @@ export default function UsersPage() {
               <div className="flex justify-end gap-2 mt-6">
                 <button
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-slate-300 hover:text-white"
+                  className="px-4 py-2 text-foreground/90 hover:text-foreground"
                 >
                   Cancel
                 </button>
@@ -224,17 +224,17 @@ export default function UsersPage() {
       {/* Edit User Modal */}
       {showEditModal && selectedUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-slate-900 border border-slate-700 rounded-lg p-6 w-96 shadow-xl">
-            <h2 className="text-lg font-bold text-white mb-1">Edit User</h2>
-            <p className="text-sm text-slate-400 mb-4">{selectedUser.username}</p>
+          <div className="bg-card border border-input rounded-lg p-6 w-96 shadow-xl">
+            <h2 className="text-lg font-bold text-foreground mb-1">Edit User</h2>
+            <p className="text-sm text-muted-foreground mb-4">{selectedUser.username}</p>
             
             <div className="space-y-4">
               <div>
-                <label className="block text-xs text-slate-400 mb-1 flex items-center gap-1">
+                <label className="block text-xs text-muted-foreground mb-1 flex items-center gap-1">
                   <Shield size={12} /> Role
                 </label>
                 <select
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  className="w-full bg-background border border-input rounded p-2 text-foreground"
                   value={editForm.role}
                   onChange={e => setEditForm({...editForm, role: e.target.value})}
                 >
@@ -247,13 +247,13 @@ export default function UsersPage() {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-400 mb-1 flex items-center gap-1">
+                <label className="block text-xs text-muted-foreground mb-1 flex items-center gap-1">
                   <Key size={12} /> Reset Password (Optional)
                 </label>
                 <input
                   type="password"
                   placeholder="New password..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  className="w-full bg-background border border-input rounded p-2 text-foreground"
                   value={editForm.password}
                   onChange={e => setEditForm({...editForm, password: e.target.value})}
                 />
@@ -262,7 +262,7 @@ export default function UsersPage() {
               <div className="flex justify-end gap-2 mt-6">
                 <button
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 text-slate-300 hover:text-white"
+                  className="px-4 py-2 text-foreground/90 hover:text-foreground"
                 >
                   Cancel
                 </button>

@@ -70,11 +70,11 @@ export default function MFASettingsPage() {
       )}
 
       {/* Header */}
-      <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
-        <h1 className="text-xl font-bold text-white flex items-center gap-2">
+      <div className="bg-card p-4 rounded-lg border border-border">
+        <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
           <KeyRound size={20} className="text-blue-400" /> Two-Factor Authentication
         </h1>
-        <p className="text-slate-400 text-sm mt-1">
+        <p className="text-muted-foreground text-sm mt-1">
           Add an extra layer of security to your account using a TOTP authenticator app.
         </p>
       </div>
@@ -83,17 +83,17 @@ export default function MFASettingsPage() {
       <div className={`rounded-lg border p-6 flex items-center justify-between ${
         mfaEnabled
           ? "bg-green-900/10 border-green-800"
-          : "bg-slate-900 border-slate-800"
+          : "bg-card border-border"
       }`}>
         <div className="flex items-center gap-4">
           {mfaEnabled
             ? <ShieldCheck size={40} className="text-green-400" />
-            : <ShieldOff size={40} className="text-slate-500" />}
+            : <ShieldOff size={40} className="text-muted-foreground" />}
           <div>
-            <div className="text-white font-semibold text-lg">
+            <div className="text-foreground font-semibold text-lg">
               {mfaEnabled ? "MFA is enabled" : "MFA is disabled"}
             </div>
-            <div className="text-sm text-slate-400">
+            <div className="text-sm text-muted-foreground">
               {mfaEnabled
                 ? "Your account requires a 6-digit code on each login"
                 : "Enable MFA to protect your account with Google Authenticator"}
@@ -118,18 +118,18 @@ export default function MFASettingsPage() {
 
       {/* Setup step — show QR code */}
       {step === "setup" && qrData && (
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-4">
-          <h2 className="text-white font-semibold flex items-center gap-2">
+        <div className="bg-card border border-border rounded-lg p-6 space-y-4">
+          <h2 className="text-foreground font-semibold flex items-center gap-2">
             <QrCode size={18} className="text-blue-400" /> Step 1 — Scan QR Code
           </h2>
-          <p className="text-slate-400 text-sm">
-            Open <strong className="text-white">Google Authenticator</strong>, tap + and scan this QR code:
+          <p className="text-muted-foreground text-sm">
+            Open <strong className="text-foreground">Google Authenticator</strong>, tap + and scan this QR code:
           </p>
           <div className="flex justify-center bg-white p-4 rounded-lg w-fit mx-auto">
             <img src={qrData.qr_code} alt="MFA QR Code" className="w-48 h-48" />
           </div>
-          <div className="bg-slate-800 rounded p-3">
-            <p className="text-xs text-slate-400 mb-1">Or enter this key manually:</p>
+          <div className="bg-muted rounded p-3">
+            <p className="text-xs text-muted-foreground mb-1">Or enter this key manually:</p>
             <code className="text-orange-300 font-mono text-sm tracking-widest">{qrData.secret}</code>
           </div>
           <button onClick={() => setStep("confirm")}
@@ -141,19 +141,19 @@ export default function MFASettingsPage() {
 
       {/* Confirm step */}
       {step === "confirm" && (
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-4">
-          <h2 className="text-white font-semibold flex items-center gap-2">
+        <div className="bg-card border border-border rounded-lg p-6 space-y-4">
+          <h2 className="text-foreground font-semibold flex items-center gap-2">
             <CheckCircle size={18} className="text-green-400" /> Step 2 — Confirm Setup
           </h2>
-          <p className="text-slate-400 text-sm">Enter the 6-digit code from your authenticator app to confirm:</p>
+          <p className="text-muted-foreground text-sm">Enter the 6-digit code from your authenticator app to confirm:</p>
           <input
             type="text" placeholder="000000" maxLength={6} autoFocus
-            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white text-center text-2xl tracking-widest font-mono outline-none focus:border-blue-500"
+            className="w-full bg-background border border-input rounded-lg p-3 text-foreground text-center text-2xl tracking-widest font-mono outline-none focus:border-blue-500"
             value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
           />
           <div className="flex gap-3">
             <button onClick={() => { setStep("setup"); setCode(""); }}
-              className="flex-1 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700">
+              className="flex-1 py-2 bg-muted text-foreground/90 rounded-lg hover:bg-secondary/80">
               ← Back
             </button>
             <button onClick={() => confirmMutation.mutate()}
@@ -167,17 +167,17 @@ export default function MFASettingsPage() {
 
       {/* Disable step */}
       {step === "disable" && (
-        <div className="bg-slate-900 border border-red-900 rounded-lg p-6 space-y-4">
-          <h2 className="text-white font-semibold">Disable MFA</h2>
-          <p className="text-slate-400 text-sm">Enter your current 6-digit code to confirm disabling MFA:</p>
+        <div className="bg-card border border-red-900 rounded-lg p-6 space-y-4">
+          <h2 className="text-foreground font-semibold">Disable MFA</h2>
+          <p className="text-muted-foreground text-sm">Enter your current 6-digit code to confirm disabling MFA:</p>
           <input
             type="text" placeholder="000000" maxLength={6} autoFocus
-            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white text-center text-2xl tracking-widest font-mono outline-none focus:border-red-500"
+            className="w-full bg-background border border-input rounded-lg p-3 text-foreground text-center text-2xl tracking-widest font-mono outline-none focus:border-red-500"
             value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
           />
           <div className="flex gap-3">
             <button onClick={() => { setStep("idle"); setCode(""); }}
-              className="flex-1 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700">
+              className="flex-1 py-2 bg-muted text-foreground/90 rounded-lg hover:bg-secondary/80">
               Cancel
             </button>
             <button onClick={() => disableMutation.mutate()}
@@ -190,8 +190,8 @@ export default function MFASettingsPage() {
       )}
 
       {/* Info box */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 text-sm text-slate-400 space-y-1">
-        <div className="font-semibold text-slate-300 mb-2">Supported authenticator apps:</div>
+      <div className="bg-card border border-border rounded-lg p-4 text-sm text-muted-foreground space-y-1">
+        <div className="font-semibold text-foreground/90 mb-2">Supported authenticator apps:</div>
         <div>• Google Authenticator (iOS / Android)</div>
         <div>• Microsoft Authenticator</div>
         <div>• Authy</div>

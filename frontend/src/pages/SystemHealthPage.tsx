@@ -60,21 +60,21 @@ function ThresholdSettings({ isAdmin }: { isAdmin: boolean }) {
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
+    <div className="bg-card border border-border rounded-lg p-5">
       <div className="flex items-center gap-2 mb-4">
-        <Sliders size={16} className="text-slate-400" />
-        <h2 className="text-sm font-bold text-white uppercase tracking-wider">Alert Thresholds</h2>
+        <Sliders size={16} className="text-muted-foreground" />
+        <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Alert Thresholds</h2>
       </div>
 
       {!isAdmin && (
-        <p className="text-xs text-slate-500 italic mb-3">Only admins can change these — showing current values.</p>
+        <p className="text-xs text-muted-foreground italic mb-3">Only admins can change these — showing current values.</p>
       )}
 
       <div className="space-y-5">
         <div>
           <div className="flex justify-between text-xs mb-1.5">
             <span className="text-yellow-400 font-semibold">Warning threshold</span>
-            <span className="text-slate-300 font-mono">{warning}%</span>
+            <span className="text-foreground/90 font-mono">{warning}%</span>
           </div>
           <input type="range" min={1} max={98} step={1} value={warning} disabled={!isAdmin}
             onChange={e => setWarning(Number(e.target.value))}
@@ -84,7 +84,7 @@ function ThresholdSettings({ isAdmin }: { isAdmin: boolean }) {
         <div>
           <div className="flex justify-between text-xs mb-1.5">
             <span className="text-red-400 font-semibold">Critical threshold</span>
-            <span className="text-slate-300 font-mono">{critical}%</span>
+            <span className="text-foreground/90 font-mono">{critical}%</span>
           </div>
           <input type="range" min={2} max={99} step={1} value={critical} disabled={!isAdmin}
             onChange={e => setCritical(Number(e.target.value))}
@@ -98,7 +98,7 @@ function ThresholdSettings({ isAdmin }: { isAdmin: boolean }) {
 
         {isAdmin && (
           <button onClick={save} disabled={busy || invalid || !dirty}
-            className="px-4 py-1.5 bg-slate-700 text-white text-xs rounded border border-slate-600 hover:bg-slate-600 disabled:opacity-40 flex items-center gap-1.5">
+            className="px-4 py-1.5 bg-secondary text-secondary-foreground text-xs rounded border border-input hover:bg-secondary/80 disabled:opacity-40 flex items-center gap-1.5">
             {saved ? <><Check size={12} className="text-green-400" /> Saved!</> : busy ? "Saving…" : "Save Thresholds"}
           </button>
         )}
@@ -120,7 +120,7 @@ export default function SystemHealthPage() {
   });
 
   if (isLoading) return (
-    <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
+    <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
       <RefreshCw size={18} className="animate-spin mr-2" /> Loading system health…
     </div>
   );
@@ -132,16 +132,16 @@ export default function SystemHealthPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center bg-slate-900 p-4 rounded-lg border border-slate-800">
+      <div className="flex justify-between items-center bg-card p-4 rounded-lg border border-border">
         <div>
-          <h1 className="text-xl font-bold text-white">System Health</h1>
-          <p className="text-slate-400 text-sm">
+          <h1 className="text-xl font-bold text-foreground">System Health</h1>
+          <p className="text-muted-foreground text-sm">
             Disk usage and database table sizes
-            {dataUpdatedAt ? <span className="ml-2 text-slate-600 text-xs">· refreshed {new Date(dataUpdatedAt).toLocaleTimeString()}</span> : null}
+            {dataUpdatedAt ? <span className="ml-2 text-muted-foreground text-xs">· refreshed {new Date(dataUpdatedAt).toLocaleTimeString()}</span> : null}
           </p>
         </div>
         <button onClick={() => qc.invalidateQueries({ queryKey: ["disk-health"] })}
-          className="p-2 rounded bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700">
+          className="p-2 rounded bg-muted border border-input text-muted-foreground hover:text-secondary-foreground hover:bg-secondary/80">
           <RefreshCw size={14} />
         </button>
       </div>
@@ -156,18 +156,18 @@ export default function SystemHealthPage() {
       )}
 
       {/* Disk usage card */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
+      <div className="bg-card border border-border rounded-lg p-5">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <HardDrive size={16} className="text-slate-400" />
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider">Disk Usage</h2>
+            <HardDrive size={16} className="text-muted-foreground" />
+            <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Disk Usage</h2>
           </div>
           <span className={`px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${style.badge}`}>
             {style.label}
           </span>
         </div>
 
-        <div className="relative h-3 bg-slate-800 rounded-full overflow-hidden mb-2">
+        <div className="relative h-3 bg-muted rounded-full overflow-hidden mb-2">
           <div className={`h-full rounded-full transition-all duration-500 ${style.bar}`}
             style={{ width: `${disk?.used_pct ?? 0}%` }} />
           {/* Threshold markers — where the sliders below currently put warning/critical */}
@@ -179,7 +179,7 @@ export default function SystemHealthPage() {
           )}
         </div>
 
-        <div className="flex justify-between text-xs text-slate-400">
+        <div className="flex justify-between text-xs text-muted-foreground">
           <span>{formatBytes(disk?.used_bytes ?? 0)} used</span>
           <span className={`font-bold ${style.text}`}>{disk?.used_pct}%</span>
           <span>{formatBytes(disk?.free_bytes ?? 0)} free of {formatBytes(disk?.total_bytes ?? 0)}</span>
@@ -189,33 +189,33 @@ export default function SystemHealthPage() {
       <ThresholdSettings isAdmin={isAdmin} />
 
       {/* Database size + top tables */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
+      <div className="bg-card border border-border rounded-lg p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Database size={16} className="text-slate-400" />
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider">Database</h2>
+            <Database size={16} className="text-muted-foreground" />
+            <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Database</h2>
           </div>
-          <span className="text-sm text-slate-300 font-mono">{formatBytes(database?.total_bytes ?? 0)} total</span>
+          <span className="text-sm text-foreground/90 font-mono">{formatBytes(database?.total_bytes ?? 0)} total</span>
         </div>
 
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs text-slate-500 uppercase tracking-wider border-b border-slate-800">
+            <tr className="text-left text-xs text-muted-foreground uppercase tracking-wider border-b border-border">
               <th className="pb-2 font-medium">Table</th>
               <th className="pb-2 font-medium text-right">Table Size</th>
               <th className="pb-2 font-medium text-right">Total (incl. indexes/TOAST)</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/60">
+          <tbody className="divide-y divide-border/60">
             {(database?.top_tables || []).map(t => (
               <tr key={t.name}>
                 <td className="py-2 font-mono text-pink-400">{t.name}</td>
-                <td className="py-2 text-right text-slate-400 font-mono">{formatBytes(t.table_bytes)}</td>
-                <td className="py-2 text-right text-white font-mono font-semibold">{formatBytes(t.total_bytes)}</td>
+                <td className="py-2 text-right text-muted-foreground font-mono">{formatBytes(t.table_bytes)}</td>
+                <td className="py-2 text-right text-foreground font-mono font-semibold">{formatBytes(t.total_bytes)}</td>
               </tr>
             ))}
             {(!database?.top_tables || database.top_tables.length === 0) && (
-              <tr><td colSpan={3} className="py-4 text-center text-slate-500 italic">No table data available.</td></tr>
+              <tr><td colSpan={3} className="py-4 text-center text-muted-foreground italic">No table data available.</td></tr>
             )}
           </tbody>
         </table>

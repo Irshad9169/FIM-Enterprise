@@ -14,7 +14,7 @@ export default function ChangeGroupCard({ group }: Props) {
       critical: "bg-red-900/40 text-red-300 border-red-700",
       high: "bg-orange-900/40 text-orange-300 border-orange-700",
       medium: "bg-yellow-900/40 text-yellow-300 border-yellow-700",
-      low: "bg-slate-800 text-slate-300 border-slate-600",
+      low: "bg-muted text-foreground/90 border-input",
     };
     return colors[severity as keyof typeof colors] || colors.low;
   };
@@ -29,7 +29,7 @@ export default function ChangeGroupCard({ group }: Props) {
   const commonChanges = group.affected_hosts?.common_changes;
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
+    <div className="bg-card border border-border rounded-lg p-4 space-y-3">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex-1">
@@ -47,10 +47,10 @@ export default function ChangeGroupCard({ group }: Props) {
               </span>
             )}
           </div>
-          <div className="text-sm font-semibold text-slate-200 font-mono">
+          <div className="text-sm font-semibold text-foreground font-mono">
             {group.pattern}
           </div>
-          <div className="text-xs text-slate-400 mt-1">
+          <div className="text-xs text-muted-foreground mt-1">
             {group.change_count} changes · {group.server_count} servers
           </div>
         </div>
@@ -69,25 +69,25 @@ export default function ChangeGroupCard({ group }: Props) {
           {commonChanges.hash_changed > 0 && (
             <div className="bg-orange-950/30 border border-orange-800 rounded px-2 py-1">
               <span className="text-orange-400">🔸 Content:</span>{" "}
-              <span className="text-slate-300">{commonChanges.hash_changed}</span>
+              <span className="text-foreground/90">{commonChanges.hash_changed}</span>
             </div>
           )}
           {commonChanges.permissions_changed > 0 && (
             <div className="bg-red-950/30 border border-red-800 rounded px-2 py-1">
               <span className="text-red-400">🔸 Perms:</span>{" "}
-              <span className="text-slate-300">{commonChanges.permissions_changed}</span>
+              <span className="text-foreground/90">{commonChanges.permissions_changed}</span>
             </div>
           )}
           {commonChanges.owner_changed > 0 && (
             <div className="bg-red-950/30 border border-red-800 rounded px-2 py-1">
               <span className="text-red-400">🔸 Owner:</span>{" "}
-              <span className="text-slate-300">{commonChanges.owner_changed}</span>
+              <span className="text-foreground/90">{commonChanges.owner_changed}</span>
             </div>
           )}
           {commonChanges.size_changed > 0 && (
             <div className="bg-yellow-950/30 border border-yellow-800 rounded px-2 py-1">
               <span className="text-yellow-400">🔸 Size:</span>{" "}
-              <span className="text-slate-300">{commonChanges.size_changed}</span>
+              <span className="text-foreground/90">{commonChanges.size_changed}</span>
             </div>
           )}
         </div>
@@ -95,21 +95,21 @@ export default function ChangeGroupCard({ group }: Props) {
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 text-xs">
-        <div className="bg-slate-950 rounded px-3 py-2">
-          <div className="text-slate-500">First Seen</div>
-          <div className="text-slate-300">
+        <div className="bg-background rounded px-3 py-2">
+          <div className="text-muted-foreground">First Seen</div>
+          <div className="text-foreground/90">
             {new Date(group.first_seen).toLocaleString()}
           </div>
         </div>
-        <div className="bg-slate-950 rounded px-3 py-2">
-          <div className="text-slate-500">Last Seen</div>
-          <div className="text-slate-300">
+        <div className="bg-background rounded px-3 py-2">
+          <div className="text-muted-foreground">Last Seen</div>
+          <div className="text-foreground/90">
             {new Date(group.last_seen).toLocaleString()}
           </div>
         </div>
-        <div className="bg-slate-950 rounded px-3 py-2">
-          <div className="text-slate-500">Time Window</div>
-          <div className="text-slate-300">
+        <div className="bg-background rounded px-3 py-2">
+          <div className="text-muted-foreground">Time Window</div>
+          <div className="text-foreground/90">
             {timeDiff > 0 ? `${timeDiff.toFixed(1)} min` : "Instant"}
           </div>
         </div>
@@ -119,7 +119,7 @@ export default function ChangeGroupCard({ group }: Props) {
       {timeDiff < 5 && group.server_count > 1 && (
         <div className="bg-blue-950/20 border border-blue-800 rounded px-3 py-2 text-xs">
           <span className="text-blue-400">💡 Automated Change Pattern:</span>{" "}
-          <span className="text-slate-300">
+          <span className="text-foreground/90">
             {group.server_count} servers affected within {timeDiff.toFixed(1)} minutes
           </span>
         </div>
@@ -127,7 +127,7 @@ export default function ChangeGroupCard({ group }: Props) {
 
       {/* Expanded Details */}
       {expanded && (
-        <div className="pt-3 border-t border-slate-800 space-y-3">
+        <div className="pt-3 border-t border-border space-y-3">
           {group.affected_hosts?.hosts && (
             <HostListTable
               hosts={group.affected_hosts.hosts}
@@ -143,10 +143,10 @@ export default function ChangeGroupCard({ group }: Props) {
             <button className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 rounded text-xs font-medium">
               📝 Add Notes
             </button>
-            <button className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs font-medium">
+            <button className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 rounded text-xs font-medium">
               🔍 Investigate
             </button>
-            <button className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs font-medium">
+            <button className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 rounded text-xs font-medium">
               📋 Export Details
             </button>
           </div>

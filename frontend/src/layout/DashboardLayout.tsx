@@ -71,43 +71,34 @@ export default function DashboardLayout() {
   const diskStatus = diskHealthData?.disk?.status || "ok";
   const diskUsedPct = Math.round(diskHealthData?.disk?.used_pct || 0);
 
-  const bg = dark ? "bg-slate-950" : "bg-gray-50";
-  const sidebarBg = dark ? "bg-slate-950 border-slate-800" : "bg-white border-gray-200";
-  const textPrimary = dark ? "text-white" : "text-gray-900";
-  const textSecondary = dark ? "text-slate-400" : "text-gray-500";
-  const textMuted = dark ? "text-slate-500" : "text-gray-400";
-  const borderColor = dark ? "border-slate-800" : "border-gray-200";
-
   const navItemClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-3 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
       isActive
         ? "bg-blue-600 text-white"
-        : dark
-          ? "text-slate-400 hover:bg-slate-800 hover:text-white"
-          : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+        : "text-muted-foreground hover:bg-accent hover:text-foreground"
     }`;
 
   return (
     <ThemeContext.Provider value={{ dark, toggle }}>
-      <div className={`h-screen ${bg} ${dark ? "text-slate-100" : "text-gray-900"} overflow-hidden`}>
-        <aside className={`fixed top-0 left-0 w-64 h-screen border-r ${sidebarBg} flex flex-col z-30`}>
-          <div className={`p-6 border-b ${borderColor} shrink-0 flex items-center justify-between`}>
-            <div className={`flex items-center gap-2 font-bold text-xl ${textPrimary}`}>
+      <div className="h-screen bg-background text-foreground overflow-hidden">
+        <aside className="fixed top-0 left-0 w-64 h-screen border-r bg-card border-border flex flex-col z-30">
+          <div className="p-6 border-b border-border shrink-0 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-bold text-xl text-foreground">
               <ShieldAlert className="text-blue-500" />
               FIM Enterprise
             </div>
-            <button onClick={toggle} className={`p-1.5 rounded-md ${dark ? "hover:bg-slate-800 text-slate-400" : "hover:bg-gray-100 text-gray-500"}`} title={dark ? "Light mode" : "Dark mode"}>
+            <button onClick={toggle} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground" title={dark ? "Light mode" : "Dark mode"}>
               {dark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
           </div>
 
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            <div className={`text-xs font-semibold ${textMuted} uppercase tracking-wider mb-2 px-4`}>Main</div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-4">Main</div>
             <NavLink to="/" end className={navItemClass}><LayoutDashboard size={18} /> Dashboard</NavLink>
             <NavLink to="/agents" className={navItemClass}><Server size={18} /> Agents</NavLink>
             <NavLink to="/alerts" className={navItemClass}><Bell size={18} /> Alerts</NavLink>
 
-            <div className={`text-xs font-semibold ${textMuted} uppercase tracking-wider mt-6 mb-2 px-4`}>Operations</div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-6 mb-2 px-4">Operations</div>
             <NavLink to="/baselines" className={navItemClass}>
               <FileCheck size={18} /> Baselines
               <NavBadge count={pendingBaselines} color="bg-yellow-500" />
@@ -121,7 +112,7 @@ export default function DashboardLayout() {
 
             {(user?.role === 'admin' || user?.role === 'auditor') && (
               <>
-                <div className={`text-xs font-semibold ${textMuted} uppercase tracking-wider mt-6 mb-2 px-4`}>Administration</div>
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-6 mb-2 px-4">Administration</div>
                 {user?.role === 'admin' && (
                   <NavLink to="/users" className={navItemClass}><Users size={18} /> Users</NavLink>
                 )}
@@ -138,20 +129,20 @@ export default function DashboardLayout() {
             )}
           </nav>
 
-          <div className={`p-4 border-t ${borderColor} shrink-0`}>
+          <div className="p-4 border-t border-border shrink-0">
             <div className="flex items-center justify-between">
               <div className="text-sm truncate mr-2">
-                <div className={`font-medium ${textPrimary} truncate`}>{user?.username || 'User'}</div>
-                <div className={`text-xs ${textMuted} truncate`}>{user?.role}</div>
+                <div className="font-medium text-foreground truncate">{user?.username || 'User'}</div>
+                <div className="text-xs text-muted-foreground truncate">{user?.role}</div>
               </div>
-              <button onClick={handleLogout} className={`${textSecondary} hover:${textPrimary} p-1`} title="Logout">
+              <button onClick={handleLogout} className="text-muted-foreground hover:text-foreground p-1" title="Logout">
                 <LogOut size={18} />
               </button>
             </div>
           </div>
         </aside>
 
-        <main className={`ml-64 h-screen overflow-auto ${bg}`}>
+        <main className="ml-64 h-screen overflow-auto bg-background">
           <div className="w-full p-8">
             <Outlet />
           </div>

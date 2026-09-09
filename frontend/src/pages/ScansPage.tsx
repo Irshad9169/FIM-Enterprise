@@ -33,7 +33,7 @@ const healthConfig: Record<Health, { label: string; badge: string; row: string; 
   stale:        { label: ">24h",          badge: "text-yellow-400 border-yellow-800 bg-yellow-900/20", row: "bg-yellow-900/10",    icon: AlertCircle  },
   warning:      { label: ">48h",          badge: "text-orange-400 border-orange-800 bg-orange-900/20", row: "bg-orange-900/10",    icon: AlertTriangle },
   critical:     { label: ">72h",          badge: "text-red-400 border-red-800 bg-red-900/20 fim-attn-pulse", row: "bg-red-900/10", icon: XCircle      },
-  never_scanned:{ label: "Never Scanned", badge: "text-slate-400 border-slate-700 bg-slate-800/40",   row: "bg-slate-800/20",     icon: XCircle      },
+  never_scanned:{ label: "Never Scanned", badge: "text-muted-foreground border-input bg-muted/40",   row: "bg-muted/20",     icon: XCircle      },
 };
 
 const cardConfig: { key: Health; label: string; card: string }[] = [
@@ -41,7 +41,7 @@ const cardConfig: { key: Health; label: string; card: string }[] = [
   { key: "stale",         label: "Stale >24h",    card: "border-yellow-800 bg-yellow-900/10 text-yellow-400 hover:bg-yellow-900/20" },
   { key: "warning",       label: "Warning >48h",  card: "border-orange-800 bg-orange-900/10 text-orange-400 hover:bg-orange-900/20" },
   { key: "critical",      label: "Critical >72h", card: "border-red-800 bg-red-900/10 text-red-400 hover:bg-red-900/20"           },
-  { key: "never_scanned", label: "Never Scanned", card: "border-slate-700 bg-slate-800/20 text-slate-400 hover:bg-slate-700/30"   },
+  { key: "never_scanned", label: "Never Scanned", card: "border-input bg-muted/20 text-muted-foreground hover:bg-secondary/80/30"   },
 ];
 
 export default function ScansPage() {
@@ -105,37 +105,37 @@ export default function ScansPage() {
       </div>
 
       {/* Header */}
-      <div className="flex justify-between items-center bg-slate-900 p-4 rounded-lg border border-slate-800">
+      <div className="flex justify-between items-center bg-card p-4 rounded-lg border border-border">
         <div>
-          <h1 className="text-xl font-bold text-white">Scan Coverage</h1>
-          <p className="text-slate-400 text-sm">
+          <h1 className="text-xl font-bold text-foreground">Scan Coverage</h1>
+          <p className="text-muted-foreground text-sm">
             {filter === "all" ? "All agents — latest scan status" : `Filtered: ${healthConfig[filter as Health]?.label}`}
-            {dataUpdatedAt ? <span className="ml-2 text-slate-600 text-xs">· refreshed {new Date(dataUpdatedAt).toLocaleTimeString()}</span> : null}
+            {dataUpdatedAt ? <span className="ml-2 text-muted-foreground text-xs">· refreshed {new Date(dataUpdatedAt).toLocaleTimeString()}</span> : null}
           </p>
         </div>
         <div className="flex items-center gap-3">
           {/* Stale / All toggle */}
-          <div className="flex rounded-lg overflow-hidden border border-slate-700 text-xs">
+          <div className="flex rounded-lg overflow-hidden border border-input text-xs">
             <button onClick={() => setFilter(f => f === "all" ? "critical" : "all")}
-              className={`px-3 py-2 ${filter !== "all" ? "bg-red-900/40 text-red-300" : "bg-slate-800 text-slate-400 hover:bg-slate-700"}`}>
+              className={`px-3 py-2 ${filter !== "all" ? "bg-red-900/40 text-red-300" : "bg-muted text-muted-foreground hover:bg-secondary/80"}`}>
               Stale ({staleCount})
             </button>
             <button onClick={() => setFilter("all")}
-              className={`px-3 py-2 ${filter === "all" ? "bg-blue-900/40 text-blue-300" : "bg-slate-800 text-slate-400 hover:bg-slate-700"}`}>
+              className={`px-3 py-2 ${filter === "all" ? "bg-blue-900/40 text-blue-300" : "bg-muted text-muted-foreground hover:bg-secondary/80"}`}>
               All ({allScans.length})
             </button>
           </div>
           {/* Refresh */}
           <button onClick={() => qc.invalidateQueries({ queryKey: ["scans"] })}
-            className="p-2 rounded bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700">
+            className="p-2 rounded bg-muted border border-input text-muted-foreground hover:text-secondary-foreground hover:bg-secondary/80">
             <RefreshCw size={14} />
           </button>
           {/* Search */}
           <div className="relative">
-            <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
+            <Search size={16} className="absolute left-3 top-2.5 text-muted-foreground" />
             <input
               placeholder="Search agents..."
-              className="pl-9 pr-4 py-2 bg-slate-950 border border-slate-700 rounded text-sm text-white w-52 focus:ring-1 focus:ring-blue-500 outline-none"
+              className="pl-9 pr-4 py-2 bg-background border border-input rounded text-sm text-foreground w-52 focus:ring-1 focus:ring-blue-500 outline-none"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
@@ -161,9 +161,9 @@ export default function ScansPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-        <table className="w-full text-sm text-left text-slate-300">
-          <thead className="bg-slate-950/50 text-slate-400 font-semibold uppercase text-xs border-b border-slate-800">
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <table className="w-full text-sm text-left text-foreground/90">
+          <thead className="bg-background/50 text-muted-foreground font-semibold uppercase text-xs border-b border-border">
             <tr>
               <th className="px-6 py-4">Agent</th>
               <th className="px-6 py-4">Health</th>
@@ -174,7 +174,7 @@ export default function ScansPage() {
               <th className="px-6 py-4">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-border">
             {scans.length > 0 ? scans.map((scan: any) => {
               const health: Health = scan.scan_health || "never_scanned";
               const cfg = healthConfig[health];
@@ -183,8 +183,8 @@ export default function ScansPage() {
               const scanState = scanning[scan.agent_id];
 
               return (
-                <tr key={scan.id} className={`hover:bg-slate-800/50 ${cfg.row}`}>
-                  <td className="px-6 py-4 font-medium text-white font-mono text-xs">
+                <tr key={scan.id} className={`hover:bg-muted/50 ${cfg.row}`}>
+                  <td className="px-6 py-4 font-medium text-foreground font-mono text-xs">
                     {scan.agent_hostname || scan.agent_id}
                   </td>
                   <td className="px-6 py-4">
@@ -194,7 +194,7 @@ export default function ScansPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <FileCheck size={14} className="text-slate-500" />
+                      <FileCheck size={14} className="text-muted-foreground" />
                       {scan.files_scanned?.toLocaleString() || "—"}
                     </div>
                   </td>
@@ -203,9 +203,9 @@ export default function ScansPage() {
                       <span className="flex items-center gap-2 text-yellow-400 font-bold">
                         <AlertTriangle size={14} /> {scan.files_changed}
                       </span>
-                    ) : <span className="text-slate-500">0</span>}
+                    ) : <span className="text-muted-foreground">0</span>}
                   </td>
-                  <td className="px-6 py-4 text-slate-400">
+                  <td className="px-6 py-4 text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <Clock size={14} />
                       {scan.completed_at ? new Date(scan.completed_at).toLocaleString() : "Never"}
@@ -216,13 +216,13 @@ export default function ScansPage() {
                       <span className={`font-mono text-xs ${
                         health === "critical" ? "text-red-400" :
                         health === "warning"  ? "text-orange-400" :
-                        health === "stale"    ? "text-yellow-400" : "text-slate-500"
+                        health === "stale"    ? "text-yellow-400" : "text-muted-foreground"
                       }`}>
                         {scan.hours_since_scan > 24
                           ? `${Math.floor(scan.hours_since_scan / 24)}d ${Math.floor(scan.hours_since_scan % 24)}h`
                           : `${scan.hours_since_scan}h`}
                       </span>
-                    ) : <span className="text-slate-600">—</span>}
+                    ) : <span className="text-muted-foreground">—</span>}
                   </td>
                   <td className="px-6 py-4">
                     {isNonHealthy ? (
@@ -233,7 +233,7 @@ export default function ScansPage() {
                           scanState === "pending" ? "bg-blue-900/30 border-blue-700 text-blue-300 cursor-wait" :
                           scanState === "ok"      ? "bg-green-900/30 border-green-700 text-green-300" :
                           scanState === "err"     ? "bg-red-900/30 border-red-700 text-red-300" :
-                          "bg-slate-800 border-slate-600 text-slate-300 hover:bg-blue-900/30 hover:border-blue-700 hover:text-blue-300"
+                          "bg-muted border-input text-foreground/90 hover:bg-blue-900/30 hover:border-blue-700 hover:text-blue-300"
                         }`}>
                         {scanState === "pending" ? <><RefreshCw size={11} className="animate-spin" /> Queuing...</> :
                          scanState === "ok"      ? <>✓ Queued</> :
@@ -241,14 +241,14 @@ export default function ScansPage() {
                          <><Play size={11} /> Scan Now</>}
                       </button>
                     ) : (
-                      <span className="text-slate-600 text-xs">—</span>
+                      <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </td>
                 </tr>
               );
             }) : (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                   {isLoading ? "Loading..." :
                    filter !== "all" ? `No agents with status "${healthConfig[filter as Health]?.label || filter}".` :
                    "No agents found."}

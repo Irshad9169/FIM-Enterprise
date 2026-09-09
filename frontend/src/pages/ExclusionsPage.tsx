@@ -158,10 +158,10 @@ export default function ExclusionsPage() {
       </div>
 
       {/* Header */}
-      <div className="flex justify-between items-center bg-slate-900 p-4 rounded-lg border border-slate-800">
+      <div className="flex justify-between items-center bg-card p-4 rounded-lg border border-border">
         <div>
-          <h1 className="text-xl font-bold text-white">Exclusion Management</h1>
-          <p className="text-slate-400 text-sm">Manage files and directories to ignore during scans</p>
+          <h1 className="text-xl font-bold text-foreground">Exclusion Management</h1>
+          <p className="text-muted-foreground text-sm">Manage files and directories to ignore during scans</p>
         </div>
         {tab !== 'pending' && (
           <button
@@ -174,7 +174,7 @@ export default function ExclusionsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-800">
+      <div className="flex border-b border-border">
         {([
           { key: 'global', label: 'Global Rules', icon: Globe, color: 'blue' },
           { key: 'agent',  label: 'Agent Specific', icon: Server, color: 'green' },
@@ -186,7 +186,7 @@ export default function ExclusionsPage() {
                 ? color === 'blue'   ? 'border-blue-500 text-blue-400'
                 : color === 'green'  ? 'border-green-500 text-green-400'
                 :                      'border-yellow-500 text-yellow-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}>
             <Icon size={16} />
             {label}
@@ -201,10 +201,10 @@ export default function ExclusionsPage() {
 
       {/* Agent selector */}
       {tab === 'agent' && (
-        <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
-          <label className="text-sm text-slate-400 block mb-2">Select Agent:</label>
+        <div className="bg-card p-4 rounded-lg border border-border">
+          <label className="text-sm text-muted-foreground block mb-2">Select Agent:</label>
           <select
-            className="w-full md:w-1/3 bg-slate-950 border border-slate-700 rounded p-2 text-white"
+            className="w-full md:w-1/3 bg-background border border-input rounded p-2 text-foreground"
             value={selectedAgent}
             onChange={e => setSelectedAgent(e.target.value)}
           >
@@ -218,15 +218,15 @@ export default function ExclusionsPage() {
 
       {/* Pending Approval Table */}
       {tab === 'pending' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
           {pending.length === 0 ? (
-            <div className="px-6 py-16 text-center text-slate-500">
+            <div className="px-6 py-16 text-center text-muted-foreground">
               <CheckCircle size={32} className="mx-auto mb-3 text-green-600" />
               No pending exclusions — all rules are reviewed.
             </div>
           ) : (
-            <table className="w-full text-sm text-left text-slate-300">
-              <thead className="bg-slate-950/50 text-slate-400 font-semibold uppercase text-xs border-b border-slate-800">
+            <table className="w-full text-sm text-left text-foreground/90">
+              <thead className="bg-background/50 text-muted-foreground font-semibold uppercase text-xs border-b border-border">
                 <tr>
                   <th className="px-6 py-4">Rule Name</th>
                   <th className="px-6 py-4">Type</th>
@@ -238,17 +238,17 @@ export default function ExclusionsPage() {
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-border">
                 {pending.map((rule: any) => (
-                  <tr key={rule.id} className="hover:bg-slate-800/50 bg-yellow-900/5">
-                    <td className="px-6 py-4 font-medium text-white">{rule.rule_name}</td>
+                  <tr key={rule.id} className="hover:bg-muted/50 bg-yellow-900/5">
+                    <td className="px-6 py-4 font-medium text-foreground">{rule.rule_name}</td>
                     <td className="px-6 py-4">
-                      <span className="px-2 py-1 bg-slate-800 rounded text-xs border border-slate-700">
+                      <span className="px-2 py-1 bg-muted rounded text-xs border border-input">
                         {rule.rule_type}
                       </span>
                     </td>
                     <td className="px-6 py-4 font-mono text-xs text-orange-300">{rule.match_value}</td>
-                    <td className="px-6 py-4 text-slate-400 max-w-[200px] truncate">{rule.reason}</td>
+                    <td className="px-6 py-4 text-muted-foreground max-w-[200px] truncate">{rule.reason}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded text-xs border ${
                         rule.scope === 'global'
@@ -258,13 +258,13 @@ export default function ExclusionsPage() {
                         {rule.scope}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-slate-400 text-xs">
+                    <td className="px-6 py-4 text-muted-foreground text-xs">
                       <div className="flex items-center gap-1">
                         <Clock size={11} />
                         {rule.created_at ? new Date(rule.created_at).toLocaleString() : '—'}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-slate-400 text-xs">
+                    <td className="px-6 py-4 text-muted-foreground text-xs">
                       {rule.created_by_username || '—'}
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -294,9 +294,9 @@ export default function ExclusionsPage() {
 
       {/* Active Rules Table */}
       {tab !== 'pending' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-          <table className="w-full text-sm text-left text-slate-300">
-            <thead className="bg-slate-950/50 text-slate-400 font-semibold uppercase text-xs border-b border-slate-800">
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <table className="w-full text-sm text-left text-foreground/90">
+            <thead className="bg-background/50 text-muted-foreground font-semibold uppercase text-xs border-b border-border">
               <tr>
                 <th className="px-6 py-4">Rule Name</th>
                 <th className="px-6 py-4">Type</th>
@@ -305,17 +305,17 @@ export default function ExclusionsPage() {
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-border">
               {rules.map((rule: any) => (
-                <tr key={rule.id} className="hover:bg-slate-800/50">
-                  <td className="px-6 py-4 font-medium text-white">{rule.rule_name}</td>
+                <tr key={rule.id} className="hover:bg-muted/50">
+                  <td className="px-6 py-4 font-medium text-foreground">{rule.rule_name}</td>
                   <td className="px-6 py-4">
-                    <span className="px-2 py-1 bg-slate-800 rounded text-xs border border-slate-700">
+                    <span className="px-2 py-1 bg-muted rounded text-xs border border-input">
                       {rule.rule_type}
                     </span>
                   </td>
                   <td className="px-6 py-4 font-mono text-xs text-orange-300">{rule.match_value}</td>
-                  <td className="px-6 py-4 text-slate-400">{rule.reason}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{rule.reason}</td>
                   <td className="px-6 py-4 text-right">
                     <button
                       onClick={() => { if (confirm('Delete rule?')) deleteMutation.mutate(rule.id); }}
@@ -328,7 +328,7 @@ export default function ExclusionsPage() {
               ))}
               {rules.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
                     {tab === 'agent' && !selectedAgent
                       ? "Select an agent to view rules"
                       : "No approved exclusion rules."}
@@ -343,15 +343,15 @@ export default function ExclusionsPage() {
       {/* Inherited global rules (agent tab) */}
       {tab === 'agent' && selectedAgent && effectiveGlobal.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold text-slate-400 mb-3">Inherited Global Rules</h3>
-          <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden opacity-70">
-            <table className="w-full text-sm text-slate-300">
-              <tbody className="divide-y divide-slate-800">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3">Inherited Global Rules</h3>
+          <div className="bg-card border border-border rounded-lg overflow-hidden opacity-70">
+            <table className="w-full text-sm text-foreground/90">
+              <tbody className="divide-y divide-border">
                 {effectiveGlobal.map((rule: any) => (
                   <tr key={rule.id}>
                     <td className="px-6 py-3 font-medium">{rule.rule_name}</td>
                     <td className="px-6 py-3 font-mono text-xs text-orange-300">{rule.match_value}</td>
-                    <td className="px-6 py-3 text-right text-xs italic text-slate-500">Global Rule</td>
+                    <td className="px-6 py-3 text-right text-xs italic text-muted-foreground">Global Rule</td>
                   </tr>
                 ))}
               </tbody>
@@ -363,21 +363,21 @@ export default function ExclusionsPage() {
       {/* Add Rule Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-slate-900 border border-slate-700 rounded-lg p-6 w-[500px] shadow-xl">
-            <h2 className="text-lg font-bold text-white mb-1">Add Exclusion Rule</h2>
+          <div className="bg-card border border-input rounded-lg p-6 w-[500px] shadow-xl">
+            <h2 className="text-lg font-bold text-foreground mb-1">Add Exclusion Rule</h2>
             <p className="text-xs text-yellow-400 mb-4 flex items-center gap-1">
               <ShieldAlert size={12} /> Rule will be submitted for admin approval before taking effect.
             </p>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Name</label>
-                <input className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                <label className="block text-xs text-muted-foreground mb-1">Name</label>
+                <input className="w-full bg-background border border-input rounded p-2 text-foreground"
                   value={newRule.rule_name}
                   onChange={e => setNewRule({ ...newRule, rule_name: e.target.value })} />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Type</label>
-                <select className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                <label className="block text-xs text-muted-foreground mb-1">Type</label>
+                <select className="w-full bg-background border border-input rounded p-2 text-foreground"
                   value={newRule.rule_type}
                   onChange={e => setNewRule({ ...newRule, rule_type: e.target.value })}>
                   <option value="path">Exact Path (/etc/passwd)</option>
@@ -386,20 +386,20 @@ export default function ExclusionsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Match Pattern</label>
-                <input className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono"
+                <label className="block text-xs text-muted-foreground mb-1">Match Pattern</label>
+                <input className="w-full bg-background border border-input rounded p-2 text-foreground font-mono"
                   placeholder="/path/to/exclude"
                   value={newRule.match_value}
                   onChange={e => setNewRule({ ...newRule, match_value: e.target.value })} />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Reason</label>
-                <input className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                <label className="block text-xs text-muted-foreground mb-1">Reason</label>
+                <input className="w-full bg-background border border-input rounded p-2 text-foreground"
                   value={newRule.reason}
                   onChange={e => setNewRule({ ...newRule, reason: e.target.value })} />
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <button onClick={() => setShowModal(false)} className="px-4 py-2 text-slate-300 hover:text-white">Cancel</button>
+                <button onClick={() => setShowModal(false)} className="px-4 py-2 text-foreground/90 hover:text-foreground">Cancel</button>
                 <button
                   onClick={() => createMutation.mutate(newRule)}
                   disabled={createMutation.isPending || !newRule.rule_name || !newRule.match_value}
@@ -416,18 +416,18 @@ export default function ExclusionsPage() {
       {/* Reject Modal */}
       {rejectModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-slate-900 border border-slate-700 rounded-lg p-6 w-[440px] shadow-xl">
-            <h2 className="text-lg font-bold text-white mb-1">Reject Rule</h2>
-            <p className="text-sm text-slate-400 mb-4">Rejecting: <span className="text-white font-medium">{rejectModal.name}</span></p>
-            <label className="block text-xs text-slate-400 mb-1">Reason for rejection</label>
+          <div className="bg-card border border-input rounded-lg p-6 w-[440px] shadow-xl">
+            <h2 className="text-lg font-bold text-foreground mb-1">Reject Rule</h2>
+            <p className="text-sm text-muted-foreground mb-4">Rejecting: <span className="text-foreground font-medium">{rejectModal.name}</span></p>
+            <label className="block text-xs text-muted-foreground mb-1">Reason for rejection</label>
             <textarea
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm h-24 resize-none"
+              className="w-full bg-background border border-input rounded p-2 text-foreground text-sm h-24 resize-none"
               placeholder="e.g. This path is security-sensitive and must not be excluded"
               value={rejectReason}
               onChange={e => setRejectReason(e.target.value)}
             />
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setRejectModal(null)} className="px-4 py-2 text-slate-300 hover:text-white">Cancel</button>
+              <button onClick={() => setRejectModal(null)} className="px-4 py-2 text-foreground/90 hover:text-foreground">Cancel</button>
               <button
                 onClick={() => rejectMutation.mutate({ id: rejectModal.id, reason: rejectReason })}
                 disabled={rejectMutation.isPending}

@@ -2,8 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theme tokens. DashboardLayout's ThemeContext toggles the `dark` class on
+ * <html> (persisted to localStorage["fim_theme"]); everything else should
+ * read colors from these tokens (bg-background, text-foreground, bg-card,
+ * border-border, etc. -- see tailwind.config.ts) rather than hardcoding
+ * bg-slate-900/text-white/etc, so both themes stay in sync automatically.
+ * Values are raw "H S% L%" triplets (no hsl(...) wrapper) so Tailwind's
+ * opacity modifiers (bg-card/50) work -- see tailwind.config.ts's
+ * `hsl(var(--x) / <alpha-value>)` pattern.
+ */
+:root {
+  --background: 210 20% 98%;       /* gray-50 */
+  --foreground: 222 47% 11%;       /* gray-900 */
+  --card: 0 0% 100%;               /* white */
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 217 91% 60%;          /* blue-500 */
+  --primary-foreground: 210 40% 98%;
+  --secondary: 220 13% 91%;        /* gray-200 */
+  --secondary-foreground: 222 47% 11%;
+  --muted: 220 14% 96%;            /* gray-100 */
+  --muted-foreground: 220 9% 46%;  /* gray-500 */
+  --accent: 220 14% 96%;           /* gray-100 */
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 220 13% 91%;           /* gray-200 */
+  --input: 216 12% 84%;            /* gray-300 */
+  --ring: 217 91% 60%;
+  --radius: 0.5rem;
+}
+
+:root.dark {
+  --background: 229 84% 5%;        /* slate-950 */
+  --foreground: 210 40% 96%;       /* slate-100 */
+  --card: 222 47% 11%;             /* slate-900 */
+  --card-foreground: 210 40% 98%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 217 91% 60%;          /* blue-500 */
+  --primary-foreground: 210 40% 98%;
+  --secondary: 215 25% 27%;        /* slate-700 */
+  --secondary-foreground: 210 40% 96%;
+  --muted: 217 33% 17%;            /* slate-800 */
+  --muted-foreground: 215 20% 65%; /* slate-400 */
+  --accent: 217 33% 17%;           /* slate-800 */
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 63% 31%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217 33% 17%;           /* slate-800 */
+  --input: 215 25% 27%;            /* slate-700 */
+  --ring: 217 91% 60%;
+}
+
 body {
-  @apply bg-slate-950 text-slate-100;
+  @apply bg-background text-foreground;
 }
 
 /* Attention indicators (sidebar badges, critical scan status) — Tailwind's

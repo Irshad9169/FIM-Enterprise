@@ -28,20 +28,20 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="flex justify-center mb-8">
           <div className="bg-blue-600 p-4 rounded-2xl shadow-2xl">
-            <ShieldCheck className="text-white" size={48} />
+            <ShieldCheck className="text-foreground" size={48} />
           </div>
         </div>
 
         {/* Title */}
-        <h1 className="text-3xl font-bold text-white text-center mb-2">
+        <h1 className="text-3xl font-bold text-foreground text-center mb-2">
           FIM Enterprise
         </h1>
-        <p className="text-slate-400 text-center mb-12 text-sm">
+        <p className="text-muted-foreground text-center mb-12 text-sm">
           File Integrity Monitoring Platform
         </p>
 
         {/* Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-2xl space-y-6">
+        <div className="bg-card border border-border rounded-xl p-8 shadow-2xl space-y-6">
           {/* Info Box */}
           <div className="bg-blue-900/20 border border-blue-800/50 rounded-lg p-4">
             <p className="text-blue-200 text-center text-sm">
@@ -59,13 +59,13 @@ export default function LoginPage() {
           </button>
 
           {/* Footer Info */}
-          <p className="text-slate-400 text-xs text-center">
+          <p className="text-muted-foreground text-xs text-center">
             You will be redirected to the corporate identity provider to complete authentication
           </p>
         </div>
 
         {/* Footer */}
-        <p className="text-slate-500 text-xs text-center mt-8">
+        <p className="text-muted-foreground text-xs text-center mt-8">
           © 2026 UNTD — FIM Enterprise Platform
         </p>
       </div>

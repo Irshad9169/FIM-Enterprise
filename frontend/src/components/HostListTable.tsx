@@ -20,7 +20,7 @@ export default function HostListTable({ hosts, commonDomain }: Props) {
       case "medium":
         return "text-yellow-400";
       default:
-        return "text-slate-400";
+        return "text-muted-foreground";
     }
   };
 
@@ -38,10 +38,10 @@ export default function HostListTable({ hosts, commonDomain }: Props) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-xs">
-        <span className="text-slate-400 font-semibold">
+        <span className="text-muted-foreground font-semibold">
           🖥️ Affected Hosts ({hosts.length})
           {commonDomain && (
-            <span className="ml-2 text-slate-500">· {commonDomain}</span>
+            <span className="ml-2 text-muted-foreground">· {commonDomain}</span>
           )}
         </span>
         <button
@@ -52,9 +52,9 @@ export default function HostListTable({ hosts, commonDomain }: Props) {
         </button>
       </div>
 
-      <div className="bg-slate-950 rounded-lg border border-slate-800 overflow-hidden">
+      <div className="bg-background rounded-lg border border-border overflow-hidden">
         <table className="min-w-full text-xs">
-          <thead className="bg-slate-900 text-slate-400">
+          <thead className="bg-card text-muted-foreground">
             <tr>
               <th className="px-3 py-2 text-left">Hostname</th>
               <th className="px-3 py-2 text-left">Change Type</th>
@@ -69,12 +69,12 @@ export default function HostListTable({ hosts, commonDomain }: Props) {
               <>
                 <tr
                   key={host.alert_id}
-                  className="border-t border-slate-800 hover:bg-slate-900/50"
+                  className="border-t border-border hover:bg-card/50"
                 >
-                  <td className="px-3 py-2 font-mono text-slate-200">
+                  <td className="px-3 py-2 font-mono text-foreground">
                     {host.hostname}
                   </td>
-                  <td className="px-3 py-2 text-slate-300">
+                  <td className="px-3 py-2 text-foreground/90">
                     {host.alert_type}
                   </td>
                   <td className="px-3 py-2 text-center">
@@ -88,7 +88,7 @@ export default function HostListTable({ hosts, commonDomain }: Props) {
                         <span className="text-red-400" title={host.file_changes.previous_hash}>
                           {formatHash(host.file_changes.previous_hash)}
                         </span>
-                        <span className="text-slate-600">→</span>
+                        <span className="text-muted-foreground">→</span>
                         <span className="text-green-400" title={host.file_changes.current_hash}>
                           {formatHash(host.file_changes.current_hash)}
                         </span>
@@ -99,7 +99,7 @@ export default function HostListTable({ hosts, commonDomain }: Props) {
                       <span className="text-red-400">Deleted</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-slate-400">
+                  <td className="px-3 py-2 text-muted-foreground">
                     {new Date(host.detected_at).toLocaleString()}
                   </td>
                   <td className="px-3 py-2">
@@ -116,55 +116,55 @@ export default function HostListTable({ hosts, commonDomain }: Props) {
                   </td>
                 </tr>
                 {expandedHost === host.alert_id && (
-                  <tr className="border-t border-slate-800 bg-slate-900">
+                  <tr className="border-t border-border bg-card">
                     <td colSpan={6} className="px-6 py-3">
                       <div className="grid grid-cols-2 gap-4 text-xs">
                         <div>
-                          <div className="font-semibold text-slate-400 mb-2">
+                          <div className="font-semibold text-muted-foreground mb-2">
                             Previous State
                           </div>
-                          <div className="space-y-1 bg-slate-950 p-3 rounded">
+                          <div className="space-y-1 bg-background p-3 rounded">
                             <div>
-                              <span className="text-slate-500">Hash:</span>{" "}
+                              <span className="text-muted-foreground">Hash:</span>{" "}
                               <span className="font-mono text-red-300">
                                 {host.file_changes.previous_hash || "N/A"}
                               </span>
                             </div>
                             <div>
-                              <span className="text-slate-500">Size:</span>{" "}
+                              <span className="text-muted-foreground">Size:</span>{" "}
                               {host.file_changes.previous_size || "N/A"} bytes
                             </div>
                             <div>
-                              <span className="text-slate-500">Permissions:</span>{" "}
+                              <span className="text-muted-foreground">Permissions:</span>{" "}
                               {host.file_changes.previous_permissions || "N/A"}
                             </div>
                             <div>
-                              <span className="text-slate-500">Owner:</span>{" "}
+                              <span className="text-muted-foreground">Owner:</span>{" "}
                               {host.file_changes.previous_owner ?? "N/A"}
                             </div>
                           </div>
                         </div>
                         <div>
-                          <div className="font-semibold text-slate-400 mb-2">
+                          <div className="font-semibold text-muted-foreground mb-2">
                             Current State
                           </div>
-                          <div className="space-y-1 bg-slate-950 p-3 rounded">
+                          <div className="space-y-1 bg-background p-3 rounded">
                             <div>
-                              <span className="text-slate-500">Hash:</span>{" "}
+                              <span className="text-muted-foreground">Hash:</span>{" "}
                               <span className="font-mono text-green-300">
                                 {host.file_changes.current_hash || "N/A"}
                               </span>
                             </div>
                             <div>
-                              <span className="text-slate-500">Size:</span>{" "}
+                              <span className="text-muted-foreground">Size:</span>{" "}
                               {host.file_changes.current_size || "N/A"} bytes
                             </div>
                             <div>
-                              <span className="text-slate-500">Permissions:</span>{" "}
+                              <span className="text-muted-foreground">Permissions:</span>{" "}
                               {host.file_changes.current_permissions || "N/A"}
                             </div>
                             <div>
-                              <span className="text-slate-500">Owner:</span>{" "}
+                              <span className="text-muted-foreground">Owner:</span>{" "}
                               {host.file_changes.current_owner ?? "N/A"}
                             </div>
                           </div>
@@ -179,7 +179,7 @@ export default function HostListTable({ hosts, commonDomain }: Props) {
         </table>
 
         {hosts.length > 10 && (
-          <div className="bg-slate-900 px-3 py-2 text-center border-t border-slate-800">
+          <div className="bg-card px-3 py-2 text-center border-t border-border">
             <button
               onClick={() => setShowAll(!showAll)}
               className="text-sky-400 hover:text-sky-300 text-xs"

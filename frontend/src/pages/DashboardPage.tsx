@@ -85,25 +85,25 @@ export default function DashboardPage() {
         <StatCard label="Online Agents" value={stats?.agents.online || 0}
           icon={<Server className="text-green-500" size={24} />} onClick={() => navigate('/agents')} />
         <div onClick={() => navigate('/reports')}
-          className="bg-slate-900 p-6 rounded-lg border border-slate-800 cursor-pointer hover:border-sky-600 transition-colors">
+          className="bg-card p-6 rounded-lg border border-border cursor-pointer hover:border-sky-600 transition-colors">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-slate-400 text-sm font-medium">Pending Reports</p>
-              <h3 className="text-3xl font-bold text-white mt-2">{reportStats?.pending_review || 0}</h3>
+              <p className="text-muted-foreground text-sm font-medium">Pending Reports</p>
+              <h3 className="text-3xl font-bold text-foreground mt-2">{reportStats?.pending_review || 0}</h3>
             </div>
             <div className="p-2 bg-yellow-900/30 rounded-lg"><FileText className="text-yellow-500" size={24} /></div>
           </div>
           <div className="mt-4 flex items-center gap-2 text-sm">
             <span className="text-red-400 font-medium">{reportStats?.missing_reports || 0}</span>
-            <span className="text-slate-500">missing last 7 days</span>
+            <span className="text-muted-foreground">missing last 7 days</span>
           </div>
         </div>
       </div>
 
       {/* Charts Row 1: Alert Trend + Severity Donut */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-slate-900 p-6 rounded-lg border border-slate-800">
-          <h3 className="text-lg font-semibold mb-4 text-white flex items-center gap-2">
+        <div className="lg:col-span-2 bg-card p-6 rounded-lg border border-border">
+          <h3 className="text-lg font-semibold mb-4 text-foreground flex items-center gap-2">
             <TrendingUp size={18} className="text-sky-400" /> Alerts Trend (30 Days)
           </h3>
           {alertTrend.length > 0 ? (
@@ -129,14 +129,14 @@ export default function DashboardPage() {
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[250px] flex items-center justify-center text-slate-500 text-sm">No alert data yet</div>
+            <div className="h-[250px] flex items-center justify-center text-muted-foreground text-sm">No alert data yet</div>
           )}
         </div>
 
         {/* Severity + Status Donuts */}
-        <div className="bg-slate-900 p-6 rounded-lg border border-slate-800 space-y-6">
+        <div className="bg-card p-6 rounded-lg border border-border space-y-6">
           <div>
-            <h3 className="text-sm font-semibold mb-3 text-white">Open Alerts by Severity</h3>
+            <h3 className="text-sm font-semibold mb-3 text-foreground">Open Alerts by Severity</h3>
             {sevDist.length > 0 ? (
               <ResponsiveContainer width="100%" height={130}>
                 <PieChart>
@@ -150,21 +150,21 @@ export default function DashboardPage() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-[130px] flex items-center justify-center text-slate-500 text-sm">No open alerts</div>
+              <div className="h-[130px] flex items-center justify-center text-muted-foreground text-sm">No open alerts</div>
             )}
             <div className="flex flex-wrap justify-center gap-3 mt-1">
               {sevDist.map((s: any) => (
                 <div key={s.name} className="flex items-center gap-1 text-xs">
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: SEVERITY_COLORS[s.name] || '#64748b' }} />
-                  <span className="text-slate-400 capitalize">{s.name}</span>
-                  <span className="text-white font-bold">{s.value}</span>
+                  <span className="text-muted-foreground capitalize">{s.name}</span>
+                  <span className="text-foreground font-bold">{s.value}</span>
                 </div>
               ))}
             </div>
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold mb-3 text-white">All Alerts by Status</h3>
+            <h3 className="text-sm font-semibold mb-3 text-foreground">All Alerts by Status</h3>
             {statusDist.length > 0 ? (
               <ResponsiveContainer width="100%" height={130}>
                 <PieChart>
@@ -178,14 +178,14 @@ export default function DashboardPage() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-[130px] flex items-center justify-center text-slate-500 text-sm">No data</div>
+              <div className="h-[130px] flex items-center justify-center text-muted-foreground text-sm">No data</div>
             )}
             <div className="flex flex-wrap justify-center gap-3 mt-1">
               {statusDist.map((s: any) => (
                 <div key={s.name} className="flex items-center gap-1 text-xs">
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[s.name] || '#64748b' }} />
-                  <span className="text-slate-400 capitalize">{s.name}</span>
-                  <span className="text-white font-bold">{s.value}</span>
+                  <span className="text-muted-foreground capitalize">{s.name}</span>
+                  <span className="text-foreground font-bold">{s.value}</span>
                 </div>
               ))}
             </div>
@@ -196,8 +196,8 @@ export default function DashboardPage() {
       {/* Charts Row 2: Scans + Severity Cards + Agent Health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Scan Activity */}
-        <div className="lg:col-span-1 bg-slate-900 p-6 rounded-lg border border-slate-800">
-          <h3 className="text-lg font-semibold mb-4 text-white">Scan Activity</h3>
+        <div className="lg:col-span-1 bg-card p-6 rounded-lg border border-border">
+          <h3 className="text-lg font-semibold mb-4 text-foreground">Scan Activity</h3>
           {scanTrend.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={scanTrend}>
@@ -211,13 +211,13 @@ export default function DashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[200px] flex items-center justify-center text-slate-500 text-sm">No scan data</div>
+            <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">No scan data</div>
           )}
         </div>
 
         {/* Alerts by Severity (existing cards) */}
-        <div className="bg-slate-900 p-6 rounded-lg border border-slate-800">
-          <h3 className="text-lg font-semibold mb-4 text-white">Alerts by Severity</h3>
+        <div className="bg-card p-6 rounded-lg border border-border">
+          <h3 className="text-lg font-semibold mb-4 text-foreground">Alerts by Severity</h3>
           <div className="grid grid-cols-2 gap-4">
             <SeverityCard label="Critical" value={alertStats?.by_severity.critical || 0} color="red" />
             <SeverityCard label="High" value={alertStats?.by_severity.high || 0} color="orange" />
@@ -227,12 +227,12 @@ export default function DashboardPage() {
         </div>
 
         {/* Agent Health (existing cards) */}
-        <div className="bg-slate-900 p-6 rounded-lg border border-slate-800">
-          <h3 className="text-lg font-semibold mb-4 text-white">Agent Health</h3>
+        <div className="bg-card p-6 rounded-lg border border-border">
+          <h3 className="text-lg font-semibold mb-4 text-foreground">Agent Health</h3>
           <div className="grid grid-cols-2 gap-4">
             <HealthCard label="Healthy" value={health?.healthy_agents || 0} icon={<CheckCircle size={20} />} color="text-green-500" />
             <HealthCard label="Unhealthy" value={health?.unhealthy_agents || 0} icon={<Activity size={20} />} color="text-red-500" />
-            <HealthCard label="Stale" value={health?.stale_agents || 0} icon={<Clock size={20} />} color="text-slate-500" />
+            <HealthCard label="Stale" value={health?.stale_agents || 0} icon={<Clock size={20} />} color="text-muted-foreground" />
             <HealthCard label="Total" value={health?.total_agents || 0} icon={<Server size={20} />} color="text-blue-500" />
           </div>
         </div>
@@ -250,16 +250,16 @@ function AttentionCard({ label, value, icon, color, onClick }: any) {
   const t = theme[color];
   return (
     <div onClick={onClick}
-      className={`bg-slate-900 p-6 rounded-lg border cursor-pointer transition-colors hover:border-sky-600 ${
-        active ? `${t.border} border-l-4` : "border-slate-800"
+      className={`bg-card p-6 rounded-lg border cursor-pointer transition-colors hover:border-sky-600 ${
+        active ? `${t.border} border-l-4` : "border-border"
       }`}>
       <div className="flex justify-between items-start">
         <div>
-          <p className="text-slate-400 text-sm font-medium">{label}</p>
-          <h3 className={`text-3xl font-bold mt-2 ${active ? t.value : "text-white"}`}>{value}</h3>
+          <p className="text-muted-foreground text-sm font-medium">{label}</p>
+          <h3 className={`text-3xl font-bold mt-2 ${active ? t.value : "text-foreground"}`}>{value}</h3>
         </div>
-        <div className={`p-2 rounded-lg ${active ? `${t.iconBg} fim-attn-pulse` : "bg-slate-800"}`}>
-          <span className={active ? t.icon : "text-slate-500"}>{icon}</span>
+        <div className={`p-2 rounded-lg ${active ? `${t.iconBg} fim-attn-pulse` : "bg-muted"}`}>
+          <span className={active ? t.icon : "text-muted-foreground"}>{icon}</span>
         </div>
       </div>
     </div>
@@ -269,13 +269,13 @@ function AttentionCard({ label, value, icon, color, onClick }: any) {
 function StatCard({ label, value, icon, onClick }: any) {
   return (
     <div onClick={onClick}
-      className="bg-slate-900 p-6 rounded-lg border border-slate-800 cursor-pointer hover:border-sky-600 transition-colors">
+      className="bg-card p-6 rounded-lg border border-border cursor-pointer hover:border-sky-600 transition-colors">
       <div className="flex justify-between items-start">
         <div>
-          <p className="text-slate-400 text-sm font-medium">{label}</p>
-          <h3 className="text-3xl font-bold text-white mt-2">{value}</h3>
+          <p className="text-muted-foreground text-sm font-medium">{label}</p>
+          <h3 className="text-3xl font-bold text-foreground mt-2">{value}</h3>
         </div>
-        <div className="p-2 bg-slate-800 rounded-lg">{icon}</div>
+        <div className="p-2 bg-muted rounded-lg">{icon}</div>
       </div>
     </div>
   );
@@ -298,12 +298,12 @@ function SeverityCard({ label, value, color }: any) {
 
 function HealthCard({ label, value, icon, color }: any) {
   return (
-    <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded border border-slate-700">
+    <div className="flex items-center justify-between p-4 bg-muted/50 rounded border border-input">
       <div className="flex items-center gap-3">
         <span className={color}>{icon}</span>
-        <span className="text-slate-300 font-medium">{label}</span>
+        <span className="text-foreground/90 font-medium">{label}</span>
       </div>
-      <span className="text-xl font-bold text-white">{value}</span>
+      <span className="text-xl font-bold text-foreground">{value}</span>
     </div>
   );
 }

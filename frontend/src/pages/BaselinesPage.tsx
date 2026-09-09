@@ -27,29 +27,29 @@ export default function BaselinesPage() {
     onError: (err) => alert("Error: " + err),
   });
 
-  if (isLoading) return <div className="text-center py-12 text-slate-400">Loading baselines...</div>;
+  if (isLoading) return <div className="text-center py-12 text-muted-foreground">Loading baselines...</div>;
   const baselines = data?.baselines || [];
 
   const statusColors: Record<string, string> = {
     approved: "bg-green-900/30 text-green-400 border-green-800",
     pending: "bg-yellow-900/30 text-yellow-400 border-yellow-800",
     integrity_failed: "bg-red-900/30 text-red-400 border-red-800",
-    superseded: "bg-slate-800 text-slate-400 border-slate-700",
-    replaced: "bg-slate-800 text-slate-400 border-slate-700",
+    superseded: "bg-muted text-muted-foreground border-input",
+    replaced: "bg-muted text-muted-foreground border-input",
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center bg-slate-900 p-4 rounded-lg border border-slate-800">
+      <div className="flex justify-between items-center bg-card p-4 rounded-lg border border-border">
         <div>
-          <h1 className="text-xl font-bold text-white">Baselines</h1>
-          <p className="text-slate-400 text-sm">Approved file states for integrity comparison</p>
+          <h1 className="text-xl font-bold text-foreground">Baselines</h1>
+          <p className="text-muted-foreground text-sm">Approved file states for integrity comparison</p>
         </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-        <table className="w-full text-sm text-left text-slate-300">
-          <thead className="bg-slate-950/50 text-slate-400 font-semibold uppercase text-xs border-b border-slate-800">
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <table className="w-full text-sm text-left text-foreground/90">
+          <thead className="bg-background/50 text-muted-foreground font-semibold uppercase text-xs border-b border-border">
             <tr>
               <th className="px-6 py-4">Agent</th>
               <th className="px-6 py-4">Status</th>
@@ -60,14 +60,14 @@ export default function BaselinesPage() {
               <th className="px-6 py-4 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-border">
             {baselines.map((b: any) => {
               const needsApproval = !["approved", "integrity_failed", "superseded", "replaced"].includes(b.status);
               return (
-              <tr key={b.id} className={`hover:bg-slate-800/50 ${needsApproval ? "border-l-2 border-l-yellow-500 bg-yellow-900/10" : ""}`}>
+              <tr key={b.id} className={`hover:bg-muted/50 ${needsApproval ? "border-l-2 border-l-yellow-500 bg-yellow-900/10" : ""}`}>
                 <td className="px-6 py-4">
-                  <div className="text-white text-xs font-medium">{b.agent_hostname}</div>
-                  <div className="text-slate-500 text-[10px] font-mono">{b.agent_id.slice(0, 8)}...</div>
+                  <div className="text-foreground text-xs font-medium">{b.agent_hostname}</div>
+                  <div className="text-muted-foreground text-[10px] font-mono">{b.agent_id.slice(0, 8)}...</div>
                 </td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded text-xs border uppercase ${statusColors[b.status] || statusColors.pending}`}>
@@ -75,10 +75,10 @@ export default function BaselinesPage() {
                   </span>
                 </td>
                 <td className="px-6 py-4">
-                  {b.is_active ? <ShieldCheck size={16} className="text-green-400" /> : <span className="text-slate-600">-</span>}
+                  {b.is_active ? <ShieldCheck size={16} className="text-green-400" /> : <span className="text-muted-foreground">-</span>}
                 </td>
-                <td className="px-6 py-4 text-slate-400">{b.file_count?.toLocaleString()}</td>
-                <td className="px-6 py-4 text-slate-400 text-xs">
+                <td className="px-6 py-4 text-muted-foreground">{b.file_count?.toLocaleString()}</td>
+                <td className="px-6 py-4 text-muted-foreground text-xs">
                   <div className="flex items-center gap-1">
                     <Clock size={12} />
                     {new Date(b.created_at).toLocaleDateString()}
@@ -88,9 +88,9 @@ export default function BaselinesPage() {
                   {b.approved_by_name ? (
                     <div>
                       <div className="text-sky-400">{b.approved_by_name}</div>
-                      <div className="text-slate-500">{b.approved_at ? new Date(b.approved_at).toLocaleDateString() : ""}</div>
+                      <div className="text-muted-foreground">{b.approved_at ? new Date(b.approved_at).toLocaleDateString() : ""}</div>
                     </div>
-                  ) : <span className="text-slate-600">-</span>}
+                  ) : <span className="text-muted-foreground">-</span>}
                 </td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex justify-end items-center gap-2">
@@ -139,7 +139,7 @@ export default function BaselinesPage() {
               );
             })}
             {baselines.length === 0 && (
-              <tr><td colSpan={7} className="px-6 py-8 text-center text-slate-500">No baselines found</td></tr>
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No baselines found</td></tr>
             )}
           </tbody>
         </table>
@@ -190,63 +190,63 @@ function RebaselineModal({ baseline, onClose, onSuccess }: { baseline: any; onCl
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-lg shadow-2xl">
-        <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+      <div className="bg-card border border-input rounded-lg w-full max-w-lg shadow-2xl">
+        <div className="p-4 border-b border-border flex justify-between items-center">
+          <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
             <RefreshCw size={14} className="text-amber-400" /> Re-baseline: {baseline.agent_hostname}
           </h3>
-          <button onClick={onClose}><X size={18} className="text-slate-400 hover:text-white" /></button>
+          <button onClick={onClose}><X size={18} className="text-muted-foreground hover:text-foreground" /></button>
         </div>
 
         {result ? (
           <div className="p-6 text-center space-y-3">
             <Check size={48} className="text-green-400 mx-auto" />
             <p className="text-green-300 text-sm font-medium">{result.message}</p>
-            <div className="text-xs text-slate-400 space-y-1">
-              <div>New baseline: <span className="font-mono text-white">{result.new_baseline_id?.slice(0, 8)}...</span></div>
-              <div>Files: <span className="text-white">{result.file_count?.toLocaleString()}</span></div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <div>New baseline: <span className="font-mono text-foreground">{result.new_baseline_id?.slice(0, 8)}...</span></div>
+              <div>Files: <span className="text-foreground">{result.file_count?.toLocaleString()}</span></div>
             </div>
-            <button onClick={onSuccess} className="px-6 py-2 bg-slate-700 text-white rounded text-sm hover:bg-slate-600">Close</button>
+            <button onClick={onSuccess} className="px-6 py-2 bg-secondary text-secondary-foreground rounded text-sm hover:bg-secondary/80">Close</button>
           </div>
         ) : (
           <>
             <div className="p-4 space-y-4">
-              <div className="bg-slate-950 rounded p-3 text-xs space-y-1 font-mono">
-                <div className="text-slate-400">Agent    : <span className="text-white">{baseline.agent_hostname}</span></div>
-                <div className="text-slate-400">Current  : <span className="text-white">{baseline.file_count?.toLocaleString()} files</span></div>
-                <div className="text-slate-400">Checksum : <span className="text-white">{baseline.checksum || "N/A"}</span></div>
+              <div className="bg-background rounded p-3 text-xs space-y-1 font-mono">
+                <div className="text-muted-foreground">Agent    : <span className="text-foreground">{baseline.agent_hostname}</span></div>
+                <div className="text-muted-foreground">Current  : <span className="text-foreground">{baseline.file_count?.toLocaleString()} files</span></div>
+                <div className="text-muted-foreground">Checksum : <span className="text-foreground">{baseline.checksum || "N/A"}</span></div>
               </div>
 
               <div className="bg-amber-900/20 border border-amber-700/40 rounded p-3">
                 <div className="text-amber-400 text-xs font-bold flex items-center gap-1 mb-1">
                   <AlertTriangle size={12} /> This will replace the current active baseline
                 </div>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-muted-foreground">
                   A new baseline will be created from the latest scan data.
                   It starts as <span className="text-yellow-300">pending</span> and must be approved before it becomes active.
                 </p>
               </div>
 
               <div>
-                <label className="text-xs text-slate-400 block mb-1">Justification (required)</label>
+                <label className="text-xs text-muted-foreground block mb-1">Justification (required)</label>
                 <textarea
                   value={justification} onChange={e => setJustification(e.target.value)}
                   placeholder="e.g., Post patch window — approved server updates applied"
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white placeholder-slate-600 focus:border-amber-500 focus:outline-none"
+                  className="w-full bg-background border border-input rounded p-2 text-sm text-foreground placeholder-slate-600 focus:border-amber-500 focus:outline-none"
                   rows={3}
                 />
               </div>
 
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={keepOld} onChange={e => setKeepOld(e.target.checked)} className="accent-amber-400" />
-                <span className="text-xs text-slate-400">Keep old baseline for audit trail</span>
+                <span className="text-xs text-muted-foreground">Keep old baseline for audit trail</span>
               </label>
 
               {error && <div className="text-red-400 text-xs">{error}</div>}
             </div>
 
-            <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
-              <button onClick={onClose} className="px-4 py-2 text-sm bg-slate-800 text-slate-300 rounded hover:bg-slate-700">Cancel</button>
+            <div className="p-4 border-t border-border flex justify-end gap-2">
+              <button onClick={onClose} className="px-4 py-2 text-sm bg-muted text-foreground/90 rounded hover:bg-secondary/80">Cancel</button>
               <button onClick={doRebaseline} disabled={busy}
                 className="px-4 py-2 text-sm bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-40 flex items-center gap-2">
                 <RefreshCw size={14} /> {busy ? "Creating…" : "Re-baseline"}
@@ -281,34 +281,34 @@ function ApproveModal({ baseline, onClose, onSuccess }: { baseline: any; onClose
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-lg shadow-2xl">
-        <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+      <div className="bg-card border border-input rounded-lg w-full max-w-lg shadow-2xl">
+        <div className="p-4 border-b border-border flex justify-between items-center">
+          <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
             <ShieldCheck size={14} className="text-green-400" /> Approve Baseline
           </h3>
-          <button onClick={onClose}><X size={18} className="text-slate-400 hover:text-white" /></button>
+          <button onClick={onClose}><X size={18} className="text-muted-foreground hover:text-foreground" /></button>
         </div>
 
         <div className="p-4 space-y-4">
-          <div className="bg-slate-950 rounded p-3 text-xs space-y-1 font-mono">
-            <div className="text-slate-400">Agent : <span className="text-white">{baseline.agent_hostname}</span></div>
-            <div className="text-slate-400">Files : <span className="text-white">{baseline.file_count?.toLocaleString()}</span></div>
-            <div className="text-slate-400">ID    : <span className="text-white">{baseline.id.slice(0, 12)}...</span></div>
+          <div className="bg-background rounded p-3 text-xs space-y-1 font-mono">
+            <div className="text-muted-foreground">Agent : <span className="text-foreground">{baseline.agent_hostname}</span></div>
+            <div className="text-muted-foreground">Files : <span className="text-foreground">{baseline.file_count?.toLocaleString()}</span></div>
+            <div className="text-muted-foreground">ID    : <span className="text-foreground">{baseline.id.slice(0, 12)}...</span></div>
           </div>
 
           {baseline.notes && (
-            <div className="bg-slate-950 rounded p-3 text-xs">
-              <div className="text-slate-500 mb-1">Notes:</div>
-              <div className="text-slate-300">{baseline.notes}</div>
+            <div className="bg-background rounded p-3 text-xs">
+              <div className="text-muted-foreground mb-1">Notes:</div>
+              <div className="text-foreground/90">{baseline.notes}</div>
             </div>
           )}
 
           <div>
-            <label className="text-xs text-slate-400 block mb-1">Approval notes (optional)</label>
+            <label className="text-xs text-muted-foreground block mb-1">Approval notes (optional)</label>
             <textarea
               value={notes} onChange={e => setNotes(e.target.value)}
               placeholder="e.g., Reviewed — changes consistent with patch CHG0012345"
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white placeholder-slate-600 focus:border-green-500 focus:outline-none"
+              className="w-full bg-background border border-input rounded p-2 text-sm text-foreground placeholder-slate-600 focus:border-green-500 focus:outline-none"
               rows={2}
             />
           </div>
@@ -316,8 +316,8 @@ function ApproveModal({ baseline, onClose, onSuccess }: { baseline: any; onClose
           {error && <div className="text-red-400 text-xs">{error}</div>}
         </div>
 
-        <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm bg-slate-800 text-slate-300 rounded hover:bg-slate-700">Cancel</button>
+        <div className="p-4 border-t border-border flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm bg-muted text-foreground/90 rounded hover:bg-secondary/80">Cancel</button>
           <button onClick={doApprove} disabled={busy}
             className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-40 flex items-center gap-2">
             <Check size={14} /> {busy ? "Approving…" : "Approve"}
@@ -343,15 +343,15 @@ function DiffModal({ baseline1, baseline2, onClose }: { baseline1: any; baseline
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-3xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
-        <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+      <div className="bg-card border border-input rounded-lg w-full max-w-3xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
+        <div className="p-4 border-b border-border flex justify-between items-center">
+          <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
             <GitCompare size={14} className="text-purple-400" /> Baseline Comparison
           </h3>
-          <button onClick={onClose}><X size={18} className="text-slate-400 hover:text-white" /></button>
+          <button onClick={onClose}><X size={18} className="text-muted-foreground hover:text-foreground" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {loading && <div className="text-center text-slate-400 py-8">Loading diff...</div>}
+          {loading && <div className="text-center text-muted-foreground py-8">Loading diff...</div>}
           {error && <div className="text-red-400 text-center py-4">{error}</div>}
           {diff && (
             <>
@@ -372,7 +372,7 @@ function DiffModal({ baseline1, baseline2, onClose }: { baseline1: any; baseline
               {diff.changes?.added?.length > 0 && (
                 <div>
                   <h4 className="text-xs font-bold text-green-400 mb-1">Added Files</h4>
-                  <div className="bg-slate-950 rounded p-2 max-h-40 overflow-y-auto">
+                  <div className="bg-background rounded p-2 max-h-40 overflow-y-auto">
                     {diff.changes.added.map((f: any, i: number) => (
                       <div key={i} className="text-[10px] font-mono text-green-300 py-0.5">+ {f.path}</div>
                     ))}
@@ -382,7 +382,7 @@ function DiffModal({ baseline1, baseline2, onClose }: { baseline1: any; baseline
               {diff.changes?.removed?.length > 0 && (
                 <div>
                   <h4 className="text-xs font-bold text-red-400 mb-1">Removed Files</h4>
-                  <div className="bg-slate-950 rounded p-2 max-h-40 overflow-y-auto">
+                  <div className="bg-background rounded p-2 max-h-40 overflow-y-auto">
                     {diff.changes.removed.map((f: any, i: number) => (
                       <div key={i} className="text-[10px] font-mono text-red-300 py-0.5">- {f.path}</div>
                     ))}
@@ -392,7 +392,7 @@ function DiffModal({ baseline1, baseline2, onClose }: { baseline1: any; baseline
               {diff.changes?.modified?.length > 0 && (
                 <div>
                   <h4 className="text-xs font-bold text-orange-400 mb-1">Modified Files</h4>
-                  <div className="bg-slate-950 rounded p-2 max-h-40 overflow-y-auto">
+                  <div className="bg-background rounded p-2 max-h-40 overflow-y-auto">
                     {diff.changes.modified.map((f: any, i: number) => (
                       <div key={i} className="text-[10px] font-mono text-orange-300 py-0.5">~ {f.path}</div>
                     ))}
@@ -403,8 +403,8 @@ function DiffModal({ baseline1, baseline2, onClose }: { baseline1: any; baseline
             </>
           )}
         </div>
-        <div className="p-4 border-t border-slate-800 flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 bg-slate-800 text-white rounded text-sm hover:bg-slate-700">Close</button>
+        <div className="p-4 border-t border-border flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 bg-muted text-secondary-foreground rounded text-sm hover:bg-secondary/80">Close</button>
         </div>
       </div>
     </div>

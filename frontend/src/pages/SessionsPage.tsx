@@ -34,7 +34,7 @@ export default function SessionsPage() {
     }
   };
 
-  if (isLoading) return <div className="text-center py-12 text-slate-400">Loading sessions...</div>;
+  if (isLoading) return <div className="text-center py-12 text-muted-foreground">Loading sessions...</div>;
 
   const sessions = data?.sessions || [];
 
@@ -48,20 +48,20 @@ export default function SessionsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 flex justify-between items-center">
+      <div className="bg-card p-4 rounded-lg border border-border flex justify-between items-center">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2"><Shield size={20} className="text-sky-400" /> Active Sessions</h1>
-          <p className="text-slate-400 text-sm">{sessions.length} active session(s)</p>
+          <h1 className="text-xl font-bold text-foreground flex items-center gap-2"><Shield size={20} className="text-sky-400" /> Active Sessions</h1>
+          <p className="text-muted-foreground text-sm">{sessions.length} active session(s)</p>
         </div>
       </div>
 
       {Object.entries(byUser).map(([username, userSessions]) => (
-        <div key={username} className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center">
+        <div key={username} className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-border flex justify-between items-center">
             <div className="flex items-center gap-2">
               <Monitor size={14} className="text-sky-400" />
-              <span className="text-white font-medium text-sm">{username}</span>
-              <span className="text-slate-500 text-xs">({userSessions.length} session{userSessions.length > 1 ? "s" : ""})</span>
+              <span className="text-foreground font-medium text-sm">{username}</span>
+              <span className="text-muted-foreground text-xs">({userSessions.length} session{userSessions.length > 1 ? "s" : ""})</span>
             </div>
             {userSessions.length > 1 && (
               <button onClick={() => handleRevokeAll(userSessions[0].user_id, username)}
@@ -71,7 +71,7 @@ export default function SessionsPage() {
             )}
           </div>
           <table className="w-full text-sm">
-            <thead className="text-slate-500 text-xs bg-slate-950/40">
+            <thead className="text-muted-foreground text-xs bg-background/40">
               <tr>
                 <th className="px-5 py-2 text-left">IP Address</th>
                 <th className="px-5 py-2 text-left">Browser/Agent</th>
@@ -81,14 +81,14 @@ export default function SessionsPage() {
                 <th className="px-5 py-2 text-center">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-border">
               {userSessions.map((s: any) => (
-                <tr key={s.id} className="hover:bg-slate-800/50">
-                  <td className="px-5 py-2.5 font-mono text-xs text-slate-300">{s.ip_address || "-"}</td>
-                  <td className="px-5 py-2.5 text-xs text-slate-400 truncate max-w-xs">{s.user_agent?.split(" ").slice(0, 3).join(" ") || "-"}</td>
-                  <td className="px-5 py-2.5 text-xs text-slate-400">{formatServerDateTime(s.created_at)}</td>
-                  <td className="px-5 py-2.5 text-xs text-slate-400">{formatServerDateTime(s.last_activity)}</td>
-                  <td className="px-5 py-2.5 text-xs text-slate-400">{formatServerDateTime(s.expires_at)}</td>
+                <tr key={s.id} className="hover:bg-muted/50">
+                  <td className="px-5 py-2.5 font-mono text-xs text-foreground/90">{s.ip_address || "-"}</td>
+                  <td className="px-5 py-2.5 text-xs text-muted-foreground truncate max-w-xs">{s.user_agent?.split(" ").slice(0, 3).join(" ") || "-"}</td>
+                  <td className="px-5 py-2.5 text-xs text-muted-foreground">{formatServerDateTime(s.created_at)}</td>
+                  <td className="px-5 py-2.5 text-xs text-muted-foreground">{formatServerDateTime(s.last_activity)}</td>
+                  <td className="px-5 py-2.5 text-xs text-muted-foreground">{formatServerDateTime(s.expires_at)}</td>
                   <td className="px-5 py-2.5 text-center">
                     <button onClick={() => handleRevoke(s.id)} disabled={revoking === s.id}
                       className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-500 disabled:opacity-50 flex items-center gap-1 mx-auto">
@@ -103,7 +103,7 @@ export default function SessionsPage() {
       ))}
 
       {sessions.length === 0 && (
-        <div className="text-center py-12 text-slate-500">No active sessions</div>
+        <div className="text-center py-12 text-muted-foreground">No active sessions</div>
       )}
     </div>
   );

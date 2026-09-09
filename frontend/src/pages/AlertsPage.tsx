@@ -72,7 +72,7 @@ export default function AlertsPage() {
   };
 
   const SortIcon = ({ field }: { field: string }) => {
-    if (sortField !== field) return <span className="text-slate-600 ml-1">⇅</span>;
+    if (sortField !== field) return <span className="text-muted-foreground ml-1">⇅</span>;
     return <span className="text-sky-400 ml-1">{sortOrder === "asc" ? "↑" : "↓"}</span>;
   };
 
@@ -94,11 +94,11 @@ export default function AlertsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">
-          Alerts <span className="text-slate-400 text-base">({filtered.length})</span>
+          Alerts <span className="text-muted-foreground text-base">({filtered.length})</span>
         </h1>
         <div className="flex items-center gap-2">
           <button onClick={exportToCSV} disabled={alerts.length === 0}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded text-xs border border-slate-600">
+            className="px-3 py-1.5 bg-muted hover:bg-secondary/80 disabled:opacity-50 rounded text-xs border border-input">
             📥 Export CSV
           </button>
         </div>
@@ -107,7 +107,7 @@ export default function AlertsPage() {
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-xs text-slate-300">
+          className="bg-muted border border-input rounded px-3 py-1.5 text-xs text-foreground/90">
           <option value="all">All Status</option>
           <option value="open">Open</option>
           <option value="acknowledged">Acknowledged</option>
@@ -115,7 +115,7 @@ export default function AlertsPage() {
           <option value="false_positive">False Positive</option>
         </select>
         <select value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}
-          className="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-xs text-slate-300">
+          className="bg-muted border border-input rounded px-3 py-1.5 text-xs text-foreground/90">
           <option value="all">All Severity</option>
           <option value="critical">Critical</option>
           <option value="high">High</option>
@@ -125,7 +125,7 @@ export default function AlertsPage() {
 
         {/* Bulk Actions */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 ml-4 bg-slate-800 border border-slate-700 rounded px-3 py-1.5">
+          <div className="flex items-center gap-2 ml-4 bg-muted border border-input rounded px-3 py-1.5">
             <span className="text-xs text-sky-400 font-medium">{selectedIds.size} selected</span>
             <button onClick={() => handleBulk("acknowledge")} disabled={bulkBusy}
               className="flex items-center gap-1 px-2 py-1 bg-sky-600 hover:bg-sky-500 rounded text-xs text-white disabled:opacity-50">
@@ -136,34 +136,34 @@ export default function AlertsPage() {
               <CheckCircle size={12} /> Resolve
             </button>
             <button onClick={() => handleBulk("false_positive")} disabled={bulkBusy}
-              className="flex items-center gap-1 px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-white disabled:opacity-50">
+              className="flex items-center gap-1 px-2 py-1 bg-secondary hover:bg-slate-500 rounded text-xs text-secondary-foreground disabled:opacity-50">
               <Flag size={12} /> False Positive
             </button>
-            <button onClick={() => setSelectedIds(new Set())} className="text-slate-400 hover:text-white text-xs ml-1">✕</button>
+            <button onClick={() => setSelectedIds(new Set())} className="text-muted-foreground hover:text-foreground text-xs ml-1">✕</button>
           </div>
         )}
       </div>
 
       {/* Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-800 text-slate-300">
+          <thead className="bg-muted text-foreground/90">
             <tr>
               <th className="px-3 py-2 w-8">
                 <input type="checkbox" checked={selectedIds.size > 0 && selectedIds.size === openCount}
                   onChange={toggleAll} className="accent-sky-500" title="Select all open" />
               </th>
-              <th className="px-3 py-2 text-left cursor-pointer hover:bg-slate-700" onClick={() => handleSort("severity")}>
+              <th className="px-3 py-2 text-left cursor-pointer hover:bg-secondary/80" onClick={() => handleSort("severity")}>
                 Severity <SortIcon field="severity" />
               </th>
-              <th className="px-3 py-2 text-left cursor-pointer hover:bg-slate-700" onClick={() => handleSort("status")}>
+              <th className="px-3 py-2 text-left cursor-pointer hover:bg-secondary/80" onClick={() => handleSort("status")}>
                 Status <SortIcon field="status" />
               </th>
-              <th className="px-3 py-2 text-left cursor-pointer hover:bg-slate-700" onClick={() => handleSort("agent_hostname")}>
+              <th className="px-3 py-2 text-left cursor-pointer hover:bg-secondary/80" onClick={() => handleSort("agent_hostname")}>
                 Agent <SortIcon field="agent_hostname" />
               </th>
               <th className="px-3 py-2 text-left">File</th>
-              <th className="px-3 py-2 text-left cursor-pointer hover:bg-slate-700" onClick={() => handleSort("detected_at")}>
+              <th className="px-3 py-2 text-left cursor-pointer hover:bg-secondary/80" onClick={() => handleSort("detected_at")}>
                 Detected <SortIcon field="detected_at" />
               </th>
               <th className="px-3 py-2">Actions</th>
@@ -171,7 +171,7 @@ export default function AlertsPage() {
           </thead>
           <tbody>
             {sortedAlerts.map((a: any) => (
-              <tr key={a.id} className={`border-t border-slate-800 hover:bg-slate-800/50 ${selectedIds.has(a.id) ? "bg-sky-900/20" : ""}`}>
+              <tr key={a.id} className={`border-t border-border hover:bg-muted/50 ${selectedIds.has(a.id) ? "bg-sky-900/20" : ""}`}>
                 <td className="px-3 py-2">
                   {a.status === "open" && (
                     <input type="checkbox" checked={selectedIds.has(a.id)} onChange={() => toggleSelect(a.id)} className="accent-sky-500" />
@@ -182,7 +182,7 @@ export default function AlertsPage() {
                     a.severity === "critical" ? "bg-red-900/40 text-red-300 border-red-700"
                     : a.severity === "high" ? "bg-orange-900/40 text-orange-300 border-orange-700"
                     : a.severity === "medium" ? "bg-yellow-900/40 text-yellow-300 border-yellow-700"
-                    : "bg-slate-800 text-slate-200 border-slate-600"
+                    : "bg-muted text-foreground border-input"
                   }`}>{a.severity}</span>
                 </td>
                 <td className="px-3 py-2">
@@ -190,12 +190,12 @@ export default function AlertsPage() {
                     a.status === "open" ? "text-orange-400"
                     : a.status === "acknowledged" ? "text-sky-400"
                     : a.status === "resolved" ? "text-green-400"
-                    : "text-slate-400"
+                    : "text-muted-foreground"
                   }`}>{a.status}</span>
                 </td>
-                <td className="px-3 py-2 text-xs text-slate-300">{a.agent_hostname}</td>
-                <td className="px-3 py-2 text-xs text-slate-300 truncate max-w-xs font-mono">{a.file_path}</td>
-                <td className="px-3 py-2 text-xs text-slate-400">{a.detected_at ? new Date(a.detected_at).toLocaleString() : "-"}</td>
+                <td className="px-3 py-2 text-xs text-foreground/90">{a.agent_hostname}</td>
+                <td className="px-3 py-2 text-xs text-foreground/90 truncate max-w-xs font-mono">{a.file_path}</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground">{a.detected_at ? new Date(a.detected_at).toLocaleString() : "-"}</td>
                 <td className="px-3 py-2 text-center">
                   <button onClick={() => setSelectedAlert(a)} className="text-sky-400 hover:text-sky-300 text-xs font-medium">
                     View Details
@@ -204,7 +204,7 @@ export default function AlertsPage() {
               </tr>
             ))}
             {sortedAlerts.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-4 text-center text-slate-400">No alerts match filters</td></tr>
+              <tr><td colSpan={7} className="px-3 py-4 text-center text-muted-foreground">No alerts match filters</td></tr>
             )}
           </tbody>
         </table>
