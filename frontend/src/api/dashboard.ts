@@ -175,6 +175,10 @@ export const publishReport = (reportId: string, force = false) =>
     body:   JSON.stringify({ force }),
   });
 
+/** Preview the exact RT ticket + comment content publish would send, without sending it */
+export const fetchPublishPreview = (reportId: string) =>
+  apiCall(`/api/v1/reports/${reportId}/publish-preview`);
+
 // ── Administration ────────────────────────────────────────────────────────────
 export const fetchDiskHealth = () => apiCall("/api/v1/system/disk-health");
 

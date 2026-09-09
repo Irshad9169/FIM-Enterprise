@@ -3,16 +3,16 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useEffect, type MouseEvent } from "react";
 import {
   fetchReportDetail, correlateReport, updateReportAgent,
-  submitAgent, publishReport, updateReportNotes, updateReportStatus,
+  submitAgent, publishReport, fetchPublishPreview, updateReportNotes, updateReportStatus,
   findTicketsForAgent, linkChange, exportReport, exportPdfReport,
 } from "../api/dashboard";
 import type {
-  DailyReportDetail, ReportAgent, ReportChangeDetail, ReportTicket,
+  DailyReportDetail, ReportAgent, ReportChangeDetail, ReportTicket, PublishPreview,
 } from "../types";
 import {
   ArrowLeft, Printer, CheckCircle, RotateCcw, Send, BookOpen,
   Link as LinkIcon, Search, ChevronDown, ChevronUp, Edit2,
-  SkipForward, AlertTriangle, Check, X, ExternalLink, Download, LayoutGrid, List,
+  SkipForward, AlertTriangle, Check, X, ExternalLink, Download, LayoutGrid, List, Eye,
 } from "lucide-react";
 import { GroupedChangesView, CHANGE_KIND_STYLE } from "../components/GroupedChangesView";
 import { clubHosts, dedupeByLatestMtime, type HostChanges } from "../lib/reportGrouping";
@@ -292,8 +292,15 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
   const [force,  setForce]  = useState(false);
   const [busy,   setBusy]   = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const notDone = report.report_agents.filter(a => a.status !== "submitted" && a.status !== "skipped");
+
+  const preview = useQuery<PublishPreview>({
+    queryKey: ["publish-preview", report.id],
+    queryFn:  () => fetchPublishPreview(report.id),
+    enabled:  showPreview,
+  });
 
   const doPublish = async () => {
     setBusy(true);
@@ -351,6 +358,36 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
                 <span className="text-white font-mono">{report.report_date}</span>.
                 If no RT ticket is found, report will be marked as <span className="text-orange-300">submitted_no_ticket</span>.
               </p>
+
+              <button
+                onClick={() => setShowPreview(v => !v)}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs bg-slate-800 text-slate-300 rounded hover:bg-slate-700"
+              >
+                <Eye size={12} />{showPreview ? "Hide preview" : "Preview exact content before publishing"}
+              </button>
+
+              {showPreview && (
+                <div className="bg-slate-950 rounded p-3 space-y-2 max-h-72 overflow-y-auto">
+                  {preview.isLoading && <div className="text-xs text-slate-500">Loading preview…</div>}
+                  {preview.isError && (
+                    <div className="text-xs text-orange-300">
+                      Failed to load preview: {(preview.error as Error).message}
+                    </div>
+                  )}
+                  {preview.data && (
+                    <>
+                      <div className="text-xs">
+                        {preview.data.ticket_found
+                          ? <span className="text-green-300">Will post to RT#{preview.data.ticket_id}</span>
+                          : <span className="text-orange-300">No RT ticket found — report will be marked submitted_no_ticket</span>}
+                      </div>
+                      <pre className="text-[11px] text-slate-300 font-mono whitespace-pre-wrap break-words">
+                        {preview.data.content}
+                      </pre>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
               <button onClick={onClose} className="px-4 py-2 text-sm bg-slate-800 text-slate-300 rounded hover:bg-slate-700">Cancel</button>

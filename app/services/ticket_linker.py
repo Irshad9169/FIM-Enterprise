@@ -769,6 +769,35 @@ class TicketLinkerService:
         return "\n".join(lines)
 
     @staticmethod
+    async def preview_publish_content(report_date, agents_data: List[Dict],
+                                       token: str, analyst_notes: str = "") -> Dict:
+        """
+        Build the exact ticket_id/subject/content that publish_report would post,
+        without sending anything. Shared by both the preview endpoint and
+        publish_report itself so the two are guaranteed to stay identical.
+        """
+        ticket_id = await TicketLinkerService.find_daily_review_ticket(
+            report_date, token
+        )
+
+        # Look up RT ticket subjects for referenced tickets
+        rt_subjects = await TicketLinkerService._resolve_rt_subjects(agents_data, token)
+
+        subject = f"Daily FIM Log Security Review - {report_date.strftime('%Y/%m/%d')}"
+        content = TicketLinkerService._build_publish_content(
+            report_date, agents_data,
+            analyst_notes=analyst_notes,
+            rt_subjects=rt_subjects,
+        )
+
+        return {
+            "ticket_id":    ticket_id,
+            "ticket_found": ticket_id is not None,
+            "subject":      subject,
+            "content":      content,
+        }
+
+    @staticmethod
     async def publish_report(report_id: str, report_date,
                              agents_data: List[Dict], token: str,
                              analyst_notes: str = "") -> Dict:
@@ -777,9 +806,10 @@ class TicketLinkerService:
         token: raw SSO token from the user's Authorization header
         Returns: {success, ticket_id, message, status_to_set}
         """
-        ticket_id = await TicketLinkerService.find_daily_review_ticket(
-            report_date, token
+        preview = await TicketLinkerService.preview_publish_content(
+            report_date, agents_data, token, analyst_notes=analyst_notes
         )
+        ticket_id = preview["ticket_id"]
         if not ticket_id:
             return {
                 "success":       False,
@@ -792,17 +822,8 @@ class TicketLinkerService:
                 ),
             }
 
-        # Look up RT ticket subjects for referenced tickets
-        rt_subjects = await TicketLinkerService._resolve_rt_subjects(agents_data, token)
-
-        subject = f"Daily FIM Log Security Review - {report_date.strftime('%Y/%m/%d')}"
-        content = TicketLinkerService._build_publish_content(
-            report_date, agents_data,
-            analyst_notes=analyst_notes,
-            rt_subjects=rt_subjects,
-        )
         posted = await TicketLinkerService.post_review_to_rt(
-            ticket_id, subject, content, token
+            ticket_id, preview["subject"], preview["content"], token
         )
 
         return {

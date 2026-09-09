@@ -132,6 +132,14 @@ export interface RecentActivity {
   cmrs:       RecentCmr[];
 }
 
+export interface PublishPreview {
+  ticket_id:             string | null;
+  ticket_found:          boolean;
+  subject:               string;
+  content:               string;
+  not_submitted_agents:  string[];
+}
+
 export interface ReportAgent {
   id:               string;
   agent_hostname:   string;

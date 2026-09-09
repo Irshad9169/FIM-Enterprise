@@ -532,6 +532,86 @@ async def link_change(
 # Publish
 # ─────────────────────────────────────────────────────────────────────────────
 
+async def _build_publish_agents_data(db: AsyncSession, report_id, agents) -> List[Dict]:
+    """Shared by the publish endpoint and the publish-preview endpoint so the
+    preview is guaranteed to show the same data that would actually be published."""
+    agents_data = []
+    for ag in agents:
+        # Fetch all changes for this agent
+        changes_res = await db.execute(text("""
+            SELECT file_path, change_type, severity,
+                   baseline_hash, current_hash,
+                   baseline_size, current_size,
+                   analyst_notes, is_known_change,
+                   requires_investigation
+            FROM fim.report_changes
+            WHERE report_id = :rid AND agent_hostname = :host
+            ORDER BY file_path
+        """), {"rid": str(report_id), "host": ag.agent_hostname})
+        changes_rows = changes_res.fetchall()
+
+        changes = []
+        for ch in changes_rows:
+            changes.append({
+                "file_path":              ch.file_path,
+                "change_type":            ch.change_type,
+                "severity":               ch.severity,
+                "baseline_hash":          ch.baseline_hash,
+                "current_hash":           ch.current_hash,
+                "baseline_size":          ch.baseline_size,
+                "current_size":           ch.current_size,
+                "analyst_notes":          ch.analyst_notes,
+                "is_known_change":        ch.is_known_change,
+                "requires_investigation": ch.requires_investigation,
+            })
+
+        agents_data.append({
+            "agent_hostname":   ag.agent_hostname,
+            "correlated_rt":    ag.correlated_rt,
+            "correlated_cmr":   ag.correlated_cmr,
+            "manual_rt":        ag.manual_rt,
+            "correlation_note": ag.correlation_note,
+            "status":           ag.status,
+            "change_count":     len(changes),
+            "changes":          changes,
+        })
+    return agents_data
+
+
+@router.get("/{report_id}/publish-preview")
+async def publish_preview(
+    report_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Read-only: build and return the exact RT ticket + comment content that
+    POST /{report_id}/publish would send, without sending anything.
+    """
+    r = await find_report(db, report_id)
+    if not r:
+        raise HTTPException(404, "Report not found")
+
+    ra_res = await db.execute(
+        select(ReportAgent).where(ReportAgent.report_id == r.id)
+    )
+    agents = ra_res.scalars().all()
+    agents_data = await _build_publish_agents_data(db, r.id, agents)
+
+    not_submitted = [a for a in agents if a.status not in ("submitted", "skipped")]
+
+    sso_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    preview = await TicketLinkerService.preview_publish_content(
+        r.report_date, agents_data, sso_token,
+        analyst_notes=r.analyst_notes or "",
+    )
+    return {
+        **preview,
+        "not_submitted_agents": [a.agent_hostname for a in not_submitted],
+    }
+
+
 @router.post("/{report_id}/publish")
 async def publish_report(
     report_id: str,
@@ -563,47 +643,7 @@ async def publish_report(
                 + ", ".join(a.agent_hostname for a in not_submitted),
             )
 
-    # Build payload with full change details
-    agents_data = []
-    for ag in agents:
-        # Fetch all changes for this agent
-        changes_res = await db.execute(text("""
-            SELECT file_path, change_type, severity,
-                   baseline_hash, current_hash,
-                   baseline_size, current_size,
-                   analyst_notes, is_known_change,
-                   requires_investigation
-            FROM fim.report_changes
-            WHERE report_id = :rid AND agent_hostname = :host
-            ORDER BY file_path
-        """), {"rid": str(r.id), "host": ag.agent_hostname})
-        changes_rows = changes_res.fetchall()
-
-        changes = []
-        for ch in changes_rows:
-            changes.append({
-                "file_path":              ch.file_path,
-                "change_type":            ch.change_type,
-                "severity":               ch.severity,
-                "baseline_hash":          ch.baseline_hash,
-                "current_hash":           ch.current_hash,
-                "baseline_size":          ch.baseline_size,
-                "current_size":           ch.current_size,
-                "analyst_notes":          ch.analyst_notes,
-                "is_known_change":        ch.is_known_change,
-                "requires_investigation": ch.requires_investigation,
-            })
-
-        agents_data.append({
-            "agent_hostname":   ag.agent_hostname,
-            "correlated_rt":    ag.correlated_rt,
-            "correlated_cmr":   ag.correlated_cmr,
-            "manual_rt":        ag.manual_rt,
-            "correlation_note": ag.correlation_note,
-            "status":           ag.status,
-            "change_count":     len(changes),
-            "changes":          changes,
-        })
+    agents_data = await _build_publish_agents_data(db, r.id, agents)
 
     sso_token = request.headers.get("Authorization", "").replace("Bearer ", "")
     result = await TicketLinkerService.publish_report(
