@@ -247,28 +247,39 @@ class TicketLinkerService:
     # ── CMR search ───────────────────────────────────────────────────────────
 
     @staticmethod
-    async def search_cmr_by_hostname(hostname: str, token: str) -> List[Dict]:
-        """Search CMR (Phantom) for change records mentioning a hostname."""
+    async def search_cmr_by_hostname(hostname: str, days_back: int = 30) -> List[Dict]:
+        """
+        Find recent CMRs whose "Server(s) Affected" mentions this host.
+
+        This previously sent the FIM user's own JWT to Phantom as
+        sso_token -- Phantom has no concept of a FIM session token, it
+        only understands its own SSO cookie, so this call was always
+        effectively unauthenticated (silently returning nothing useful,
+        or matching stray digits off whatever page Phantom served
+        instead). It also queried Phantom with a "hostname" search field
+        that Phantom's advanced search doesn't have -- get_RT_CMRs (the
+        real, working legacy collector this app mirrors) never searches
+        CMRs by hostname either; it always fetches CMRs by date window
+        and checks Server(s) Affected per-CMR after the fact. Doing the
+        same here: reuse fetch_recent_implemented_cmrs (already correctly
+        cookie-authenticated) and filter its results client-side.
+        """
+        short_host = hostname.split(".")[0]
+        cmrs = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=days_back)
         results = []
-        try:
-            async with httpx.AsyncClient(**HTTPX_OPTS) as client:
-                resp = await client.get(CMR_URL, params={
-                    "action":    "display",
-                    "type":      "runadvancedsearch",
-                    "hostname":  hostname,
-                    "sso_token": token,
+        for cmr in cmrs:
+            haystack = " ".join([
+                cmr.get("servers_affected") or "",
+                *(cmr.get("resolved_hosts") or []),
+            ])
+            if short_host in haystack or hostname in haystack:
+                results.append({
+                    "ticket_id": cmr["ticket_id"],
+                    "subject":   f"CMR #{cmr['ticket_id']}",
+                    "status":    cmr.get("status") or "open",
+                    "url":       cmr["url"],
+                    "source":    "cmr",
                 })
-                if resp.status_code == 200:
-                    for cid in set(re.findall(r"#(\d{6})", resp.text)):
-                        results.append({
-                            "ticket_id": cid,
-                            "subject":   f"CMR #{cid}",
-                            "status":    "open",
-                            "url":       f"{CMR_URL}?id={cid}",
-                            "source":    "cmr",
-                        })
-        except Exception as e:
-            logger.error(f"search_cmr_by_hostname({hostname}): {e}")
         return results
 
     # ── JIRA search ──────────────────────────────────────────────────────────
@@ -439,6 +450,18 @@ class TicketLinkerService:
             return {**t, "body": body, "hosts": hosts}
 
         return await asyncio.gather(*(_enrich(t) for t in tickets))
+
+    @staticmethod
+    def _looks_like_sso_login_page(html: str) -> bool:
+        """
+        An expired/invalid Phantom cookie doesn't fail the HTTP request --
+        Phantom just serves the company SSO login page instead (still
+        HTTP 200), and that page's own boilerplate can easily contain
+        stray 6-digit numbers that a naive #NNNNNN scan would misread as
+        real CMR IDs. Confirmed real page title, seen live: "United
+        Online Single Sign-On".
+        """
+        return "single sign-on" in html.lower()
 
     @staticmethod
     def _load_cmr_cookies() -> Optional[Dict[str, str]]:
@@ -620,6 +643,12 @@ class TicketLinkerService:
                 if resp.status_code != 200:
                     logger.warning(f"fetch_recent_implemented_cmrs: HTTP {resp.status_code}")
                     return []
+                if TicketLinkerService._looks_like_sso_login_page(resp.text):
+                    logger.warning(
+                        "fetch_recent_implemented_cmrs: got an SSO login page, not "
+                        "Phantom results -- the cookie jar's session has expired"
+                    )
+                    return []
                 cmr_ids = sorted(set(re.findall(r"#(\d{6})", resp.text)))
         except Exception as e:
             logger.error(f"fetch_recent_implemented_cmrs: {e}")
@@ -674,9 +703,7 @@ class TicketLinkerService:
                 rt_tickets  = await TicketLinkerService.search_rt_by_hostname(
                     hostname, token, db=db
                 )
-                cmr_tickets = await TicketLinkerService.search_cmr_by_hostname(
-                    hostname, token
-                )
+                cmr_tickets = await TicketLinkerService.search_cmr_by_hostname(hostname)
                 jira_tickets = await TicketLinkerService.search_jira_by_hostname(hostname)
 
                 for t in rt_tickets:
@@ -743,7 +770,7 @@ class TicketLinkerService:
         rt_tickets   = await TicketLinkerService.search_rt_by_hostname(
             hostname, token, db=db
         )
-        cmr_tickets  = await TicketLinkerService.search_cmr_by_hostname(hostname, token)
+        cmr_tickets  = await TicketLinkerService.search_cmr_by_hostname(hostname)
         jira_tickets = await TicketLinkerService.search_jira_by_hostname(hostname)
 
         for t in rt_tickets:
