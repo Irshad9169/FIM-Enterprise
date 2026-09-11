@@ -372,30 +372,19 @@ class TicketLinkerService:
     @staticmethod
     async def _fetch_rt_ticket_body(ticket_id: str, token: str) -> str:
         """
-        Full RT ticket body -- get_RT_CMRs fetches this by hitting RT's own
-        web UI (tickets.int.untd.com/Ticket/Display.html) with a real
-        browser-style session cookie (rtid.txt) that FIM has no equivalent
-        credential for. UNVERIFIED (not tested against the real wrapper):
-        attempts the same rt.cgi endpoint already proven for search/subject
-        lookup, with format=l ("long", RT CLI's own convention for full
-        ticket detail) on a single-ticket query. If the wrapper doesn't
-        support that mode this just returns "" -- callers already treat an
-        empty body as "no extra detail available", same as a CMR with no
-        cookie access, so this fails safe either way.
+        Full RT ticket body -- CONFIRMED NOT SUPPORTED by rt.cgi (tested
+        live 2026-09-11): a query=id={id}&format=l request just returns
+        the wrapper's normal short "id: subject" line, identical to a
+        plain search result, ignoring format entirely. rt.cgi is a
+        search/list wrapper, not a full-ticket-content one. get_RT_CMRs
+        gets the real body by hitting RT's own web UI
+        (tickets.int.untd.com/Ticket/Display.html) with a browser-style
+        session cookie (rtid.txt) -- FIM has no equivalent credential for
+        that, same category of blocker as the CMR cookie jar. Always
+        returns "" until/unless that access exists; kept as a documented
+        no-op rather than removed so fetch_recent_production_tickets_detailed's
+        shape doesn't need to change if that access ever does.
         """
-        try:
-            async with httpx.AsyncClient(**HTTPX_OPTS) as client:
-                resp = await client.get(RT_LOOKUP_URL, params={
-                    "query": f"id={ticket_id}", "format": "l", "sso_token": token,
-                })
-                if resp.status_code == 200:
-                    body = resp.text
-                    body = re.sub(r"<br\s*/?>", "\n", body, flags=re.I)
-                    body = re.sub(r"<.*?>", "", body)
-                    body = re.sub(r"\n\s*\n+", "\n\n", body)
-                    return body.strip()
-        except Exception as e:
-            logger.error(f"_fetch_rt_ticket_body({ticket_id}): {e}")
         return ""
 
     # 3 monthly PCI-patching RT ticket subjects get an extra resolved host
