@@ -198,6 +198,27 @@ async def recent_activity(
     return {"rt_tickets": rt_tickets, "cmrs": cmrs}
 
 
+@router.get("/recent-activity/detailed")
+async def recent_activity_detailed(
+    request: Request,
+    days_back: int = 5,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Same RT scope as /recent-activity, but each ticket includes its full
+    body and (for the 3 special PCI-patching subjects) a resolved host
+    list -- see TicketLinkerService.fetch_recent_production_tickets_detailed.
+    Not used by the Reports page widget (which only needs id+subject);
+    this exists so the richer data is actually reachable/testable. No
+    frontend consumes this yet.
+    """
+    sso_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    rt_tickets = await TicketLinkerService.fetch_recent_production_tickets_detailed(
+        sso_token, days_back=days_back
+    )
+    return {"rt_tickets": rt_tickets}
+
+
 @router.post("/generate")
 async def generate_daily_report(
     req: GenerateReportRequest,

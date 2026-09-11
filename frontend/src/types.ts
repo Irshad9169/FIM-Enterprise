@@ -119,12 +119,16 @@ export interface RecentRtTicket {
 }
 
 export interface RecentCmr {
-  ticket_id:   string;
-  owner:       string;
-  status:      string;
-  start_time:  string;
-  description: string;
-  url:         string;
+  ticket_id:         string;
+  owner:             string;
+  status:            string;
+  start_time:        string;
+  description:       string;
+  url:               string;
+  rollout_plan?:      string;
+  history?:           string;
+  servers_affected?:  string;
+  resolved_hosts?:    string[];
 }
 
 export interface RecentActivity {

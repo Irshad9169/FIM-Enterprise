@@ -8,6 +8,7 @@ NOTE: SSOManager is inbound-only (verifies user tokens).
       The 'token' parameter in all public methods is the raw SSO token
       extracted from the Authorization header in the API layer.
 """
+import asyncio
 import logging
 import httpx
 import os
@@ -36,6 +37,37 @@ FIM_EMAIL_DOMAIN = "corp.untd.com"
 CMR_URL       = settings.cmr_url
 HTTPX_OPTS    = dict(verify=False, timeout=10.0)
 RT_CACHE_TTL_HOURS = 1
+
+
+async def _run_hostlist(*args: str) -> List[str]:
+    """
+    Resolve a logical host-group expression to real hostnames via the
+    internal `hostlist` CLI -- mirrors get_RT_CMRs (the legacy Boris
+    collector this module's CMR/RT host-expansion is based on), which
+    shells out to the same tool. Best-effort: returns [] on any failure
+    (binary missing, non-zero exit, timeout) rather than raising, since a
+    failed host-group expansion should never take down the whole CMR/RT
+    fetch it's a small part of.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "hostlist", *args,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
+        if proc.returncode != 0:
+            logger.warning(
+                f"hostlist {args}: rc={proc.returncode} "
+                f"{stderr.decode(errors='ignore').strip()[:200]}"
+            )
+            return []
+        return [h for h in stdout.decode(errors="ignore").split() if h]
+    except FileNotFoundError:
+        logger.warning("hostlist: binary not found -- skipping host-group resolution")
+        return []
+    except Exception as e:
+        logger.error(f"hostlist {args}: {e}")
+        return []
 
 
 def _username_from_token(token: str) -> str:
@@ -296,15 +328,19 @@ class TicketLinkerService:
     @staticmethod
     async def search_rt_recent_production_tickets(token: str, days_back: int = 5) -> List[Dict]:
         """
-        All tickets in the Production Systems queue touched in the last
-        days_back days. Created-OR-LastUpdated, same reasoning as
-        search_rt_by_hostname -- an old ticket someone just updated should
-        still show up. Query shape matches the existing get_RT_CMRs cron
-        job's own (confirmed-working) Queue/LastUpdated query.
+        All tickets in the Production Systems / Hyd Unix queues touched in
+        the last days_back days, excluding the noisy recurring "Daily Backup
+        Summary" ticket -- queue set and exclusion match get_RT_CMRs (the
+        legacy Boris collector)'s own confirmed-working query. Created-OR-
+        LastUpdated, same reasoning as search_rt_by_hostname -- an old
+        ticket someone just updated should still show up (get_RT_CMRs only
+        checks LastUpdated; keeping Created too is a deliberate FIM-side
+        improvement, not a regression from the original).
         """
         query = (
-            "Queue = 'Production Systems' AND "
-            f"(Created > '-{days_back} days' OR LastUpdated > '-{days_back} days')"
+            "(Queue = 'Production Systems' OR Queue = 'Hyd Unix') AND "
+            f"(Created > '-{days_back} days' OR LastUpdated > '-{days_back} days') AND "
+            "Subject NOT LIKE 'Daily Backup Summary'"
         )
         results = []
         try:
@@ -332,6 +368,88 @@ class TicketLinkerService:
         except Exception as e:
             logger.error(f"search_rt_recent_production_tickets: {e}")
         return results
+
+    @staticmethod
+    async def _fetch_rt_ticket_body(ticket_id: str, token: str) -> str:
+        """
+        Full RT ticket body -- get_RT_CMRs fetches this by hitting RT's own
+        web UI (tickets.int.untd.com/Ticket/Display.html) with a real
+        browser-style session cookie (rtid.txt) that FIM has no equivalent
+        credential for. UNVERIFIED (not tested against the real wrapper):
+        attempts the same rt.cgi endpoint already proven for search/subject
+        lookup, with format=l ("long", RT CLI's own convention for full
+        ticket detail) on a single-ticket query. If the wrapper doesn't
+        support that mode this just returns "" -- callers already treat an
+        empty body as "no extra detail available", same as a CMR with no
+        cookie access, so this fails safe either way.
+        """
+        try:
+            async with httpx.AsyncClient(**HTTPX_OPTS) as client:
+                resp = await client.get(RT_LOOKUP_URL, params={
+                    "query": f"id={ticket_id}", "format": "l", "sso_token": token,
+                })
+                if resp.status_code == 200:
+                    body = resp.text
+                    body = re.sub(r"<br\s*/?>", "\n", body, flags=re.I)
+                    body = re.sub(r"<.*?>", "", body)
+                    body = re.sub(r"\n\s*\n+", "\n\n", body)
+                    return body.strip()
+        except Exception as e:
+            logger.error(f"_fetch_rt_ticket_body({ticket_id}): {e}")
+        return ""
+
+    # 3 monthly PCI-patching RT ticket subjects get an extra resolved host
+    # list appended, mirroring get_RT_CMRs's other_hosts() -- a literal
+    # subject match on these specific legacy ticket types, not a general
+    # RT feature. Each tuple is (-D domain args, hostlist expression).
+    _SPECIAL_PCI_TICKET_HOSTLISTS: Dict[str, List[Tuple[List[str], str]]] = {
+        "monthly mws pci patching": [
+            (["int-us"], "mws-pci & untd-all & (status-live + status-standby)"),
+            (["qa"],     "mws-beta & mws-pci & (status-live + status-standby)"),
+            (["qa"],     "mws-beta2 & mws-pci & (status-live + status-standby)"),
+        ],
+        "monthly billing pci linux patching": [
+            ([d], "patch-pci-billing") for d in ("int-us", "stg", "production", "qa", "int-hyd")
+        ],
+        "monthly non-billing pci linux patching": [
+            ([d], "patch-pci-other") for d in ("int-us", "stg", "production", "qa", "int-hyd")
+        ],
+    }
+
+    @staticmethod
+    async def _resolve_special_ticket_hosts(subject: str) -> List[str]:
+        subject_l = subject.lower()
+        for key, domain_exprs in TicketLinkerService._SPECIAL_PCI_TICKET_HOSTLISTS.items():
+            if key in subject_l:
+                hosts: List[str] = []
+                for domains, expr in domain_exprs:
+                    args = []
+                    for d in domains:
+                        args += ["-D", d]
+                    hosts += await _run_hostlist(*args, expr)
+                return hosts
+        return []
+
+    @staticmethod
+    async def fetch_recent_production_tickets_detailed(token: str, days_back: int = 5) -> List[Dict]:
+        """
+        search_rt_recent_production_tickets() enriched with each ticket's
+        full body and, for the 3 special PCI-patching subjects, a resolved
+        host list -- the full RT-side mirror of get_RT_CMRs. Separate from
+        the plain search function (used by the compact recent-activity
+        widget) since fetching full ticket bodies for every result is not
+        something that widget needs to pay for.
+        """
+        tickets = await TicketLinkerService.search_rt_recent_production_tickets(token, days_back)
+
+        async def _enrich(t: Dict) -> Dict:
+            body, hosts = await asyncio.gather(
+                TicketLinkerService._fetch_rt_ticket_body(t["ticket_id"], token),
+                TicketLinkerService._resolve_special_ticket_hosts(t["subject"]),
+            )
+            return {**t, "body": body, "hosts": hosts}
+
+        return await asyncio.gather(*(_enrich(t) for t in tickets))
 
     @staticmethod
     def _load_cmr_cookies() -> Optional[Dict[str, str]]:
@@ -371,17 +489,124 @@ class TicketLinkerService:
         }
         return cookies or None
 
+    # Matches get_RT_CMRs's own "Server(s) Affected:" resolution: a token
+    # is treated as a logical/short host-group name (not a real FQDN) if it
+    # looks like word-word[-word] and doesn't end in .com.
+    _LOGICAL_HOST_RE = re.compile(r"[a-z]+-[a-z]+-?[a-z]?$")
+    _XEN_RE = re.compile(r"(xens-\S+)")
+
+    @staticmethod
+    async def _resolve_cmr_hosts(servers_raw: str) -> List[str]:
+        """
+        Expand a CMR's raw "Server(s) Affected" text into real hostnames,
+        mirroring get_RT_CMRs: if any affected-server token looks like a
+        logical/short name, hostlist -D production is run once on the
+        whole list; any xens-* token is separately resolved against
+        production and int-hyd/int-us. (The original Perl re-ran
+        `hostlist -D production $servers` once per matching token instead
+        of once total -- a duplicate-output bug, not reproduced here.)
+        """
+        servers = servers_raw.replace(",", " ")
+        tokens = servers.split()
+        hosts: List[str] = []
+
+        if any(
+            TicketLinkerService._LOGICAL_HOST_RE.search(t) and not t.endswith(".com")
+            for t in tokens
+        ):
+            hosts += await _run_hostlist("-D", "production", servers)
+
+        for xen in TicketLinkerService._XEN_RE.findall(servers):
+            hosts += await _run_hostlist("-D", "production", xen)
+            hosts += await _run_hostlist("-D", "int-hyd", "-D", "int-us", xen)
+
+        return hosts
+
+    @staticmethod
+    async def _fetch_cmr_detail(cmr_id: str, cookies: Dict[str, str]) -> Dict:
+        """
+        One CMR's full record -- mirrors get_RT_CMRs's 3 per-CMR Phantom
+        calls (type=viewrequest for affected servers + a "Date and Time"
+        history line, type=requestdescription, type=requestrolloutplan).
+        Owner/Status/Implementation-start-date are best-effort label
+        matches on the same viewrequest page (get_RT_CMRs never needed
+        them, so these specific label strings are UNVERIFIED against a
+        real response and may need adjusting).
+        """
+        record = {
+            "ticket_id":       cmr_id,
+            "owner":           "",
+            "status":          "",
+            "start_time":      "",
+            "description":     "",
+            "rollout_plan":    "",
+            "history":         "",
+            "servers_affected": "",
+            "resolved_hosts":  [],
+            "url": f"{CMR_URL}?action=display&type=viewrequest&mode=prod&id={cmr_id}",
+            "source": "cmr",
+        }
+        try:
+            async with httpx.AsyncClient(**HTTPX_OPTS, cookies=cookies) as client:
+                detail_resp = await client.get(CMR_URL, params={
+                    "action": "display", "type": "viewrequest",
+                    "mode": "prod", "id": cmr_id, "frame": "content",
+                })
+                if detail_resp.status_code == 200:
+                    for line in BeautifulSoup(detail_resp.text, "html.parser").get_text("\n").splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        if "Server(s) Affected:" in line:
+                            servers = line.split("Server(s) Affected:", 1)[1].strip()
+                            record["servers_affected"] = servers
+                            record["resolved_hosts"] = await TicketLinkerService._resolve_cmr_hosts(servers)
+                        elif "Date and Time" in line:
+                            record["history"] = line
+                        elif line.startswith("Owner:"):
+                            record["owner"] = line.split(":", 1)[1].strip()
+                        elif line.startswith("Status:"):
+                            record["status"] = line.split(":", 1)[1].strip()
+                        elif "Implementation Start" in line and ":" in line:
+                            record["start_time"] = line.split(":", 1)[1].strip()
+
+                desc_resp = await client.get(CMR_URL, params={
+                    "frame": "async", "action": "display",
+                    "type": "requestdescription", "mode": "prod", "id": cmr_id,
+                })
+                if desc_resp.status_code == 200:
+                    record["description"] = BeautifulSoup(
+                        desc_resp.text, "html.parser"
+                    ).get_text("\n").strip()
+
+                plan_resp = await client.get(CMR_URL, params={
+                    "frame": "async", "action": "display",
+                    "type": "requestrolloutplan", "mode": "prod", "id": cmr_id,
+                })
+                if plan_resp.status_code == 200:
+                    plan_html = re.sub(r"<br\s*/?>\s*<br\s*/?>", "\n", plan_resp.text, flags=re.I)
+                    plan_html = re.sub(r"<script.*?</script>", "", plan_html, flags=re.I | re.S)
+                    record["rollout_plan"] = BeautifulSoup(
+                        plan_html, "html.parser"
+                    ).get_text("\n").strip()
+        except Exception as e:
+            logger.error(f"_fetch_cmr_detail({cmr_id}): {e}")
+        return record
+
     @staticmethod
     async def fetch_recent_implemented_cmrs(days_back: int = 5) -> List[Dict]:
         """
-        CMRs implemented in the last days_back days, via Phantom's own
-        search UI -- Phantom has no service-account/API option, only its
-        web UI behind interactive company SSO (see
-        docs/PRODUCTION_DEPLOYMENT.md). Reuses whatever session is
-        currently valid in settings.cmr_cookie_jar_path, an
-        externally-maintained cookie jar (see get_RT_CMRs) -- NOT a
-        credential FIM owns. Returns [] silently (not an error) if that
-        jar is unconfigured, unreadable, or its session has expired.
+        CMRs implemented/approved/rolled-back in the last days_back days,
+        via Phantom's own search UI -- mirrors get_RT_CMRs's Phantom flow:
+        advanced search -> extract CMR IDs via #NNNNNN (Phantom's real ID
+        format, confirmed by the legacy collector) -> per-CMR detail
+        fetch. Phantom has no service-account/API option, only its web UI
+        behind interactive company SSO (see docs/PRODUCTION_DEPLOYMENT.md).
+        Reuses whatever session is currently valid in
+        settings.cmr_cookie_jar_path, an externally-maintained cookie jar
+        (see get_RT_CMRs) -- NOT a credential FIM owns. Returns []
+        silently (not an error) if that jar is unconfigured, unreadable,
+        or its session has expired.
         """
         cookies = TicketLinkerService._load_cmr_cookies()
         if not cookies:
@@ -398,7 +623,7 @@ class TicketLinkerService:
             "mode": "prod",
             "frame": "content",
             "IMPLEMENTATION_ENDDATE": f"between '{start.isoformat()}' and '{today.isoformat()}'",
-            "Status": "'Implemented'",
+            "Status": "'Implemented' or 'PartiallyRolledBack' or 'RolledBack' or 'Approved'",
         }
         try:
             async with httpx.AsyncClient(**HTTPX_OPTS, cookies=cookies) as client:
@@ -406,49 +631,16 @@ class TicketLinkerService:
                 if resp.status_code != 200:
                     logger.warning(f"fetch_recent_implemented_cmrs: HTTP {resp.status_code}")
                     return []
-                return TicketLinkerService._parse_cmr_results(resp.text)
+                cmr_ids = sorted(set(re.findall(r"#(\d{6})", resp.text)))
         except Exception as e:
             logger.error(f"fetch_recent_implemented_cmrs: {e}")
             return []
 
-    @staticmethod
-    def _parse_cmr_results(html: str) -> List[Dict]:
-        """
-        UNVERIFIED against a real authenticated response -- built from the
-        column order (Request ID, Owner, Status, StartTime, Description)
-        shown as the desired display, not a confirmed sample of Phantom's
-        actual results HTML. Expects a standard table; a row only counts
-        as a real CMR if its first cell looks like a ticket number
-        ("#123456" or "123456"), which is how header/spacer rows get
-        skipped. This WILL need adjusting against a real response before
-        it can be trusted -- flagged deliberately rather than presented
-        as verified.
-        """
-        results = []
-        try:
-            soup = BeautifulSoup(html, "html.parser")
-            for row in soup.find_all("tr"):
-                cells = [c.get_text(strip=True) for c in row.find_all(["td", "th"])]
-                if len(cells) < 5:
-                    continue
-                id_match = re.match(r"^#?(\d{5,7})$", cells[0])
-                if not id_match:
-                    continue
-                results.append({
-                    "ticket_id":   id_match.group(1),
-                    "owner":       cells[1],
-                    "status":      cells[2],
-                    "start_time":  cells[3],
-                    "description": cells[4],
-                    "url": (
-                        f"{CMR_URL}?action=display&type=viewrequest"
-                        f"&mode=prod&id={id_match.group(1)}"
-                    ),
-                    "source": "cmr",
-                })
-        except Exception as e:
-            logger.error(f"_parse_cmr_results: {e}")
-        return results
+        if not cmr_ids:
+            return []
+        return list(await asyncio.gather(*(
+            TicketLinkerService._fetch_cmr_detail(cmr_id, cookies) for cmr_id in cmr_ids
+        )))
 
     # ── report_tickets helpers ────────────────────────────────────────────────
 
