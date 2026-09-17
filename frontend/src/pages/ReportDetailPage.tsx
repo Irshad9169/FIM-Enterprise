@@ -15,7 +15,7 @@ import {
   SkipForward, AlertTriangle, Check, X, ExternalLink, Download, LayoutGrid, List, Eye,
 } from "lucide-react";
 import { GroupedChangesView, CHANGE_KIND_STYLE } from "../components/GroupedChangesView";
-import { clubHosts, dedupeByLatestMtime, type HostChanges } from "../lib/reportGrouping";
+import { clubHosts, dedupeByLatestMtime, MAX_GROUP_HOSTS_SHOWN, type HostChanges } from "../lib/reportGrouping";
 
 type ViewMode = "grouped" | "classic";
 
@@ -63,6 +63,31 @@ function SeverityDot({ severity }: { severity: string | null }) {
 // to ever clear an incorrect auto-match from the report.
 function resolveEffectiveRt(agent: { manual_rt: string | null; correlated_rt: string | null }): string | null {
   return agent.manual_rt != null ? agent.manual_rt : agent.correlated_rt;
+}
+
+// A clubbed group's hostname badge list, capped at MAX_GROUP_HOSTS_SHOWN --
+// a mass rollout clubbing hundreds of hosts together shouldn't render
+// hundreds of badges (mirrors boris-scan-report's own 50-host cap + "N
+// hosts has same changes" note). Display only -- never used for the actual
+// per-host action controls (HostActionRow), which must render for every
+// host in the group regardless of this cap.
+function HostBadgeList({ hostnames }: { hostnames: string[] }) {
+  const shown = hostnames.slice(0, MAX_GROUP_HOSTS_SHOWN);
+  const hidden = hostnames.length - shown.length;
+  return (
+    <>
+      {shown.map(h => (
+        <span key={h} className="font-mono text-xs font-bold text-foreground bg-background/50 border border-violet-800/40 rounded px-2 py-0.5">
+          {h}
+        </span>
+      ))}
+      {hidden > 0 && (
+        <span className="text-xs text-red-400 font-bold">
+          + {hidden} more host{hidden === 1 ? "" : "s"} have the same changes
+        </span>
+      )}
+    </>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -799,11 +824,7 @@ function HostGroupCard({ hostnames, changes, agentsByHostname, report, selectedA
               </span>
             </div>
             <div className="flex flex-col gap-1 items-start">
-              {hostnames.map(h => (
-                <span key={h} className="font-mono text-xs font-bold text-foreground bg-background/50 border border-violet-800/40 rounded px-2 py-0.5">
-                  {h}
-                </span>
-              ))}
+              <HostBadgeList hostnames={hostnames} />
             </div>
           </div>
           {expanded ? <ChevronUp size={15} className="text-muted-foreground shrink-0" /> : <ChevronDown size={15} className="text-muted-foreground shrink-0" />}
@@ -888,11 +909,7 @@ function PreCorrelationView({ report, viewMode }: { report: DailyReportDetail; v
               Identical changes · {g.hostnames.length} hosts
             </span>
             <div className="flex flex-col gap-1 items-start">
-              {g.hostnames.map(h => (
-                <span key={h} className="font-mono text-xs font-bold text-foreground bg-background/50 border border-violet-800/40 rounded px-2 py-0.5">
-                  {h}
-                </span>
-              ))}
+              <HostBadgeList hostnames={g.hostnames} />
             </div>
           </div>
           <GroupedChangesView changes={g.changes} />

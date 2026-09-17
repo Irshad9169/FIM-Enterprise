@@ -36,6 +36,17 @@ export const DEFAULT_CLUB_THRESHOLD = 0.9;
 const MAX_SAMPLES_PER_BUCKET = 4;
 const ROLLUP_MIN_COUNT = 20; // only worth a directory rollup line above this many files
 
+// A clubbed host-group's hostname list is capped in the UI at this many
+// entries (see ReportDetailPage.tsx), same idea as boris-scan-report's own
+// 50-host cap + "N hosts has same changes" note -- a mass rollout clubbing
+// hundreds of hosts together shouldn't render hundreds of hostname badges.
+export const MAX_GROUP_HOSTS_SHOWN = 50;
+
+// Never merge directory rollups above this path depth (segments from root)
+// -- keeps a mass change from ever collapsing all the way up to one
+// meaningless "In /, N files were changed" line.
+const MIN_ROLLUP_DEPTH = 2;
+
 /**
  * Collapse multiple changes for the same (host, file_path) down to just the
  * most recent one, by current_mtime. The same file can legitimately show up
@@ -129,6 +140,53 @@ export interface DirectoryRollup {
   count: number;
 }
 
+/** One level up from `dir` (which always ends in "/"), or null if that would
+ * go above MIN_ROLLUP_DEPTH. */
+function parentOf(dir: string): string | null {
+  const trimmed = dir.endsWith("/") ? dir.slice(0, -1) : dir;
+  const idx = trimmed.lastIndexOf("/");
+  if (idx <= 0) return null;
+  const parent = trimmed.slice(0, idx + 1);
+  const depth = parent.split("/").filter(Boolean).length;
+  return depth >= MIN_ROLLUP_DEPTH ? parent : null;
+}
+
+/**
+ * Merge sibling directory rollups that share a common parent into one
+ * combined line at that parent -- so a change spread across many
+ * subdirectories of the same tree (e.g. per-module folders under a kernel
+ * version directory) shows as one aggregate instead of several
+ * near-duplicate lines. Mirrors boris-scan-report's own get_count() merge
+ * step (generalized to repeat one level at a time, and to any number of
+ * qualifying siblings rather than a fixed count).
+ * Repeats until a pass produces no further merges; always terminates since
+ * parentOf() is bounded by MIN_ROLLUP_DEPTH.
+ */
+function mergeSiblingRollups(entries: Map<string, number>): Map<string, number> {
+  let current = entries;
+  for (;;) {
+    const byParent = new Map<string, string[]>();
+    for (const dir of current.keys()) {
+      const parent = parentOf(dir);
+      if (!parent) continue;
+      if (!byParent.has(parent)) byParent.set(parent, []);
+      byParent.get(parent)!.push(dir);
+    }
+
+    const next = new Map(current);
+    let merged = false;
+    for (const [parent, dirs] of byParent.entries()) {
+      if (dirs.length < 2) continue; // nothing to merge -- only one child here
+      const total = dirs.reduce((sum, d) => sum + (current.get(d) || 0), 0);
+      for (const d of dirs) next.delete(d);
+      next.set(parent, (next.get(parent) || 0) + total);
+      merged = true;
+    }
+    current = next;
+    if (!merged) return current;
+  }
+}
+
 /** Roll up large added/removed subtrees into one line instead of listing every file. */
 export function buildDirectoryRollups(
   changes: ReportChangeDetail[],
@@ -141,8 +199,17 @@ export function buildDirectoryRollups(
     const dir = idx > 0 ? c.file_path.slice(0, idx + 1) : "/";
     byDir.set(dir, (byDir.get(dir) || 0) + 1);
   }
-  return Array.from(byDir.entries())
-    .filter(([, count]) => count >= ROLLUP_MIN_COUNT)
+
+  // Only directories that already individually qualify are candidates for
+  // merging -- matches boris-scan-report's own conservative rule, rather
+  // than merging small unrelated subdirectories together just because
+  // their sum happens to cross the threshold.
+  const qualifying = new Map(
+    Array.from(byDir.entries()).filter(([, count]) => count >= ROLLUP_MIN_COUNT),
+  );
+  const merged = mergeSiblingRollups(qualifying);
+
+  return Array.from(merged.entries())
     .map(([directory, count]) => ({ directory, count }))
     .sort((a, b) => b.count - a.count);
 }
