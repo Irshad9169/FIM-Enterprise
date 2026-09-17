@@ -8,7 +8,8 @@ _load_cmr_cookies / fetch_recent_implemented_cmrs). No real network or
 database access -- fetch_recent_implemented_cmrs is mocked so these stay
 pure unit tests of the filtering/detection logic itself.
 """
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from app.services.ticket_linker import TicketLinkerService, _host_base_name, _host_matches
 
@@ -127,6 +128,45 @@ async def test_search_cmr_by_hostname_does_not_take_a_token():
     import inspect
     sig = inspect.signature(TicketLinkerService.search_cmr_by_hostname)
     assert "token" not in sig.parameters
+
+
+# ── _notify_unmatched_changes ────────────────────────────────────────────────
+
+async def test_notify_unmatched_changes_emails_admin_analyst_recipients():
+    db = AsyncMock()
+    date_result   = SimpleNamespace(first=lambda: SimpleNamespace(report_date="2026-09-17"))
+    recip_result  = SimpleNamespace(
+        fetchall=lambda: [SimpleNamespace(email="admin@example.com"), SimpleNamespace(email="analyst@example.com")]
+    )
+    db.execute = AsyncMock(side_effect=[date_result, recip_result])
+
+    with patch("app.services.email_service.EmailService.notify_unmatched_changes") as mock_notify:
+        await TicketLinkerService._notify_unmatched_changes("report-1", ["host1", "host2"], db)
+
+    mock_notify.assert_called_once_with(
+        "2026-09-17", ["host1", "host2"], ["admin@example.com", "analyst@example.com"]
+    )
+
+
+async def test_notify_unmatched_changes_skips_send_with_no_recipients():
+    db = AsyncMock()
+    date_result  = SimpleNamespace(first=lambda: SimpleNamespace(report_date="2026-09-17"))
+    recip_result = SimpleNamespace(fetchall=lambda: [])
+    db.execute = AsyncMock(side_effect=[date_result, recip_result])
+
+    with patch("app.services.email_service.EmailService.notify_unmatched_changes") as mock_notify:
+        await TicketLinkerService._notify_unmatched_changes("report-1", ["host1"], db)
+
+    mock_notify.assert_not_called()
+
+
+async def test_notify_unmatched_changes_never_raises_on_db_error():
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=RuntimeError("db is down"))
+
+    # Must not propagate -- this runs after correlate_all_agents has already
+    # committed; a notification failure must never surface as a 500 there.
+    await TicketLinkerService._notify_unmatched_changes("report-1", ["host1"], db)
 
 
 # ── SSO login page detection ────────────────────────────────────────────────

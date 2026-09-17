@@ -738,7 +738,7 @@ class TicketLinkerService:
         """
         summary = {
             "agents_processed": 0, "rt_found": 0, "cmr_found": 0, "jira_found": 0,
-            "errors": [],
+            "errors": [], "unmatched_hosts": [],
         }
 
         for hostname in agent_list:
@@ -792,6 +792,7 @@ class TicketLinkerService:
                 if best_rt:  summary["rt_found"]  += 1
                 if best_cmr: summary["cmr_found"] += 1
                 if jira_tickets: summary["jira_found"] += 1
+                if status == "pending": summary["unmatched_hosts"].append(hostname)
 
             except Exception as e:
                 logger.error(f"correlate_all_agents – {hostname}: {e}")
@@ -804,7 +805,46 @@ class TicketLinkerService:
             WHERE id = :rid
         """), {"rid": report_id, "total": len(agent_list)})
         await db.commit()
+
+        if summary["unmatched_hosts"]:
+            await TicketLinkerService._notify_unmatched_changes(
+                report_id, summary["unmatched_hosts"], db
+            )
+
         return summary
+
+    @staticmethod
+    async def _notify_unmatched_changes(report_id: str, unmatched_hosts: List[str],
+                                        db: AsyncSession) -> None:
+        """
+        Best-effort email to admin/analyst users when correlate_all_agents
+        finishes with hosts that still have no RT/CMR match -- mirrors
+        boris-scan-report's own "no ticket found" notification. Fires once
+        per correlate_all_agents call, same as Boris firing once per report
+        run; re-running "Correlate All" without resolving anything will
+        re-notify, which is accepted rather than adding dedup complexity
+        for a manually-triggered action.
+        """
+        try:
+            date_res = await db.execute(text(
+                "SELECT report_date FROM fim.reports WHERE id = :rid"
+            ), {"rid": report_id})
+            row = date_res.first()
+            report_date = str(row.report_date) if row else report_id
+
+            # Same admin/analyst recipient query as
+            # ReportScheduler._get_alert_recipients.
+            recip_res = await db.execute(text(
+                "SELECT email FROM fim.users WHERE role IN ('admin', 'analyst') AND is_active = true"
+            ))
+            recipients = [r.email for r in recip_res.fetchall() if r.email]
+            if not recipients:
+                return
+
+            from app.services.email_service import EmailService
+            EmailService.notify_unmatched_changes(report_date, unmatched_hosts, recipients)
+        except Exception as e:
+            logger.warning(f"_notify_unmatched_changes({report_id}): {e}")
 
     @staticmethod
     async def find_tickets_for_agent(report_id: str, hostname: str,

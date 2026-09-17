@@ -118,6 +118,41 @@ This is an automated notification from FIM Enterprise.
         return EmailService.send_email(recipients, subject, body)
 
     @staticmethod
+    def notify_unmatched_changes(report_date: str, hosts: List[str], recipients: List[str]):
+        """
+        Notify analysts that some hosts' changes in a report have no RT/CMR
+        match after correlation ran -- mirrors the legacy boris-scan-report's
+        own "No RT/CMR could be found for the following changes" email to
+        net-systems-hyd, generalized to FIM's own admin/analyst recipient
+        list instead of a hardcoded address. Unlike that script, this does
+        NOT exclude QA/test/security hosts by hardcoded name pattern --
+        FIM has no equivalent org-wide naming convention to rely on, so
+        every unmatched host is reported and left to the analyst to
+        disregard if it's expected.
+        """
+        subject = f"[FIM] {len(hosts)} host(s) with no matching RT/CMR — {report_date}"
+        host_list = "\n".join(f"  - {h}" for h in hosts)
+        body = f"""FIM Correlation — Unmatched Changes
+====================================
+
+Report Date : {report_date}
+Hosts       : {len(hosts)}
+
+No RT ticket or CMR could be found for these hosts' changes:
+
+{host_list}
+
+Do you know why these changed? If so, link the ticket manually on the
+report page; otherwise these will show as N/A when the report is published.
+
+Dashboard: http://test06.hyd.int.untd.com/reports
+
+---
+This is an automated notification from FIM Enterprise.
+"""
+        return EmailService.send_email(recipients, subject, body)
+
+    @staticmethod
     def notify_baseline_integrity_failure(agent_hostname: str, baseline_id: str, recipients: List[str]):
         """Notify on baseline integrity verification failure."""
         subject = f"[FIM SECURITY] Baseline Integrity Failure — {agent_hostname}"
