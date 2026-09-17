@@ -70,6 +70,40 @@ async def _run_hostlist(*args: str) -> List[str]:
         return []
 
 
+_TRAILING_INSTANCE_NUM_RE = re.compile(r"-?\d+$")
+
+
+def _host_base_name(short_host: str) -> str:
+    """
+    Strip a trailing instance number ("web-prod-01" -> "web-prod",
+    "web01" -> "web") to get the host's group/family name, so a CMR that
+    references the group/cluster rather than one specific numbered
+    instance still correlates. Loosely inspired by the fuzzy hostname
+    matching in the legacy boris-scan-report's own tickets() correlation
+    sub, simplified to something maintainable instead of porting its
+    org-specific mega-regex verbatim.
+    """
+    base = _TRAILING_INSTANCE_NUM_RE.sub("", short_host)
+    return base if base else short_host
+
+
+def _host_matches(short_host: str, text: str) -> bool:
+    """
+    Word-boundary-safe match against short_host itself, or its base/group
+    name if that's a distinct, non-trivial (>=4 char) string -- short
+    enough base names ("db", "web") are excluded since a plain substring
+    match on them would flag unrelated tickets/CMRs constantly.
+    """
+    if not text or not short_host:
+        return False
+    text_l = text.lower()
+    candidates = {short_host.lower()}
+    base = _host_base_name(short_host).lower()
+    if base != short_host.lower() and len(base) >= 4:
+        candidates.add(base)
+    return any(re.search(rf"\b{re.escape(c)}\b", text_l) for c in candidates)
+
+
 def _username_from_token(token: str) -> str:
     """Extract username from JWT token payload (no verification needed,
     token was already verified by SSOManager on inbound)."""
@@ -249,30 +283,39 @@ class TicketLinkerService:
     @staticmethod
     async def search_cmr_by_hostname(hostname: str, days_back: int = 30) -> List[Dict]:
         """
-        Find recent CMRs whose "Server(s) Affected" mentions this host.
+        Find recent CMRs mentioning this host anywhere in their record --
+        servers affected, resolved hosts, description, or rollout plan.
+        Mirrors boris-scan-report's own correlation (its tickets()/
+        get_tic_nums() subs grep a host pattern against each downloaded
+        CMR file's full text, not just one field), with word-boundary
+        matching plus a base/group-name fallback (see _host_matches) so
+        "web-prod-01" also correlates to a CMR that only mentions the
+        "web-prod" group -- instead of the previous raw substring check,
+        which could both miss group-only mentions and false-positive
+        match a host's number inside an unrelated longer number.
 
         This previously sent the FIM user's own JWT to Phantom as
         sso_token -- Phantom has no concept of a FIM session token, it
         only understands its own SSO cookie, so this call was always
-        effectively unauthenticated (silently returning nothing useful,
-        or matching stray digits off whatever page Phantom served
-        instead). It also queried Phantom with a "hostname" search field
-        that Phantom's advanced search doesn't have -- get_RT_CMRs (the
-        real, working legacy collector this app mirrors) never searches
-        CMRs by hostname either; it always fetches CMRs by date window
-        and checks Server(s) Affected per-CMR after the fact. Doing the
-        same here: reuse fetch_recent_implemented_cmrs (already correctly
-        cookie-authenticated) and filter its results client-side.
+        effectively unauthenticated. It also queried Phantom with a
+        "hostname" search field that Phantom's advanced search doesn't
+        have -- get_RT_CMRs (the real, working legacy collector this app
+        mirrors) never searches CMRs by hostname either; it always
+        fetches CMRs by date window and checks each one's content after
+        the fact. Doing the same here: reuse fetch_recent_implemented_cmrs
+        (already correctly cookie-authenticated) and filter client-side.
         """
         short_host = hostname.split(".")[0]
         cmrs = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=days_back)
         results = []
         for cmr in cmrs:
-            haystack = " ".join([
+            haystack = "\n".join([
                 cmr.get("servers_affected") or "",
                 *(cmr.get("resolved_hosts") or []),
+                cmr.get("description") or "",
+                cmr.get("rollout_plan") or "",
             ])
-            if short_host in haystack or hostname in haystack:
+            if _host_matches(short_host, haystack):
                 results.append({
                     "ticket_id": cmr["ticket_id"],
                     "subject":   f"CMR #{cmr['ticket_id']}",

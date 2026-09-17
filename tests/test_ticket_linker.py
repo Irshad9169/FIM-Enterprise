@@ -10,7 +10,33 @@ pure unit tests of the filtering/detection logic itself.
 """
 from unittest.mock import patch
 
-from app.services.ticket_linker import TicketLinkerService
+from app.services.ticket_linker import TicketLinkerService, _host_base_name, _host_matches
+
+
+# ── _host_base_name / _host_matches ─────────────────────────────────────────
+
+def test_host_base_name_strips_trailing_instance_number():
+    assert _host_base_name("web-prod-01") == "web-prod"
+    assert _host_base_name("web01") == "web"
+    assert _host_base_name("test06") == "test"
+
+
+def test_host_matches_is_word_boundary_safe():
+    # Regression: a plain substring check would wrongly match "web01"
+    # inside "web010", or a host's number inside an unrelated longer one.
+    assert _host_matches("web01", "web010 was changed") is False
+    assert _host_matches("web01", "web01 was changed") is True
+
+
+def test_host_matches_falls_back_to_base_name():
+    # "web-prod-05" isn't mentioned anywhere, but its group name is.
+    assert _host_matches("web-prod-05", "the web-prod cluster was patched") is True
+
+
+def test_host_matches_does_not_use_short_base_names():
+    # "db01" -> base "db" is only 2 chars -- too short/generic to use as a
+    # fuzzy match without flooding every host named db* with false hits.
+    assert _host_matches("db01", "DB is down for unrelated reasons") is False
 
 
 # ── search_cmr_by_hostname ───────────────────────────────────────────────────
@@ -49,6 +75,24 @@ async def test_search_cmr_by_hostname_matches_resolved_hosts():
         results = await TicketLinkerService.search_cmr_by_hostname("web-prod-04")
 
     assert [r["ticket_id"] for r in results] == ["111222"]
+
+
+async def test_search_cmr_by_hostname_matches_description_and_rollout_plan():
+    # Boris's own correlation greps a CMR's whole record, not just
+    # Server(s) Affected -- description/rollout_plan need to count too.
+    cmrs = [{
+        "ticket_id": "222333", "status": "Implemented",
+        "servers_affected": "", "resolved_hosts": [],
+        "description": "Patch rollout for web-prod-07",
+        "rollout_plan": "Restart nginx on web-prod-07 after patching",
+        "url": "https://phantom.example/222333",
+    }]
+    with patch.object(
+        TicketLinkerService, "fetch_recent_implemented_cmrs", return_value=cmrs
+    ):
+        results = await TicketLinkerService.search_cmr_by_hostname("web-prod-07")
+
+    assert [r["ticket_id"] for r in results] == ["222333"]
 
 
 async def test_search_cmr_by_hostname_no_match_returns_empty():
