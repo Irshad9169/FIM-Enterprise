@@ -560,13 +560,18 @@ async def _build_publish_agents_data(db: AsyncSession, report_id, agents) -> Lis
     preview is guaranteed to show the same data that would actually be published."""
     agents_data = []
     for ag in agents:
-        # Fetch all changes for this agent
+        # Fetch all changes for this agent. baseline_mtime/current_mtime/
+        # audit_* are needed by app.services.report_grouping (dedup-by-mtime,
+        # detail-worthy/audit-attribution) -- not previously selected here
+        # since the old flat per-file listing didn't need them.
         changes_res = await db.execute(text("""
             SELECT file_path, change_type, severity,
                    baseline_hash, current_hash,
                    baseline_size, current_size,
                    analyst_notes, is_known_change,
-                   requires_investigation
+                   requires_investigation,
+                   baseline_mtime, current_mtime,
+                   audit_uid, audit_process, audit_command
             FROM fim.report_changes
             WHERE report_id = :rid AND agent_hostname = :host
             ORDER BY file_path
@@ -586,6 +591,11 @@ async def _build_publish_agents_data(db: AsyncSession, report_id, agents) -> Lis
                 "analyst_notes":          ch.analyst_notes,
                 "is_known_change":        ch.is_known_change,
                 "requires_investigation": ch.requires_investigation,
+                "baseline_mtime":         ch.baseline_mtime.isoformat() if ch.baseline_mtime else None,
+                "current_mtime":          ch.current_mtime.isoformat() if ch.current_mtime else None,
+                "audit_uid":              ch.audit_uid,
+                "audit_process":          ch.audit_process,
+                "audit_command":          ch.audit_command,
             })
 
         agents_data.append({

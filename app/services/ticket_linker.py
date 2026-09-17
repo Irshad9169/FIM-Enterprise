@@ -24,6 +24,7 @@ from sqlalchemy import text
 from bs4 import BeautifulSoup
 
 from app.core.config import settings
+from app.services import report_grouping as rg
 
 logger = logging.getLogger("ticket_linker")
 
@@ -949,6 +950,92 @@ class TicketLinkerService:
         return subjects
 
     @staticmethod
+    def _host_meta_lines(a: Dict, rt_subjects: Dict[str, str]) -> List[str]:
+        """RT ticket / CMR / status lines for one host -- independent of how
+        that host's *changes* get grouped/clubbed with others."""
+        hostname = a.get("agent_hostname", "unknown")
+        status   = a.get("status", "pending")
+        count    = a.get("change_count", 0)
+        note     = a.get("correlation_note") or ""
+
+        # manual_rt of "" means an analyst explicitly rejected the
+        # auto-correlated match -- must NOT fall back to correlated_rt in
+        # that case, only when manual_rt was never set at all (None). `or`
+        # treated both the same, silently re-attaching a ticket the analyst
+        # had deliberately cleared by the time the report got published.
+        manual_rt = a.get("manual_rt")
+        rt_num = manual_rt if manual_rt is not None else a.get("correlated_rt")
+        if rt_num:
+            rt_subj = rt_subjects.get(str(rt_num), "")
+            rt_display = f"RT#{rt_num} — {rt_subj}" if rt_subj else f"RT#{rt_num}"
+        else:
+            rt_display = "N/A"
+
+        cmr_num = a.get("correlated_cmr") or None
+        cmr_display = f"CMR#{cmr_num}" if cmr_num else "N/A"
+
+        out = [
+            f"HOST: {hostname}",
+            f"  Review Status : {status}",
+            f"  Changes       : {count}",
+            f"  RT Ticket     : {rt_display}",
+            f"  CMR           : {cmr_display}",
+        ]
+        if note:
+            out.append(f"  Note          : {note}")
+        return out
+
+    @staticmethod
+    def _render_change_summary(changes: List[Dict], indent: str = "  ") -> List[str]:
+        """
+        Category buckets + directory rollups + individually-detailed config
+        files for one change set -- the same grouping
+        app/services/report_grouping.py ports from reportGrouping.ts, so
+        the published RT report matches what the report UI shows instead of
+        an exhaustive flat per-file list (impractical past a few dozen
+        changes, and the whole reason that grouping was built in the first
+        place). Per-change hash/size/analyst-notes/known/investigate flags
+        are intentionally not shown here, matching GroupedChangesView.tsx's
+        own grouped view -- available in the app itself, not this summary.
+        """
+        out: List[str] = []
+        for change_type in ("added", "removed", "changed"):
+            buckets = rg.build_buckets(changes, change_type)
+            if not buckets:
+                continue
+            out.append(f"{indent}{change_type.upper()}:")
+            for b in buckets:
+                label = "other" if b["category"] == "other" else f"{b['category']} related"
+                verb = "was" if b["count"] == 1 else "were"
+                plural = "" if b["count"] == 1 else "s"
+                out.append(f"{indent}  {b['count']} {label} file{plural} {verb} {change_type}")
+                for s in b["samples"]:
+                    out.append(f"{indent}    {s}")
+                if b["more_count"] > 0:
+                    out.append(f"{indent}    ... + {b['more_count']} more")
+
+            if change_type != "changed":
+                for r in rg.build_directory_rollups(changes, change_type):
+                    verb = "was" if r["count"] == 1 else "were"
+                    out.append(f"{indent}  In {r['directory']}, {r['count']} files {verb} {change_type}")
+
+        changed_only = [c for c in changes if (c.get("change_type") or "").lower() == "changed"]
+        details = rg.build_detail_entries(changed_only)
+        if details:
+            out.append(f"{indent}DETAILED CHANGES (config files / attributed changes):")
+            for c in details:
+                out.append(f"{indent}  {c.get('file_path', 'unknown')}")
+                bm = c.get("baseline_mtime") or "N/A"
+                cm = c.get("current_mtime") or "N/A"
+                out.append(f"{indent}    Mtime: {bm} -> {cm}")
+                if c.get("audit_uid") or c.get("audit_process") or c.get("audit_command"):
+                    proc = (c.get("audit_process") or "unknown process").rsplit("/", 1)[-1]
+                    cmd  = f" ({c['audit_command']})" if c.get("audit_command") and c.get("audit_command") != c.get("audit_process") else ""
+                    uid  = f", uid {c['audit_uid']}" if c.get("audit_uid") else ""
+                    out.append(f"{indent}    Attributed to: {proc}{cmd}{uid}")
+        return out
+
+    @staticmethod
     def _build_publish_content(report_date, agents_data: List[Dict],
                                analyst_notes: str = "",
                                rt_subjects: Dict[str, str] = None) -> str:
@@ -974,83 +1061,42 @@ class TicketLinkerService:
             "-" * 70,
         ]
 
-        for a in agents_data:
-            hostname = a.get("agent_hostname", "unknown")
-            status   = a.get("status", "pending")
-            count    = a.get("change_count", 0)
-            note     = a.get("correlation_note") or ""
+        agents_by_hostname = {a.get("agent_hostname", "unknown"): a for a in agents_data}
+        clubbed = rg.club_hosts([
+            {"hostname": a.get("agent_hostname", "unknown"), "changes": a.get("changes", [])}
+            for a in agents_data
+        ])
 
-            # Determine RT reference with subject. manual_rt of "" means an
-            # analyst explicitly rejected the auto-correlated match -- must
-            # NOT fall back to correlated_rt in that case, only when
-            # manual_rt was never set at all (None). `or` treated both the
-            # same, silently re-attaching a ticket the analyst had
-            # deliberately cleared by the time the report got published.
-            manual_rt = a.get("manual_rt")
-            rt_num = manual_rt if manual_rt is not None else a.get("correlated_rt")
-            if rt_num:
-                rt_subj = rt_subjects.get(str(rt_num), "")
-                rt_display = f"RT#{rt_num} — {rt_subj}" if rt_subj else f"RT#{rt_num}"
-            else:
-                rt_display = "N/A"
+        for group in clubbed["groups"]:
+            hostnames = group["hostnames"]
+            shown  = hostnames[: rg.MAX_GROUP_HOSTS_SHOWN]
+            hidden = len(hostnames) - len(shown)
+            lines.append("")
+            lines.append(f"IDENTICAL CHANGES · {len(hostnames)} hosts")
+            host_line = "  " + ", ".join(shown)
+            if hidden > 0:
+                host_line += f"  (+{hidden} more host{'s' if hidden != 1 else ''} have the same changes)"
+            lines.append(host_line)
 
-            cmr_num = a.get("correlated_cmr") or None
-            cmr_display = f"CMR#{cmr_num}" if cmr_num else "N/A"
+            for h in hostnames:
+                a = agents_by_hostname.get(h)
+                if a:
+                    lines.append("")
+                    lines.extend(f"  {l}" for l in TicketLinkerService._host_meta_lines(a, rt_subjects))
 
-            lines += [
-                "",
-                f"HOST: {hostname}",
-                f"  Review Status : {status}",
-                f"  Changes       : {count}",
-                f"  RT Ticket     : {rt_display}",
-                f"  CMR           : {cmr_display}",
-            ]
-            if note:
-                lines.append(f"  Note          : {note}")
+            lines.append("")
+            lines.extend(TicketLinkerService._render_change_summary(group["changes"]))
+            lines.append("")
 
-            # Individual change details
-            changes = a.get("changes", [])
-            if changes:
+        for solo in clubbed["solos"]:
+            a = agents_by_hostname.get(solo["hostname"])
+            if not a:
+                continue
+            lines.append("")
+            lines.extend(TicketLinkerService._host_meta_lines(a, rt_subjects))
+            if solo["changes"]:
                 lines.append("")
-                lines.append(f"  {'Type':<10}  {'Severity':<8}  {'File Path'}")
-                lines.append(f"  {'-'*10}  {'-'*8}  {'-'*50}")
-                for ch in changes:
-                    ctype    = (ch.get("change_type") or "unknown").upper()
-                    severity = (ch.get("severity") or "medium").upper()
-                    fpath    = ch.get("file_path", "unknown")
-                    lines.append(f"  {ctype:<10}  {severity:<8}  {fpath}")
-
-                    # Show hash info if available
-                    bh      = ch.get("baseline_hash") or ""
-                    ch_hash = ch.get("current_hash") or ""
-                    if bh and ch_hash and bh != ch_hash:
-                        lines.append(f"  {'':10}  {'':8}  hash: {bh[:16]}... -> {ch_hash[:16]}...")
-                    elif ch_hash and not bh:
-                        lines.append(f"  {'':10}  {'':8}  hash: {ch_hash[:16]}...")
-
-                    # Show size info
-                    bs = ch.get("baseline_size")
-                    cs = ch.get("current_size")
-                    if cs is not None:
-                        if bs is not None and bs != cs:
-                            lines.append(f"  {'':10}  {'':8}  size: {bs} -> {cs} bytes")
-                        else:
-                            lines.append(f"  {'':10}  {'':8}  size: {cs} bytes")
-
-                    # Show per-change analyst notes
-                    ch_notes = ch.get("analyst_notes")
-                    if ch_notes:
-                        lines.append(f"  {'':10}  {'':8}  note: {ch_notes}")
-
-                    # Flags
-                    flags = []
-                    if ch.get("is_known_change"):
-                        flags.append("KNOWN")
-                    if ch.get("requires_investigation"):
-                        flags.append("INVESTIGATE")
-                    if flags:
-                        lines.append(f"  {'':10}  {'':8}  flags: [{', '.join(flags)}]")
-
+                lines.extend(TicketLinkerService._render_change_summary(solo["changes"]))
             lines.append("")
 
         lines += [
