@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.mtls_verify import MTLSVerifyMiddleware  # Enable when mTLS is ready
 from app.services.report_scheduler import ReportScheduler
+from app.services.cmr_session_manager import CMRSessionManager
 from app.middleware.rate_limiter import RateLimiterMiddleware
 from app.middleware.csrf_middleware import CSRFMiddleware
 from app.middleware.security_logging_middleware import SecurityLoggingMiddleware
@@ -30,12 +31,18 @@ logger = logging.getLogger("router_debug")
 # Report auto-generation scheduler
 scheduler = ReportScheduler()
 
+# CMR (Phantom) session auto-refresh -- no-op unless cmr_sso_username/
+# cmr_sso_password are configured, see app/core/config.py
+cmr_session_manager = CMRSessionManager()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db_manager.initialize()
     await scheduler.start()
+    await cmr_session_manager.start()
     yield
+    cmr_session_manager.stop()
     scheduler.stop()
     await db_manager.close()
 

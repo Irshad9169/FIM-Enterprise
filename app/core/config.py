@@ -60,14 +60,37 @@ class Settings(BaseSettings):
     # the production endpoint.
     sso_server_url: str = "https://auth.int.untd.com/bin/sso"
 
-    # CMR (Phantom) has no service-account/API option -- only its own web UI
-    # behind interactive company SSO. This points at a Netscape-format
-    # cookie jar file that some OTHER, externally-maintained process
-    # refreshes (see get_RT_CMRs) -- FIM reuses whatever session is
-    # currently valid in it. Empty = CMR fetch on the Reports page is
-    # skipped entirely, not an error. This is a deliberate stopgap, not a
-    # real credential FIM owns -- see docs/PRODUCTION_DEPLOYMENT.md.
+    # CMR (Phantom) has no dedicated API -- only its own web UI behind
+    # company SSO. This points at a Netscape-format cookie jar file that
+    # something keeps a valid Phantom session in; FIM reuses whatever
+    # session is currently there. Empty = CMR fetch on the Reports page is
+    # skipped entirely, not an error. That "something" can be either:
+    #   (a) a file manually refreshed by an external process/person, or
+    #   (b) app/services/cmr_session_manager.py, if cmr_sso_username/
+    #       cmr_sso_password below are set -- it logs in on a schedule and
+    #       writes this same file itself.
     cmr_cookie_jar_path: str = ""
+
+    # CMR (Phantom) auto-login -- mirrors the legacy get_RT_CMRs collector's
+    # own mechanism (confirmed from its actual source): a direct
+    # username+password call to the SSO server's `type=login` mode, then
+    # presenting the resulting cookie to Phantom's front door to receive a
+    # Phantom session cookie -- automated on a schedule here instead of
+    # tied to a human logging into a web form the way the legacy system is.
+    # Empty username/password = this feature is disabled; cmr_cookie_jar_path
+    # above is then whatever it already was (unmanaged/manually refreshed).
+    # UNVERIFIED end-to-end: the legacy collector proves this mechanism
+    # works using its own already-registered SSO origin (origin_id
+    # "USTickets"); whether the SSO server accepts a different origin_id
+    # for this same type=login mode has not been tested. If FIM's own
+    # origin_id below is rejected, the legacy system's exact origin values
+    # are the known-working fallback to try.
+    cmr_sso_username: str = ""
+    cmr_sso_password: str = ""
+    cmr_sso_origin_name: str = "FIM Enterprise"
+    cmr_sso_origin_id: str = "FIM_ENTERPRISE"
+    cmr_sso_origin_url: str = ""
+    cmr_session_refresh_minutes: int = 60
 
     # Daily report auto-generation (app/services/report_scheduler.py) —
     # previously its own os.getenv() calls, same fragility as SECRET_KEY
