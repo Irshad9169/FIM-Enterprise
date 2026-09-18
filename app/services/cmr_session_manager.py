@@ -56,7 +56,18 @@ logger = logging.getLogger("cmr_session_manager")
 # own default is very long) -- a live ReadTimeout at 15s here showed that
 # was too aggressive for this specific SSO login mode, whatever the SSO
 # server is doing server-side to process it.
-HTTPX_OPTS = dict(verify=False, timeout=60.0, follow_redirects=True)
+#
+# User-Agent is set to look like curl deliberately: confirmed live that an
+# identical request (same URL, same params, same origin) responds in ~1s
+# via real curl but hangs indefinitely via httpx's default
+# "python-httpx/x.x" User-Agent -- consistent with a security layer in
+# front of the SSO server allow-listing curl-like traffic and silently
+# black-holing (not rejecting) anything else, rather than an actual
+# difference in what get_RT_CMRs itself does.
+HTTPX_OPTS = dict(
+    verify=False, timeout=60.0, follow_redirects=True,
+    headers={"User-Agent": "curl/8.0.1"},
+)
 
 # The legacy collector detects a successful SSO login by string-matching
 # this exact text in the response body -- there's no structured
