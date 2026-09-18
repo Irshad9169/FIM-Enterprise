@@ -5,10 +5,11 @@ import {
   fetchReportDetail, correlateReport, updateReportAgent,
   submitAgent, publishReport, fetchPublishPreview, updateReportNotes, updateReportStatus,
   findTicketsForAgent, linkChange, exportReport, exportPdfReport,
-  fetchCmrSessionStatus, cmrSessionLogin,
+  fetchCmrSessionStatus, cmrSessionLogin, fetchRecentActivity,
 } from "../api/dashboard";
 import type {
   DailyReportDetail, ReportAgent, ReportChangeDetail, ReportTicket, PublishPreview,
+  RecentActivity,
 } from "../types";
 import {
   ArrowLeft, Printer, CheckCircle, RotateCcw, Send, BookOpen,
@@ -97,10 +98,20 @@ function HostBadgeList({ hostnames }: { hostnames: string[] }) {
 
 function EditAgentModal({ agent, reportId, onClose }: { agent: ReportAgent; reportId: string; onClose: () => void }) {
   const qc = useQueryClient();
-  const [rt,   setRt]   = useState(agent.manual_rt || agent.correlated_rt || "");
+  const [rt,   setRt]   = useState(resolveEffectiveRt(agent) || "");
   const [cmr,  setCmr]  = useState(agent.correlated_cmr || "");
   const [note, setNote] = useState(agent.correlation_note || "");
   const [busy, setBusy] = useState(false);
+
+  // No RT correlated for this host's changes -- give the analyst a way to
+  // browse what's recently active without leaving the report page, instead
+  // of having to go back to the Reports list page's own widget.
+  const noRtLinked = !resolveEffectiveRt(agent);
+  const { data: recentActivity, isLoading: recentLoading } = useQuery<RecentActivity>({
+    queryKey: ["reports-recent-activity"],
+    queryFn:  () => fetchRecentActivity(5),
+    enabled:  noRtLinked,
+  });
 
   const save = async () => {
     setBusy(true);
@@ -143,6 +154,34 @@ function EditAgentModal({ agent, reportId, onClose }: { agent: ReportAgent; repo
               placeholder="Why these changes are expected / approved…"
               className="w-full bg-background border border-input rounded px-3 py-2 text-sm text-foreground outline-none focus:border-blue-500 resize-none" />
           </div>
+
+          {noRtLinked && (
+            <div className="border-t border-border pt-3">
+              <div className="text-xs text-muted-foreground font-bold uppercase mb-1.5">
+                No RT linked — recent activity (last 5 days)
+              </div>
+              {recentLoading && <div className="text-xs text-muted-foreground italic">Loading…</div>}
+              {!recentLoading && !recentActivity?.rt_tickets?.length && !recentActivity?.cmrs?.length && (
+                <div className="text-xs text-muted-foreground italic">Nothing recent found.</div>
+              )}
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {recentActivity?.rt_tickets?.map(t => (
+                  <button key={t.ticket_id} onClick={() => setRt(t.ticket_id)}
+                    className="w-full text-left px-2 py-1 rounded text-xs bg-muted hover:bg-secondary/80 flex items-center gap-1.5">
+                    <span className="font-mono font-bold text-blue-400 shrink-0">RT#{t.ticket_id}</span>
+                    <span className="text-muted-foreground truncate">{t.subject}</span>
+                  </button>
+                ))}
+                {recentActivity?.cmrs?.map(c => (
+                  <button key={c.ticket_id} onClick={() => setCmr(c.ticket_id)}
+                    className="w-full text-left px-2 py-1 rounded text-xs bg-muted hover:bg-secondary/80 flex items-center gap-1.5">
+                    <span className="font-mono font-bold text-violet-400 shrink-0">CMR#{c.ticket_id}</span>
+                    <span className="text-muted-foreground truncate">{c.description || c.status}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div className="p-4 border-t border-border flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-sm bg-muted text-foreground/90 rounded hover:bg-secondary/80">Cancel</button>
