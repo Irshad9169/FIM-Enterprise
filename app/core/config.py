@@ -75,15 +75,15 @@ class Settings(BaseSettings):
 
     # Params for the SSO type=login call app/services/cmr_session_manager.py
     # makes -- everything except the username/password itself, which is
-    # never stored anywhere and is supplied per-request instead. UNVERIFIED:
-    # the legacy collector proves this login mode works using its own
-    # already-registered SSO origin (origin_id "USTickets"); whether the
-    # SSO server accepts a different origin_id (FIM's own, below) for this
-    # same mode has not been tested. If rejected, the legacy system's exact
-    # origin values are the known-working fallback to try.
-    cmr_sso_origin_name: str = "FIM Enterprise"
-    cmr_sso_origin_id: str = "FIM_ENTERPRISE"
-    cmr_sso_origin_url: str = ""
+    # never stored anywhere and is supplied per-request instead. CONFIRMED
+    # live (2026-09-18): the SSO server silently hangs (no response, not
+    # even an error) on this login mode when given FIM's own origin_id
+    # ("FIM_ENTERPRISE") -- it only answers promptly for an origin it
+    # already recognizes. Defaulting to the legacy get_RT_CMRs collector's
+    # exact, proven-working origin instead of FIM's own registered identity.
+    cmr_sso_origin_name: str = "US Tickets System"
+    cmr_sso_origin_id: str = "USTickets"
+    cmr_sso_origin_url: str = "http://tickets.int.untd.com"
 
     # Daily report auto-generation (app/services/report_scheduler.py) —
     # previously its own os.getenv() calls, same fragility as SECRET_KEY

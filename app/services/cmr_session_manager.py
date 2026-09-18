@@ -31,11 +31,16 @@ session cookie is persisted (to settings.cmr_cookie_jar_path, in the
 same Netscape format app.services.ticket_linker._load_cmr_cookies
 already reads, so nothing downstream needs to change).
 
-UNVERIFIED end-to-end: the type=login SSO mode and the Phantom
-session-cookie handoff are proven by the legacy source, but only using
-its own already-registered SSO origin ("USTickets"). Whether the SSO
-server accepts a different origin_id (FIM's own) for this exact login
-mode has not been tested against the real servers.
+CONFIRMED live (2026-09-18): the type=login SSO call works and responds
+in ~1s using the legacy origin ("USTickets", see settings.cmr_sso_origin_*)
+-- but silently hangs indefinitely (no response, no error) when given a
+different origin_id, including FIM's own. Don't change
+cmr_sso_origin_name/cmr_sso_origin_id/cmr_sso_origin_url away from the
+legacy values without re-testing directly against the real SSO server
+first. Still unverified: whether the Phantom front-door visit actually
+yields a working session cookie the same way it appears to for the
+legacy collector -- that's the next thing to confirm once a login
+succeeds end-to-end.
 """
 import http.cookiejar
 import logging

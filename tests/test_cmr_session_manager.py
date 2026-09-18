@@ -60,8 +60,8 @@ async def test_login_fails_when_sso_has_no_success_marker(tmp_path):
          patch("app.services.cmr_session_manager.settings") as mock_settings:
         mock_settings.cmr_cookie_jar_path = str(tmp_path / "phantom_cookies.txt")
         mock_settings.sso_server_url = "https://auth.int.untd.com/bin/sso"
-        mock_settings.cmr_sso_origin_name = "FIM Enterprise"
-        mock_settings.cmr_sso_origin_id = "FIM_ENTERPRISE"
+        mock_settings.cmr_sso_origin_name = "US Tickets System"
+        mock_settings.cmr_sso_origin_id = "USTickets"
         mock_settings.cmr_sso_origin_url = ""
 
         result = await login_and_capture_session("alice", "wrong-password")
@@ -81,8 +81,8 @@ async def test_login_succeeds_and_saves_cookies(tmp_path):
          patch("app.services.cmr_session_manager._save_cookies_to_jar") as mock_save:
         mock_settings.sso_server_url = "https://auth.int.untd.com/bin/sso"
         mock_settings.cmr_url = "https://phantom.int.untd.com/bin/phantom"
-        mock_settings.cmr_sso_origin_name = "FIM Enterprise"
-        mock_settings.cmr_sso_origin_id = "FIM_ENTERPRISE"
+        mock_settings.cmr_sso_origin_name = "US Tickets System"
+        mock_settings.cmr_sso_origin_id = "USTickets"
         mock_settings.cmr_sso_origin_url = ""
         mock_settings.cmr_cookie_jar_path = jar_path
 
