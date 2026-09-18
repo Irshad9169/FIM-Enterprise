@@ -545,6 +545,14 @@ class TicketLinkerService:
         }
         return cookies or None
 
+    @staticmethod
+    def has_valid_cmr_session() -> bool:
+        """Public check for whether settings.cmr_cookie_jar_path currently
+        holds an unexpired Phantom session -- used by the on-demand CMR
+        login flow (app/services/cmr_session_manager.py) to decide whether
+        Correlate All needs to prompt for credentials at all."""
+        return bool(TicketLinkerService._load_cmr_cookies())
+
     # Matches get_RT_CMRs's own "Server(s) Affected:" resolution: a token
     # is treated as a logical/short host-group name (not a real FQDN) if it
     # looks like word-word[-word] and doesn't end in .com.

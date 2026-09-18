@@ -1,5 +1,5 @@
 """
-CMR (Phantom) session auto-refresh.
+CMR (Phantom) on-demand session login.
 
 Phantom has no dedicated API -- only its own web UI behind company SSO,
 confirmed by direct testing (a bare sso_token request returns an actual
@@ -11,10 +11,25 @@ username+password call to the SSO server's own `type=login` mode
 in this app), which returns a cookie that's then presented to Phantom's
 own front door once to receive a Phantom-specific session cookie. That
 legacy system only refreshes this when a human happens to log into its
-web form; this module does the same two-hop login on a schedule instead,
-and writes the result to settings.cmr_cookie_jar_path in the same
-Netscape cookie-file format app.services.ticket_linker._load_cmr_cookies
-already reads -- so nothing downstream of that function needs to change.
+web form -- this module does the exact same thing, on demand, triggered
+from the Correlate All button when there's no valid session yet, using
+whatever username/password the analyst enters at that moment.
+
+FIM cannot substitute the already-logged-in FIM user's own credentials
+here even if it wanted to: confirmed by reading the code, neither of
+FIM's own login paths ever puts a real corporate SSO password in FIM's
+hands -- the password login (app/api/auth_enhanced.py) checks a
+password against FIM's own locally-stored hash (a completely different
+credential from the corporate SSO password), and the SSO login
+(app/api/auth_sso.py) is a browser-redirect flow that never gives FIM
+the raw password at all. So this has to be its own, separate prompt.
+
+The username/password passed to login_and_capture_session() are used
+only for the one login request below -- never logged, never written to
+disk, never stored on this object or anywhere else. Only the resulting
+session cookie is persisted (to settings.cmr_cookie_jar_path, in the
+same Netscape format app.services.ticket_linker._load_cmr_cookies
+already reads, so nothing downstream needs to change).
 
 UNVERIFIED end-to-end: the type=login SSO mode and the Phantom
 session-cookie handoff are proven by the legacy source, but only using
@@ -22,7 +37,6 @@ its own already-registered SSO origin ("USTickets"). Whether the SSO
 server accepts a different origin_id (FIM's own) for this exact login
 mode has not been tested against the real servers.
 """
-import asyncio
 import http.cookiejar
 import logging
 import os
@@ -58,87 +72,48 @@ def _save_cookies_to_jar(cookies: httpx.Cookies, path: str) -> None:
     jar.save(ignore_discard=True, ignore_expires=True)
 
 
-class CMRSessionManager:
-    """Background task that keeps settings.cmr_cookie_jar_path populated
-    with a live Phantom session, refreshed every cmr_session_refresh_minutes."""
-
-    def __init__(self):
-        self.enabled = bool(
-            settings.cmr_sso_username
-            and settings.cmr_sso_password
-            and settings.cmr_cookie_jar_path
-        )
-        self.refresh_minutes = settings.cmr_session_refresh_minutes
-        self._task: asyncio.Task = None
-        self._running = False
-
-    async def refresh_once(self) -> bool:
-        """
-        Log in and capture a fresh Phantom session, mirroring the legacy
-        collector's own two curl calls:
-          1. auth.int.untd.com/bin/sso?...&type=login&username=&password=
-          2. present that cookie to phantom's own front door once
-        Returns True on success, False on any failure -- never raises,
-        since a failed refresh should just leave the previous (possibly
-        still-valid) cookie file in place rather than crash anything.
-        """
-        try:
-            async with httpx.AsyncClient(**HTTPX_OPTS) as client:
-                login_resp = await client.get(settings.sso_server_url, params={
-                    "async":       "true",
-                    "action":      "parms",
-                    "type":        "login",
-                    "username":    settings.cmr_sso_username,
-                    "password":    settings.cmr_sso_password,
-                    "origin_name": settings.cmr_sso_origin_name,
-                    "origin_id":   settings.cmr_sso_origin_id,
-                    "origin_url":  settings.cmr_sso_origin_url,
-                })
-                if _SSO_LOGIN_SUCCESS_MARKER not in login_resp.text:
-                    logger.error(
-                        "CMR session refresh: SSO login did not return the "
-                        "expected success marker -- check cmr_sso_username/"
-                        "cmr_sso_password/cmr_sso_origin_* and whether this "
-                        "SSO server still supports type=login for this origin"
-                    )
-                    return False
-
-                # Present the SSO cookie to Phantom's own front door once --
-                # this is the step that (per the legacy source's observed
-                # behavior) gets Phantom to hand back its own session cookie.
-                await client.get(settings.cmr_url)
-
-                _save_cookies_to_jar(client.cookies, settings.cmr_cookie_jar_path)
-                logger.info(
-                    f"CMR session refreshed, saved to {settings.cmr_cookie_jar_path}"
+async def login_and_capture_session(username: str, password: str) -> bool:
+    """
+    One-shot login, mirroring get_RT_CMRs's own two curl calls:
+      1. auth.int.untd.com/bin/sso?...&type=login&username=&password=
+      2. present that cookie to Phantom's own front door once
+    Returns True on success (session saved to settings.cmr_cookie_jar_path),
+    False on any failure -- never raises, so a bad credential just means
+    "CMR fetch stays skipped this time", not a crash.
+    """
+    if not settings.cmr_cookie_jar_path:
+        logger.error("login_and_capture_session: CMR_COOKIE_JAR_PATH not configured")
+        return False
+    try:
+        async with httpx.AsyncClient(**HTTPX_OPTS) as client:
+            login_resp = await client.get(settings.sso_server_url, params={
+                "async":       "true",
+                "action":      "parms",
+                "type":        "login",
+                "username":    username,
+                "password":    password,
+                "origin_name": settings.cmr_sso_origin_name,
+                "origin_id":   settings.cmr_sso_origin_id,
+                "origin_url":  settings.cmr_sso_origin_url,
+            })
+            if _SSO_LOGIN_SUCCESS_MARKER not in login_resp.text:
+                logger.warning(
+                    "CMR session login: SSO did not return the expected "
+                    "success marker -- likely a wrong username/password, or "
+                    "this SSO server doesn't accept type=login for this origin"
                 )
-                return True
-        except Exception as e:
-            logger.error(f"CMR session refresh failed: {e}")
-            return False
+                return False
 
-    async def _loop(self):
-        while self._running:
-            await self.refresh_once()
-            try:
-                await asyncio.sleep(self.refresh_minutes * 60)
-            except asyncio.CancelledError:
-                break
+            # Present the SSO cookie to Phantom's own front door once --
+            # this is the step that (per the legacy source's observed
+            # behavior) gets Phantom to hand back its own session cookie.
+            await client.get(settings.cmr_url)
 
-    async def start(self):
-        if not self.enabled:
+            _save_cookies_to_jar(client.cookies, settings.cmr_cookie_jar_path)
             logger.info(
-                "CMR session auto-refresh is DISABLED "
-                "(cmr_sso_username/cmr_sso_password/cmr_cookie_jar_path not all set)"
+                f"CMR session established, saved to {settings.cmr_cookie_jar_path}"
             )
-            return
-        self._running = True
-        self._task = asyncio.create_task(self._loop())
-        logger.info(
-            f"CMR session auto-refresh started, every {self.refresh_minutes} minutes"
-        )
-
-    def stop(self):
-        self._running = False
-        if self._task:
-            self._task.cancel()
+            return True
+    except Exception as e:
+        logger.error(f"CMR session login failed: {e}")
+        return False

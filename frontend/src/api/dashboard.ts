@@ -108,6 +108,17 @@ export const exportPdfReport = async (reportId: string): Promise<Blob> => {
 export const correlateReport = (reportId: string) =>
   apiCall(`/api/v1/reports/${reportId}/correlate`, { method: "POST" });
 
+/** Whether a valid Phantom (CMR) session currently exists */
+export const fetchCmrSessionStatus = (): Promise<{ valid: boolean }> =>
+  apiCall("/api/v1/reports/cmr-session/status");
+
+/** One-shot CMR login using SSO credentials entered right now -- not stored */
+export const cmrSessionLogin = (username: string, password: string) =>
+  apiCall("/api/v1/reports/cmr-session/login", {
+    method: "POST",
+    body:   JSON.stringify({ username, password }),
+  });
+
 /** On-demand ticket search for a specific agent hostname */
 export const findTicketsForAgent = (reportId: string, hostname: string) =>
   apiCall(

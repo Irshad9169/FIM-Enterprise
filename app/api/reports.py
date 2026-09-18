@@ -4,6 +4,7 @@ Status values (DB constraint): pending / in_review / reviewed / submitted / subm
 """
 from app.core.rbac import admin_only
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from datetime import datetime
@@ -25,6 +26,7 @@ from app.core.security import get_current_user
 from app.models.models import User
 from app.services.ticket_linker import TicketLinkerService
 from app.services.audit_service import AuditService
+from app.services.cmr_session_manager import login_and_capture_session
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -217,6 +219,52 @@ async def recent_activity_detailed(
         sso_token, days_back=days_back
     )
     return {"rt_tickets": rt_tickets}
+
+
+class CMRSessionLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@router.get("/cmr-session/status")
+async def cmr_session_status(current_user: User = Depends(get_current_user)):
+    """
+    Whether a valid Phantom session currently exists. The frontend checks
+    this before calling Correlate All so it only prompts for SSO
+    credentials when actually needed, instead of every time.
+    """
+    return {"valid": TicketLinkerService.has_valid_cmr_session()}
+
+
+@router.post("/cmr-session/login")
+async def cmr_session_login(
+    req: CMRSessionLoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    One-shot CMR (Phantom) login using credentials the analyst enters at
+    this moment -- see app/services/cmr_session_manager.py for the full
+    mechanism and why FIM can't substitute the analyst's own FIM login
+    here. req.username/password are used only for this one request and
+    are never logged or persisted; only the resulting session cookie is
+    saved (to settings.cmr_cookie_jar_path). Audit log records who
+    triggered this and whether it succeeded -- deliberately not the
+    username/password itself.
+    """
+    success = await login_and_capture_session(req.username, req.password)
+
+    await AuditService.log(
+        db, current_user.id, current_user.username, "CMR_SESSION_LOGIN",
+        details={"success": success},
+        ip_address=_client_ip(request),
+    )
+    await db.commit()
+
+    if not success:
+        raise HTTPException(401, "CMR login failed -- check the username/password and try again")
+    return {"success": True}
 
 
 @router.post("/generate")

@@ -5,6 +5,7 @@ import {
   fetchReportDetail, correlateReport, updateReportAgent,
   submitAgent, publishReport, fetchPublishPreview, updateReportNotes, updateReportStatus,
   findTicketsForAgent, linkChange, exportReport, exportPdfReport,
+  fetchCmrSessionStatus, cmrSessionLogin,
 } from "../api/dashboard";
 import type {
   DailyReportDetail, ReportAgent, ReportChangeDetail, ReportTicket, PublishPreview,
@@ -305,6 +306,73 @@ function BulkSubmitModal({ agents, reportId, onClose, onDone }: {
               <Send size={14} />{submitting ? "Submitting…" : `Submit All (${remaining})`}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CMR Login Modal — shown by Correlate All only when there's no valid
+// Phantom session yet. Credentials are used once for this login and never
+// stored by FIM (see app/services/cmr_session_manager.py) -- this is not
+// the analyst's FIM password, it's their real SSO/corporate login.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CmrLoginModal({ onSuccess, onSkip, onClose }: {
+  onSuccess: () => void; onSkip: () => void; onClose: () => void;
+}) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy,     setBusy]     = useState(false);
+  const [error,    setError]    = useState("");
+
+  const doLogin = async () => {
+    if (!username || !password || busy) return;
+    setBusy(true); setError("");
+    try {
+      await cmrSessionLogin(username, password);
+      onSuccess();
+    } catch (e: any) {
+      setError(e.message || "Login failed");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-card border border-input rounded-lg w-full max-w-sm shadow-2xl">
+        <div className="p-4 border-b border-border">
+          <h3 className="font-bold text-foreground text-sm">CMR Login Required</h3>
+          <p className="text-xs text-muted-foreground mt-1.5">
+            No active Phantom session. Enter your SSO username and password to
+            include CMRs in this correlation — not stored, used once.
+          </p>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="block text-xs text-muted-foreground font-bold uppercase mb-1">Username</label>
+            <input value={username} onChange={e => setUsername(e.target.value)} autoFocus
+              className="w-full bg-background border border-input rounded px-3 py-2 text-sm text-foreground outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="block text-xs text-muted-foreground font-bold uppercase mb-1">Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && doLogin()}
+              className="w-full bg-background border border-input rounded px-3 py-2 text-sm text-foreground outline-none focus:border-blue-500" />
+          </div>
+          {error && <div className="text-red-400 text-xs">{error}</div>}
+        </div>
+        <div className="p-4 border-t border-border flex items-center justify-between gap-2">
+          <button onClick={onSkip} className="text-xs text-muted-foreground hover:text-foreground underline">
+            Skip CMR, correlate RT only
+          </button>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 py-2 text-sm bg-muted text-foreground/90 rounded hover:bg-secondary">Cancel</button>
+            <button onClick={doLogin} disabled={busy || !username || !password}
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+              {busy ? "Logging in…" : "Log in"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1022,6 +1090,7 @@ export default function ReportDetailPage() {
   const [publishModal, setPublishModal] = useState(false);
   const [correlating,  setCorrelating]  = useState(false);
   const [corrError,    setCorrError]    = useState("");
+  const [cmrLoginOpen, setCmrLoginOpen] = useState(false);
   const [exporting,    setExporting]    = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [selectedAgents, setSelectedAgents] = useState<Set<string>>(new Set());
@@ -1066,7 +1135,7 @@ export default function ReportDetailPage() {
     return clubHosts(report.report_agents.map(a => ({ hostname: a.agent_hostname, changes: a.changes })));
   }, [viewMode, report?.report_agents]);
 
-  const handleCorrelate = async () => {
+  const runCorrelate = async () => {
     if (!reportId) return;
     setCorrelating(true); setCorrError("");
     try {
@@ -1075,6 +1144,24 @@ export default function ReportDetailPage() {
     } catch (e: any) {
       setCorrError(e.message || "Correlation failed");
     } finally { setCorrelating(false); }
+  };
+
+  const handleCorrelate = async () => {
+    if (!reportId) return;
+    setCorrelating(true); setCorrError("");
+    try {
+      const { valid } = await fetchCmrSessionStatus();
+      if (!valid) {
+        setCorrelating(false);
+        setCmrLoginOpen(true);
+        return;
+      }
+    } catch {
+      // Status check itself failing shouldn't block RT/JIRA correlation --
+      // fall through and let correlateReport's own CMR handling (skip
+      // gracefully with no session) take over.
+    }
+    await runCorrelate();
   };
 
   const handleExport = async () => {
@@ -1133,6 +1220,13 @@ export default function ReportDetailPage() {
   return (
     <>
       {publishModal && <PublishModal report={report} onClose={() => setPublishModal(false)} />}
+      {cmrLoginOpen && (
+        <CmrLoginModal
+          onSuccess={() => { setCmrLoginOpen(false); runCorrelate(); }}
+          onSkip={()    => { setCmrLoginOpen(false); runCorrelate(); }}
+          onClose={()   => setCmrLoginOpen(false)}
+        />
+      )}
       {bulkSubmitOpen && (
         <BulkSubmitModal
           agents={pendingAgents.filter(a => selectedAgents.has(a.agent_hostname))}

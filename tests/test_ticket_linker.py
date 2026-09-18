@@ -179,3 +179,15 @@ def test_looks_like_sso_login_page_detects_real_title():
 def test_looks_like_sso_login_page_false_for_real_results():
     html = "<html><body>CMR #123456 Implemented</body></html>"
     assert TicketLinkerService._looks_like_sso_login_page(html) is False
+
+
+# ── has_valid_cmr_session ────────────────────────────────────────────────────
+
+def test_has_valid_cmr_session_true_when_cookies_present():
+    with patch.object(TicketLinkerService, "_load_cmr_cookies", return_value={"phantom_sessionid": "x"}):
+        assert TicketLinkerService.has_valid_cmr_session() is True
+
+
+def test_has_valid_cmr_session_false_when_no_cookies():
+    with patch.object(TicketLinkerService, "_load_cmr_cookies", return_value=None):
+        assert TicketLinkerService.has_valid_cmr_session() is False
