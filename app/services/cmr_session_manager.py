@@ -97,10 +97,15 @@ async def login_and_capture_session(username: str, password: str) -> bool:
                 "origin_url":  settings.cmr_sso_origin_url,
             })
             if _SSO_LOGIN_SUCCESS_MARKER not in login_resp.text:
+                # Safe to log: this is the SSO server's own response text,
+                # not the submitted credential. Truncated since some SSO
+                # error pages can be large HTML documents.
                 logger.warning(
                     "CMR session login: SSO did not return the expected "
                     "success marker -- likely a wrong username/password, or "
-                    "this SSO server doesn't accept type=login for this origin"
+                    "this SSO server doesn't accept type=login for this "
+                    f"origin. HTTP {login_resp.status_code}, body starts: "
+                    f"{login_resp.text[:300]!r}"
                 )
                 return False
 
