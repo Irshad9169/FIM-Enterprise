@@ -120,5 +120,9 @@ async def login_and_capture_session(username: str, password: str) -> bool:
             )
             return True
     except Exception as e:
-        logger.error(f"CMR session login failed: {e}")
+        # str(e) alone can be an empty string for some exception types
+        # (several httpx/network errors included) -- log the exception
+        # type and a full traceback too, or a failure here is
+        # undiagnosable from the logs alone.
+        logger.error(f"CMR session login failed: {type(e).__name__}: {e}", exc_info=True)
         return False
