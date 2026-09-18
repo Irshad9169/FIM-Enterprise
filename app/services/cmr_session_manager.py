@@ -47,7 +47,11 @@ from app.core.config import settings
 
 logger = logging.getLogger("cmr_session_manager")
 
-HTTPX_OPTS = dict(verify=False, timeout=15.0, follow_redirects=True)
+# The legacy collector's curl calls have no explicit timeout at all (curl's
+# own default is very long) -- a live ReadTimeout at 15s here showed that
+# was too aggressive for this specific SSO login mode, whatever the SSO
+# server is doing server-side to process it.
+HTTPX_OPTS = dict(verify=False, timeout=60.0, follow_redirects=True)
 
 # The legacy collector detects a successful SSO login by string-matching
 # this exact text in the response body -- there's no structured
