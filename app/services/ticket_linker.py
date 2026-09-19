@@ -67,7 +67,7 @@ async def _run_hostlist(*args: str) -> List[str]:
         logger.warning("hostlist: binary not found -- skipping host-group resolution")
         return []
     except Exception as e:
-        logger.error(f"hostlist {args}: {e}")
+        logger.error(f"hostlist {args}: {type(e).__name__}: {e}", exc_info=True)
         return []
 
 
@@ -180,7 +180,7 @@ class TicketLinkerService:
                     if len(parts) == 2 and parts[0].strip().isdigit():
                         return parts[1].strip()
         except Exception as e:
-            logger.error(f"lookup_rt_subject({ticket_id}): {e}")
+            logger.error(f"lookup_rt_subject({ticket_id}): {type(e).__name__}: {e}", exc_info=True)
         return ""
 
     # ── RT search ────────────────────────────────────────────────────────────
@@ -200,7 +200,7 @@ class TicketLinkerService:
                     if ticket_id.isdigit():
                         return ticket_id
         except Exception as e:
-            logger.error(f"find_daily_review_ticket: {e}")
+            logger.error(f"find_daily_review_ticket: {type(e).__name__}: {e}", exc_info=True)
         return None
 
     @staticmethod
@@ -275,7 +275,7 @@ class TicketLinkerService:
                                 tid, subj, "open", [short_host, hostname], db
                             )
         except Exception as e:
-            logger.error(f"search_rt_by_hostname({hostname}): {e}")
+            logger.error(f"search_rt_by_hostname({hostname}): {type(e).__name__}: {e}", exc_info=True)
 
         return results
 
@@ -373,7 +373,7 @@ class TicketLinkerService:
                         f"search_jira_by_hostname({hostname}): HTTP {resp.status_code}"
                     )
         except Exception as e:
-            logger.error(f"search_jira_by_hostname({hostname}): {e}")
+            logger.error(f"search_jira_by_hostname({hostname}): {type(e).__name__}: {e}", exc_info=True)
         return results
 
     # ── Recent activity (Reports page widget) ───────────────────────────────
@@ -421,7 +421,7 @@ class TicketLinkerService:
                             "url":       f"{RT_UPDATE_URL}/ticket/{tid}/show",
                         })
         except Exception as e:
-            logger.error(f"search_rt_recent_production_tickets: {e}")
+            logger.error(f"search_rt_recent_production_tickets: {type(e).__name__}: {e}", exc_info=True)
         return results
 
     @staticmethod
@@ -535,7 +535,7 @@ class TicketLinkerService:
             # be told apart from "no expiry recorded".
             jar.load(ignore_discard=True, ignore_expires=True)
         except Exception as e:
-            logger.error(f"Failed to load CMR cookie jar {path}: {e}")
+            logger.error(f"Failed to load CMR cookie jar {path}: {type(e).__name__}: {e}", exc_info=True)
             return None
         now = datetime.now().timestamp()
         cookies = {
@@ -654,7 +654,7 @@ class TicketLinkerService:
                         plan_html, "html.parser"
                     ).get_text("\n").strip()
         except Exception as e:
-            logger.error(f"_fetch_cmr_detail({cmr_id}): {e}")
+            logger.error(f"_fetch_cmr_detail({cmr_id}): {type(e).__name__}: {e}", exc_info=True)
         return record
 
     @staticmethod
@@ -703,7 +703,13 @@ class TicketLinkerService:
                     return []
                 cmr_ids = sorted(set(re.findall(r"#(\d{6})", resp.text)))
         except Exception as e:
-            logger.error(f"fetch_recent_implemented_cmrs: {e}")
+            # str(e) alone can be an empty string for some exception types
+            # (several httpx/network errors included) -- log the exception
+            # type and a full traceback too, or a failure here is
+            # undiagnosable from the logs alone.
+            logger.error(
+                f"fetch_recent_implemented_cmrs: {type(e).__name__}: {e}", exc_info=True
+            )
             return []
 
         if not cmr_ids:
@@ -804,7 +810,7 @@ class TicketLinkerService:
                 if status == "pending": summary["unmatched_hosts"].append(hostname)
 
             except Exception as e:
-                logger.error(f"correlate_all_agents – {hostname}: {e}")
+                logger.error(f"correlate_all_agents – {hostname}: {type(e).__name__}: {e}", exc_info=True)
                 summary["errors"].append({"hostname": hostname, "error": str(e)})
 
         await db.execute(text("""
@@ -917,7 +923,7 @@ class TicketLinkerService:
             else:
                 logger.error(f"post_review_to_rt FAILED ticket={ticket_id} rc={result.returncode}")
         except Exception as e:
-            logger.error(f"post_review_to_rt({ticket_id}): {e}")
+            logger.error(f"post_review_to_rt({ticket_id}): {type(e).__name__}: {e}", exc_info=True)
         return False
 
     @staticmethod
@@ -932,7 +938,7 @@ class TicketLinkerService:
                 )
                 return "updated" in resp.text.lower() or resp.status_code == 200
         except Exception as e:
-            logger.error(f"resolve_rt_ticket({ticket_id}): {e}")
+            logger.error(f"resolve_rt_ticket({ticket_id}): {type(e).__name__}: {e}", exc_info=True)
             return False
 
     # ── Publish ───────────────────────────────────────────────────────────────
