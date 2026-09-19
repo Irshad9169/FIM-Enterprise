@@ -1,46 +1,33 @@
 """
 Unit tests for app/services/cmr_session_manager.py -- the CMR (Phantom)
 on-demand login mechanism modeled on the legacy get_RT_CMRs collector's
-real source. No live SSO/Phantom calls (can't be tested from here) --
-httpx is mocked; the one thing genuinely verified end-to-end is that
-_save_cookies_to_jar produces a file
-app.services.ticket_linker.TicketLinkerService._load_cmr_cookies can
-actually read back, since that's the whole point of writing to the same
-cookie-jar path the existing (already-proven) CMR fetch code reads from.
+real source. Shells out to real curl (confirmed live that curl succeeds
+where httpx hangs indefinitely against this specific SSO endpoint, even
+with a matching User-Agent -- see the module's own docstring) -- so these
+tests mock asyncio.create_subprocess_exec rather than httpx.
 """
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import httpx
 import pytest
 
-from app.services.cmr_session_manager import _save_cookies_to_jar, login_and_capture_session
-from app.services.ticket_linker import TicketLinkerService
+from app.services.cmr_session_manager import login_and_capture_session
 
 
-def test_save_cookies_to_jar_is_readable_by_load_cmr_cookies(tmp_path):
-    jar_path = str(tmp_path / "phantom_cookies.txt")
+def _mock_subprocess_exec(responses):
+    """
+    `responses`: list of (stdout_bytes, stderr_bytes, returncode) tuples,
+    one per expected curl invocation, consumed in call order.
+    """
+    calls = iter(responses)
 
-    cookies = httpx.Cookies()
-    cookies.set("sso_auth", "sometoken", domain="auth.int.untd.com")
-    cookies.set("phantom_sessionid", "abc123", domain="phantom.int.untd.com")
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        stdout, stderr, returncode = next(calls)
+        proc = AsyncMock()
+        proc.communicate = AsyncMock(return_value=(stdout, stderr))
+        proc.returncode = returncode
+        return proc
 
-    _save_cookies_to_jar(cookies, jar_path)
-
-    with patch("app.services.ticket_linker.settings") as mock_settings:
-        mock_settings.cmr_cookie_jar_path = jar_path
-        loaded = TicketLinkerService._load_cmr_cookies()
-
-    assert loaded == {"sso_auth": "sometoken", "phantom_sessionid": "abc123"}
-
-
-def _mock_client(get_side_effect):
-    client = AsyncMock()
-    client.get = AsyncMock(side_effect=get_side_effect)
-    client.cookies = httpx.Cookies()
-    ctx = MagicMock()
-    ctx.__aenter__ = AsyncMock(return_value=client)
-    ctx.__aexit__ = AsyncMock(return_value=False)
-    return ctx
+    return fake_create_subprocess_exec
 
 
 @pytest.mark.asyncio
@@ -53,16 +40,16 @@ async def test_login_fails_without_a_configured_cookie_jar_path():
 
 @pytest.mark.asyncio
 async def test_login_fails_when_sso_has_no_success_marker(tmp_path):
-    login_resp = MagicMock(text="Invalid username or password")
-    ctx = _mock_client([login_resp])
-
-    with patch("app.services.cmr_session_manager.httpx.AsyncClient", return_value=ctx), \
+    fake_exec = _mock_subprocess_exec([
+        (b"Invalid username or password", b"", 0),
+    ])
+    with patch("app.services.cmr_session_manager.asyncio.create_subprocess_exec", side_effect=fake_exec), \
          patch("app.services.cmr_session_manager.settings") as mock_settings:
         mock_settings.cmr_cookie_jar_path = str(tmp_path / "phantom_cookies.txt")
         mock_settings.sso_server_url = "https://auth.int.untd.com/bin/sso"
         mock_settings.cmr_sso_origin_name = "US Tickets System"
         mock_settings.cmr_sso_origin_id = "USTickets"
-        mock_settings.cmr_sso_origin_url = ""
+        mock_settings.cmr_sso_origin_url = "http://tickets.int.untd.com"
 
         result = await login_and_capture_session("alice", "wrong-password")
 
@@ -70,46 +57,109 @@ async def test_login_fails_when_sso_has_no_success_marker(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_login_succeeds_and_saves_cookies(tmp_path):
-    jar_path = str(tmp_path / "phantom_cookies.txt")
-    login_resp = MagicMock(text="Success. Loading...")
-    phantom_resp = MagicMock(text="<html>ok</html>")
-    ctx = _mock_client([login_resp, phantom_resp])
-
-    with patch("app.services.cmr_session_manager.httpx.AsyncClient", return_value=ctx), \
-         patch("app.services.cmr_session_manager.settings") as mock_settings, \
-         patch("app.services.cmr_session_manager._save_cookies_to_jar") as mock_save:
+async def test_login_succeeds_with_both_curl_calls(tmp_path):
+    fake_exec = _mock_subprocess_exec([
+        (b"Success. Loading...", b"", 0),   # SSO login
+        (b"<html>phantom front door</html>", b"", 0),  # Phantom handoff
+    ])
+    with patch("app.services.cmr_session_manager.asyncio.create_subprocess_exec", side_effect=fake_exec), \
+         patch("app.services.cmr_session_manager.settings") as mock_settings:
+        mock_settings.cmr_cookie_jar_path = str(tmp_path / "phantom_cookies.txt")
         mock_settings.sso_server_url = "https://auth.int.untd.com/bin/sso"
         mock_settings.cmr_url = "https://phantom.int.untd.com/bin/phantom"
         mock_settings.cmr_sso_origin_name = "US Tickets System"
         mock_settings.cmr_sso_origin_id = "USTickets"
-        mock_settings.cmr_sso_origin_url = ""
-        mock_settings.cmr_cookie_jar_path = jar_path
+        mock_settings.cmr_sso_origin_url = "http://tickets.int.untd.com"
 
         result = await login_and_capture_session("alice", "correct-password")
 
     assert result is True
-    mock_save.assert_called_once()
-    assert mock_save.call_args[0][1] == jar_path
 
 
 @pytest.mark.asyncio
-async def test_login_swallows_exceptions():
-    with patch("app.services.cmr_session_manager.httpx.AsyncClient", side_effect=RuntimeError("network down")), \
+async def test_login_fails_when_curl_itself_errors(tmp_path):
+    fake_exec = _mock_subprocess_exec([
+        (b"", b"curl: (60) SSL certificate problem", 60),
+    ])
+    with patch("app.services.cmr_session_manager.asyncio.create_subprocess_exec", side_effect=fake_exec), \
          patch("app.services.cmr_session_manager.settings") as mock_settings:
-        mock_settings.cmr_cookie_jar_path = "/tmp/whatever.txt"
+        mock_settings.cmr_cookie_jar_path = str(tmp_path / "phantom_cookies.txt")
+        mock_settings.sso_server_url = "https://auth.int.untd.com/bin/sso"
+        mock_settings.cmr_sso_origin_name = "US Tickets System"
+        mock_settings.cmr_sso_origin_id = "USTickets"
+        mock_settings.cmr_sso_origin_url = "http://tickets.int.untd.com"
+
         result = await login_and_capture_session("alice", "hunter2")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_login_fails_when_phantom_handoff_fails_after_sso_success(tmp_path):
+    fake_exec = _mock_subprocess_exec([
+        (b"Success. Loading...", b"", 0),        # SSO login succeeds
+        (b"", b"curl: (28) timeout", 28),          # Phantom handoff fails
+    ])
+    with patch("app.services.cmr_session_manager.asyncio.create_subprocess_exec", side_effect=fake_exec), \
+         patch("app.services.cmr_session_manager.settings") as mock_settings:
+        mock_settings.cmr_cookie_jar_path = str(tmp_path / "phantom_cookies.txt")
+        mock_settings.sso_server_url = "https://auth.int.untd.com/bin/sso"
+        mock_settings.cmr_url = "https://phantom.int.untd.com/bin/phantom"
+        mock_settings.cmr_sso_origin_name = "US Tickets System"
+        mock_settings.cmr_sso_origin_id = "USTickets"
+        mock_settings.cmr_sso_origin_url = "http://tickets.int.untd.com"
+
+        result = await login_and_capture_session("alice", "correct-password")
+
     assert result is False
 
 
 @pytest.mark.asyncio
 async def test_login_never_logs_the_password(caplog):
-    # Regression guard: nothing in this module should ever put the raw
-    # password into a log line.
     import logging
     caplog.set_level(logging.DEBUG, logger="cmr_session_manager")
-    with patch("app.services.cmr_session_manager.httpx.AsyncClient", side_effect=RuntimeError("boom")), \
+
+    async def raise_exec(*args, **kwargs):
+        raise RuntimeError("curl not found")
+
+    with patch("app.services.cmr_session_manager.asyncio.create_subprocess_exec", side_effect=raise_exec), \
          patch("app.services.cmr_session_manager.settings") as mock_settings:
         mock_settings.cmr_cookie_jar_path = "/tmp/whatever.txt"
+        mock_settings.sso_server_url = "https://auth.int.untd.com/bin/sso"
+        mock_settings.cmr_sso_origin_name = "US Tickets System"
+        mock_settings.cmr_sso_origin_id = "USTickets"
+        mock_settings.cmr_sso_origin_url = "http://tickets.int.untd.com"
+
         await login_and_capture_session("alice", "super-secret-password")
+
     assert "super-secret-password" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_login_url_encodes_special_characters_in_credentials(tmp_path):
+    # A password containing URL-reserved characters (&, =, spaces) must be
+    # percent-encoded, or it would corrupt the query string curl receives.
+    captured_calls = []
+
+    async def fake_exec(*args, **kwargs):
+        captured_calls.append(args)
+        proc = AsyncMock()
+        proc.communicate = AsyncMock(return_value=(b"Success. Loading...", b""))
+        proc.returncode = 0
+        return proc
+
+    with patch("app.services.cmr_session_manager.asyncio.create_subprocess_exec", side_effect=fake_exec), \
+         patch("app.services.cmr_session_manager.settings") as mock_settings:
+        mock_settings.cmr_cookie_jar_path = str(tmp_path / "phantom_cookies.txt")
+        mock_settings.sso_server_url = "https://auth.int.untd.com/bin/sso"
+        mock_settings.cmr_url = "https://phantom.int.untd.com/bin/phantom"
+        mock_settings.cmr_sso_origin_name = "US Tickets System"
+        mock_settings.cmr_sso_origin_id = "USTickets"
+        mock_settings.cmr_sso_origin_url = "http://tickets.int.untd.com"
+
+        await login_and_capture_session("alice", "p@ss&word=1 two")
+
+    login_call_args = next(c for c in captured_calls if any(a.startswith("https://auth.int.untd.com") for a in c))
+    url_arg = next(a for a in login_call_args if a.startswith("https://auth.int.untd.com"))
+    assert "password=p%40ss%26word%3D1%20two" in url_arg
+    assert "&word=1" not in url_arg  # would indicate an unescaped '&' broke the query string
