@@ -51,6 +51,16 @@ real curl directly, never by switching to a different HTTP client --
 consistent with curl being the one client this SSO endpoint reliably
 answers for. So this module shells out to real curl for both hops
 instead of using httpx, exactly like get_RT_CMRs itself does.
+
+Also confirmed live (2026-09-19): the Phantom front-door visit needs -L
+(follow redirects), matching get_RT_CMRs's own exact `curl -Lk` -- without
+it, only the SSO cookie (sso_auth) ended up in the cookie jar and
+Phantom's own session cookie was never actually issued, so authenticated
+Phantom actions (the advanced search) returned an empty 200 OK instead
+of an error or real data. Login itself succeeding is not sufficient
+evidence that the full session is usable -- always verify the cookie
+jar actually gained a phantom.int.untd.com-scoped cookie, not just the
+auth.int.untd.com one.
 """
 import asyncio
 import logging
@@ -77,11 +87,16 @@ async def _run_curl(url: str, extra_args: List[str]) -> Optional[str]:
     collector's own usage (this SSO server's cert has tripped up outdated
     CA bundles before -- see get_RT_CMRs/authenticate.cgi history) and
     matches settings.HTTPX_OPTS's verify=False used elsewhere in this app
-    for the same endpoints.
+    for the same endpoints. -L (follow redirects) matches get_RT_CMRs's own
+    exact `curl -Lk` -- confirmed live this actually matters: without it,
+    the Phantom front-door visit fetched only the first hop and never
+    received Phantom's own session cookie at all (only sso_auth ended up
+    in the cookie jar), so authenticated Phantom actions (like the
+    advanced search) silently returned an empty 200 OK instead of data.
     """
     try:
         proc = await asyncio.create_subprocess_exec(
-            "curl", "-sk", "--max-time", str(_CURL_TIMEOUT_SECONDS), *extra_args, url,
+            "curl", "-skL", "--max-time", str(_CURL_TIMEOUT_SECONDS), *extra_args, url,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await asyncio.wait_for(
