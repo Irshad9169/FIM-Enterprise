@@ -61,6 +61,19 @@ of an error or real data. Login itself succeeding is not sufficient
 evidence that the full session is usable -- always verify the cookie
 jar actually gained a phantom.int.untd.com-scoped cookie, not just the
 auth.int.untd.com one.
+
+Also confirmed live (2026-09-19): with -L in place, the full redirect
+chain (phantom -> auth:8443 [Phantom's own SSO origin, id=phantom] ->
+back to phantom with a validated sso_token -> Phantom's bare homepage)
+traces correctly end to end -- but the very last hop (Phantom serving
+its own authenticated homepage over HTTPS) can hang indefinitely with
+zero bytes received. Reproduced identically with a real browser, which
+got "504 Gateway Time-out ... upstream server" from Phantom's own
+Apache -- i.e. Phantom's backend application was down/unresponsive, a
+live Phantom-side outage, not anything wrong with this login flow.
+_PHANTOM_HANDOFF_TIMEOUT_SECONDS is kept short specifically so a repeat
+of that scenario fails fast with a clear "Phantom itself may be down"
+message instead of hanging for the full SSO-step timeout.
 """
 import asyncio
 import logging
@@ -79,8 +92,17 @@ _SSO_LOGIN_SUCCESS_MARKER = "Success. Loading..."
 
 _CURL_TIMEOUT_SECONDS = 60
 
+# The Phantom front-door handoff is a multi-hop redirect chain (confirmed
+# live) that normally completes in a couple seconds -- but its very last
+# hop is Phantom's own application server, which has been observed to
+# hang indefinitely during a real Phantom-side outage (reproduced with a
+# real browser getting "504 Gateway Time-out" from Phantom's own Apache).
+# Kept well under _CURL_TIMEOUT_SECONDS so that scenario fails fast with a
+# clear message instead of a long silent wait.
+_PHANTOM_HANDOFF_TIMEOUT_SECONDS = 25
 
-async def _run_curl(url: str, extra_args: List[str]) -> Optional[str]:
+
+async def _run_curl(url: str, extra_args: List[str], timeout: int = _CURL_TIMEOUT_SECONDS) -> Optional[str]:
     """
     Run curl against `url` and return its stdout, or None on any failure
     (non-zero exit, timeout, curl not installed). -k matches the legacy
@@ -96,11 +118,11 @@ async def _run_curl(url: str, extra_args: List[str]) -> Optional[str]:
     """
     try:
         proc = await asyncio.create_subprocess_exec(
-            "curl", "-skL", "--max-time", str(_CURL_TIMEOUT_SECONDS), *extra_args, url,
+            "curl", "-skL", "--max-time", str(timeout), *extra_args, url,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=_CURL_TIMEOUT_SECONDS + 5
+            proc.communicate(), timeout=timeout + 5
         )
         if proc.returncode != 0:
             logger.warning(
@@ -160,15 +182,23 @@ async def login_and_capture_session(username: str, password: str) -> bool:
     # Present the SSO cookie to Phantom's own front door once -- this is
     # the step that (per the legacy source's observed behavior) gets
     # Phantom to hand back its own session cookie, appended into the same
-    # cookie file.
+    # cookie file. Short timeout deliberately: see
+    # _PHANTOM_HANDOFF_TIMEOUT_SECONDS's own comment -- this exact step is
+    # where a live Phantom-side outage shows up as a long hang.
     phantom_out = await _run_curl(
         settings.cmr_url,
         ["-b", settings.cmr_cookie_jar_path, "-c", settings.cmr_cookie_jar_path],
+        timeout=_PHANTOM_HANDOFF_TIMEOUT_SECONDS,
     )
     if phantom_out is None:
         logger.warning(
             "CMR session login: SSO login succeeded but the Phantom "
-            "front-door visit failed -- session may be incomplete"
+            "front-door visit didn't respond in time. The SSO/login "
+            "mechanism itself is not the likely cause -- this exact "
+            "symptom was previously traced to Phantom's own application "
+            "server being down (confirmed via a real browser getting "
+            "'504 Gateway Time-out' from Phantom's Apache). Check whether "
+            "Phantom is actually up before assuming this is a FIM bug."
         )
         return False
 
