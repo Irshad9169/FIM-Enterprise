@@ -282,32 +282,30 @@ class TicketLinkerService:
     # ── CMR search ───────────────────────────────────────────────────────────
 
     @staticmethod
-    async def search_cmr_by_hostname(hostname: str, days_back: int = 30) -> List[Dict]:
+    def _match_cmrs_to_hostname(cmrs: List[Dict], hostname: str) -> List[Dict]:
         """
-        Find recent CMRs mentioning this host anywhere in their record --
-        servers affected, resolved hosts, description, or rollout plan.
-        Mirrors boris-scan-report's own correlation (its tickets()/
-        get_tic_nums() subs grep a host pattern against each downloaded
-        CMR file's full text, not just one field), with word-boundary
-        matching plus a base/group-name fallback (see _host_matches) so
-        "web-prod-01" also correlates to a CMR that only mentions the
-        "web-prod" group -- instead of the previous raw substring check,
-        which could both miss group-only mentions and false-positive
-        match a host's number inside an unrelated longer number.
+        Pure matching, no Phantom call -- filters an already-fetched CMR
+        list (see fetch_recent_implemented_cmrs) down to ones mentioning
+        this host anywhere in their record (servers affected, resolved
+        hosts, description, or rollout plan). Mirrors boris-scan-report's
+        own correlation (its tickets()/get_tic_nums() subs grep a host
+        pattern against each downloaded CMR file's full text, not just
+        one field), with word-boundary matching plus a base/group-name
+        fallback (see _host_matches) so "web-prod-01" also correlates to
+        a CMR that only mentions the "web-prod" group.
 
-        This previously sent the FIM user's own JWT to Phantom as
-        sso_token -- Phantom has no concept of a FIM session token, it
-        only understands its own SSO cookie, so this call was always
-        effectively unauthenticated. It also queried Phantom with a
-        "hostname" search field that Phantom's advanced search doesn't
-        have -- get_RT_CMRs (the real, working legacy collector this app
-        mirrors) never searches CMRs by hostname either; it always
-        fetches CMRs by date window and checks each one's content after
-        the fact. Doing the same here: reuse fetch_recent_implemented_cmrs
-        (already correctly cookie-authenticated) and filter client-side.
+        Split out from search_cmr_by_hostname (below) specifically so
+        correlate_all_agents can fetch the CMR list ONCE per run and
+        match every host against that same list -- it used to call
+        search_cmr_by_hostname per host, each call independently
+        re-fetching (and re-running the full per-CMR detail fetch:
+        viewrequest + description + rolloutplan) the exact same CMR
+        list. For a report with N hosts and M recent CMRs that was
+        N * (1 + 3M) requests to Phantom for one Correlate All click --
+        plausibly enough rapid repeated traffic to look like abuse and
+        trigger Phantom's own protective behavior.
         """
         short_host = hostname.split(".")[0]
-        cmrs = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=days_back)
         results = []
         for cmr in cmrs:
             haystack = "\n".join([
@@ -325,6 +323,20 @@ class TicketLinkerService:
                     "source":    "cmr",
                 })
         return results
+
+    @staticmethod
+    async def search_cmr_by_hostname(hostname: str, days_back: int = 30) -> List[Dict]:
+        """
+        Fetch + match in one call, for single-host on-demand use (e.g. the
+        per-agent "Search RT & CMR" button / find_tickets_for_agent) where
+        there's only ever one Phantom fetch per click either way.
+        correlate_all_agents does NOT use this -- it fetches once via
+        fetch_recent_implemented_cmrs and calls _match_cmrs_to_hostname
+        directly per host instead, to avoid re-fetching per host (see that
+        function's docstring for why this distinction matters).
+        """
+        cmrs = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=days_back)
+        return TicketLinkerService._match_cmrs_to_hostname(cmrs, hostname)
 
     # ── JIRA search ──────────────────────────────────────────────────────────
 
@@ -750,18 +762,27 @@ class TicketLinkerService:
           3. Store all results in fim.report_tickets
           4. Upsert fim.report_agents with best auto-match
         token: raw SSO token from the user's Authorization header
+
+        CMRs are fetched from Phantom ONCE for the whole run (not once per
+        host) -- see _match_cmrs_to_hostname's docstring for why that
+        matters: with N hosts and M recent CMRs, fetching per host meant
+        N * (1 + 3M) requests to Phantom for a single Correlate All click,
+        which is exactly the kind of rapid repeated traffic that looks
+        like abuse to a WAF/protective layer.
         """
         summary = {
             "agents_processed": 0, "rt_found": 0, "cmr_found": 0, "jira_found": 0,
             "errors": [], "unmatched_hosts": [],
         }
 
+        cmrs = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=30)
+
         for hostname in agent_list:
             try:
                 rt_tickets  = await TicketLinkerService.search_rt_by_hostname(
                     hostname, token, db=db
                 )
-                cmr_tickets = await TicketLinkerService.search_cmr_by_hostname(hostname)
+                cmr_tickets = TicketLinkerService._match_cmrs_to_hostname(cmrs, hostname)
                 jira_tickets = await TicketLinkerService.search_jira_by_hostname(hostname)
 
                 for t in rt_tickets:

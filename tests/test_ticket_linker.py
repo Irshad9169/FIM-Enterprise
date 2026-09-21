@@ -130,6 +130,44 @@ async def test_search_cmr_by_hostname_does_not_take_a_token():
     assert "token" not in sig.parameters
 
 
+# ── _match_cmrs_to_hostname / correlate_all_agents CMR fetch count ──────────
+
+def test_match_cmrs_to_hostname_is_pure_no_fetch():
+    cmrs = [{
+        "ticket_id": "111111", "status": "Implemented",
+        "servers_affected": "web-prod-01", "resolved_hosts": [],
+        "description": "", "rollout_plan": "", "url": "https://phantom.example/111111",
+    }]
+    results = TicketLinkerService._match_cmrs_to_hostname(cmrs, "web-prod-01")
+    assert [r["ticket_id"] for r in results] == ["111111"]
+
+
+async def test_correlate_all_agents_fetches_cmrs_once_not_per_host():
+    # Regression guard for the real bug this whole fix addresses: with N
+    # hosts, this used to call fetch_recent_implemented_cmrs N times (each
+    # one independently re-running the full per-CMR detail fetch against
+    # Phantom), producing enough rapid repeated traffic to look like abuse.
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=SimpleNamespace(fetchall=lambda: [], fetchone=lambda: None))
+
+    fetch_calls = []
+
+    async def fake_fetch(days_back=5):
+        fetch_calls.append(days_back)
+        return []
+
+    with patch.object(TicketLinkerService, "fetch_recent_implemented_cmrs", side_effect=fake_fetch), \
+         patch.object(TicketLinkerService, "search_rt_by_hostname", return_value=[]), \
+         patch.object(TicketLinkerService, "search_jira_by_hostname", return_value=[]), \
+         patch.object(TicketLinkerService, "_upsert_report_ticket", return_value=None), \
+         patch.object(TicketLinkerService, "_notify_unmatched_changes", return_value=None):
+        await TicketLinkerService.correlate_all_agents(
+            "report-1", ["host1", "host2", "host3", "host4", "host5"], "token", db
+        )
+
+    assert fetch_calls == [30]  # exactly one call, preserving the 30-day window
+
+
 # ── _notify_unmatched_changes ────────────────────────────────────────────────
 
 async def test_notify_unmatched_changes_emails_admin_analyst_recipients():
