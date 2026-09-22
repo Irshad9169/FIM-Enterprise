@@ -229,3 +229,67 @@ def test_has_valid_cmr_session_true_when_cookies_present():
 def test_has_valid_cmr_session_false_when_no_cookies():
     with patch.object(TicketLinkerService, "_load_cmr_cookies", return_value=None):
         assert TicketLinkerService.has_valid_cmr_session() is False
+
+
+# ── _extract_field ──────────────────────────────────────────────────────────
+# Regression coverage for a real bug: a real Phantom viewrequest page packs
+# several "Label: value" pairs onto the same rendered block with no line
+# break between them, so the old per-line `line.startswith("Owner:")` style
+# checks never matched -- Owner/Status/Start Time rendered empty in the CMR
+# widget even though the label text itself had been guessed correctly.
+
+_REAL_CMR_TEXT = (
+    "Request Status: Status: Implemented Owner: 'Alan Finney' "
+    "ImplementorOwner: 'John Smith P. G. V. V.' "
+    "Basic Actions: Add Notes Copy Refresh View Printable Expand All "
+    "Basic Request Data Request ID: 123456 Status: Implemented "
+    "Submission Date: 2026-09-15 15:45:15 Reviewer: 'Bill Bowen' "
+    "Category: Data Product Line: Lingo Service(s) Affected: ICE "
+    "Component(s) Affected: Database "
+    "Server(s) Affected: sql-cloud.corp.xyz.com "
+    "Description: Remove MyAccount login for 41238... More... "
+    "Type: Normal "
+    "Implementation Data Implementor: 'DBAlerts' "
+    "Start Time: 2026-09-16 09:00 End Time: 2026-09-17 09:00 "
+    "Downtime: None Rollout Plan: Execute script... More... "
+    "Request History Date and Time Event "
+    "2026-09-15 15:45:15 Created and submitted by 'Alan Finney'"
+)
+
+
+def test_extract_field_finds_owner_not_implementor_owner():
+    # "ImplementorOwner:" contains "Owner:" as a substring -- must not
+    # false-match there instead of the real, standalone "Owner:" label.
+    assert TicketLinkerService._extract_field(
+        _REAL_CMR_TEXT, "Owner", ["ImplementorOwner:", "Basic Request Data"]
+    ) == "Alan Finney"
+
+
+def test_extract_field_finds_status_not_request_status_header():
+    # "Request Status:" (a section header) also ends in the substring
+    # "Status:" -- must not false-match there instead of the real
+    # "Status: Implemented" pair inside "Basic Request Data".
+    basic_idx = _REAL_CMR_TEXT.find("Basic Request Data")
+    section = _REAL_CMR_TEXT[basic_idx:]
+    assert TicketLinkerService._extract_field(section, "Status", ["Submission Date:"]) == "Implemented"
+
+
+def test_extract_field_finds_start_time_with_real_label():
+    # The real label is "Start Time:", not the earlier guessed
+    # "Implementation Start" (which never appears on a real page at all).
+    assert TicketLinkerService._extract_field(
+        _REAL_CMR_TEXT, "Start Time", ["End Time:"]
+    ) == "2026-09-16 09:00"
+
+
+def test_extract_field_stops_servers_affected_before_next_label():
+    # Regression: the old code took the rest of the *line*, which on a
+    # real page swallows the following "Description: ..." text too since
+    # both are packed onto the same block.
+    assert TicketLinkerService._extract_field(
+        _REAL_CMR_TEXT, "Server(s) Affected", ["Description:"]
+    ) == "sql-cloud.corp.xyz.com"
+
+
+def test_extract_field_returns_empty_when_label_absent():
+    assert TicketLinkerService._extract_field(_REAL_CMR_TEXT, "Nonexistent Field", ["End Time:"]) == ""

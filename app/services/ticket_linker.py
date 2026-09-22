@@ -599,15 +599,34 @@ class TicketLinkerService:
         return hosts
 
     @staticmethod
+    def _extract_field(text: str, label: str, stop_labels: List[str]) -> str:
+        """
+        Extract the value following "`label`:" out of Phantom's viewrequest
+        text. Confirmed against a real page: Phantom packs several
+        "Label: value" pairs onto the same rendered block with no separator
+        between them (e.g. "Status: Implemented Owner: 'Alan Finney'
+        ImplementorOwner: 'John Smith...'" all run together) -- a per-line
+        `.startswith("Label:")` check never matches that. This instead
+        searches the whole text and stops the capture at whichever of
+        `stop_labels` (verbatim substrings, e.g. "End Time:") comes next.
+        The negative lookbehind keeps "Owner:" from matching inside
+        "ImplementorOwner:".
+        """
+        stop_pattern = "|".join(re.escape(s) for s in stop_labels)
+        lookahead = rf"(?=\s*(?:{stop_pattern})|$)" if stop_pattern else r"(?=$)"
+        pattern = rf"(?<![A-Za-z]){re.escape(label)}\s*:\s*(.*?){lookahead}"
+        m = re.search(pattern, text, re.S)
+        return m.group(1).strip(" '\"") if m else ""
+
+    @staticmethod
     async def _fetch_cmr_detail(cmr_id: str, cookies: Dict[str, str]) -> Dict:
         """
         One CMR's full record -- mirrors get_RT_CMRs's 3 per-CMR Phantom
         calls (type=viewrequest for affected servers + a "Date and Time"
         history line, type=requestdescription, type=requestrolloutplan).
-        Owner/Status/Implementation-start-date are best-effort label
-        matches on the same viewrequest page (get_RT_CMRs never needed
-        them, so these specific label strings are UNVERIFIED against a
-        real response and may need adjusting).
+        Owner/Status/Start-Time labels confirmed against a real Phantom
+        page (see _extract_field's docstring for why plain line-splitting
+        didn't work).
         """
         record = {
             "ticket_id":       cmr_id,
@@ -629,22 +648,35 @@ class TicketLinkerService:
                     "mode": "prod", "id": cmr_id, "frame": "content",
                 })
                 if detail_resp.status_code == 200:
-                    for line in BeautifulSoup(detail_resp.text, "html.parser").get_text("\n").splitlines():
-                        line = line.strip()
-                        if not line:
-                            continue
-                        if "Server(s) Affected:" in line:
-                            servers = line.split("Server(s) Affected:", 1)[1].strip()
-                            record["servers_affected"] = servers
-                            record["resolved_hosts"] = await TicketLinkerService._resolve_cmr_hosts(servers)
-                        elif "Date and Time" in line:
-                            record["history"] = line
-                        elif line.startswith("Owner:"):
-                            record["owner"] = line.split(":", 1)[1].strip()
-                        elif line.startswith("Status:"):
-                            record["status"] = line.split(":", 1)[1].strip()
-                        elif "Implementation Start" in line and ":" in line:
-                            record["start_time"] = line.split(":", 1)[1].strip()
+                    text = " ".join(
+                        BeautifulSoup(detail_resp.text, "html.parser").get_text(" ").split()
+                    )
+                    # Anchor past the top summary bar's "Request Status:"
+                    # phrase, which would otherwise be mistaken for the
+                    # real "Status:" label (it also ends in that substring).
+                    basic_idx = text.find("Basic Request Data")
+                    section = text[basic_idx:] if basic_idx != -1 else text
+
+                    servers = TicketLinkerService._extract_field(
+                        section, "Server(s) Affected", ["Description:"]
+                    )
+                    if servers:
+                        record["servers_affected"] = servers
+                        record["resolved_hosts"] = await TicketLinkerService._resolve_cmr_hosts(servers)
+
+                    record["status"] = TicketLinkerService._extract_field(
+                        section, "Status", ["Submission Date:"]
+                    )
+                    record["owner"] = TicketLinkerService._extract_field(
+                        text, "Owner", ["ImplementorOwner:", "Basic Request Data"]
+                    )
+                    record["start_time"] = TicketLinkerService._extract_field(
+                        section, "Start Time", ["End Time:"]
+                    )
+
+                    hist_idx = text.find("Date and Time")
+                    if hist_idx != -1:
+                        record["history"] = text[hist_idx:hist_idx + 400].strip()
 
                 desc_resp = await client.get(CMR_URL, params={
                     "frame": "async", "action": "display",
