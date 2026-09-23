@@ -39,6 +39,18 @@ CMR_URL       = settings.cmr_url
 HTTPX_OPTS    = dict(verify=False, timeout=10.0)
 RT_CACHE_TTL_HOURS = 1
 
+# fetch_recent_implemented_cmrs used to fire _fetch_cmr_detail for every
+# matching CMR at once via asyncio.gather -- with ~30 recent CMRs, each
+# opening its own client for 3 sequential Phantom requests, that's ~30
+# simultaneous connections (up to 90 requests) hitting Phantom under one
+# session cookie in the same instant. Confirmed live (2026-09-23): every
+# single CMR detail fetch timed out together, twice, within the same
+# second -- the same class of "too much concurrent traffic against one
+# session" problem as the earlier per-host over-fetching bug, just
+# surfacing here instead. Throttled via a semaphore to a small number of
+# concurrent detail fetches so Phantom sees a steady trickle, not a burst.
+CMR_DETAIL_CONCURRENCY = 3
+
 
 async def _run_hostlist(*args: str) -> List[str]:
     """
@@ -758,9 +770,14 @@ class TicketLinkerService:
 
         if not cmr_ids:
             return []
-        return list(await asyncio.gather(*(
-            TicketLinkerService._fetch_cmr_detail(cmr_id, cookies) for cmr_id in cmr_ids
-        )))
+
+        semaphore = asyncio.Semaphore(CMR_DETAIL_CONCURRENCY)
+
+        async def _fetch_throttled(cmr_id: str) -> Dict:
+            async with semaphore:
+                return await TicketLinkerService._fetch_cmr_detail(cmr_id, cookies)
+
+        return list(await asyncio.gather(*(_fetch_throttled(cmr_id) for cmr_id in cmr_ids)))
 
     # ── report_tickets helpers ────────────────────────────────────────────────
 

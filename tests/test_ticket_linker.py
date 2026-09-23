@@ -8,9 +8,11 @@ _load_cmr_cookies / fetch_recent_implemented_cmrs). No real network or
 database access -- fetch_recent_implemented_cmrs is mocked so these stay
 pure unit tests of the filtering/detection logic itself.
 """
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.services import ticket_linker as tl_module
 from app.services.ticket_linker import TicketLinkerService, _host_base_name, _host_matches
 
 
@@ -293,3 +295,51 @@ def test_extract_field_stops_servers_affected_before_next_label():
 
 def test_extract_field_returns_empty_when_label_absent():
     assert TicketLinkerService._extract_field(_REAL_CMR_TEXT, "Nonexistent Field", ["End Time:"]) == ""
+
+
+# ── fetch_recent_implemented_cmrs concurrency throttle ──────────────────────
+# Regression guard for a real bug: with ~30 recent CMRs, firing
+# _fetch_cmr_detail for all of them at once via asyncio.gather opened ~30
+# simultaneous connections (up to 90 requests) to Phantom under one session
+# cookie -- confirmed live: every single one timed out together, twice, in
+# the same second. Must stay throttled to CMR_DETAIL_CONCURRENCY at a time.
+
+async def test_fetch_recent_implemented_cmrs_throttles_concurrent_detail_fetches():
+    cmr_ids = [str(100000 + i) for i in range(10)]
+    search_html = " ".join(f"#{cid}" for cid in cmr_ids)
+
+    class FakeResponse:
+        status_code = 200
+        text = search_html
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **kw):
+            return FakeResponse()
+
+    current = 0
+    peak = 0
+
+    async def fake_fetch_detail(cmr_id, cookies):
+        nonlocal current, peak
+        current += 1
+        peak = max(peak, current)
+        await asyncio.sleep(0.01)
+        current -= 1
+        return {"ticket_id": cmr_id}
+
+    with patch.object(TicketLinkerService, "_load_cmr_cookies", return_value={"phantom_sessionid": "x"}), \
+         patch.object(TicketLinkerService, "_looks_like_sso_login_page", return_value=False), \
+         patch.object(tl_module, "httpx") as mock_httpx, \
+         patch.object(TicketLinkerService, "_fetch_cmr_detail", side_effect=fake_fetch_detail):
+        mock_httpx.AsyncClient.return_value = FakeClient()
+        results = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=5)
+
+    assert len(results) == 10
+    assert peak <= tl_module.CMR_DETAIL_CONCURRENCY
+    assert peak > 1  # still concurrent, just bounded -- not serialized to 1
