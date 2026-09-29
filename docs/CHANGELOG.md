@@ -4,6 +4,46 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-09-29: File-upload security review — hardened the one upload endpoint, removed a dead unsafe SPA handler
+
+Prompted by an internal threat-intel note describing an incident elsewhere: an
+app with unrestricted file uploads let an attacker land a web shell and
+harvest credentials. Audited this codebase for the same exposure (allow-
+listing, content-type/magic-byte validation, storage location, filename
+randomization, AV scanning).
+
+- **`POST /api/v1/exclusions/import`** (`app/api/exclusions.py`) is the only
+  file-upload endpoint anywhere in the app. It never wrote the uploaded bytes
+  to disk — the file is read into memory, decoded as text, and parsed
+  line-by-line straight into `fim.whitelist_rules` rows — so the specific
+  "uploaded file becomes web-reachable" scenario from the incident doesn't
+  apply here; there's no file object ever created on the filesystem. It did
+  have real gaps though: no allow-list on extension/content-type, no size
+  cap, and an unhandled `UnicodeDecodeError` (a bare 500) on any non-UTF-8
+  upload. Added `validate_import_upload()` — extension allow-list (`.txt` or
+  extensionless), content-type allow-list (`text/plain` /
+  `application/octet-stream` / unset), a 2 MB size cap, and a null-byte check
+  as a binary-content guard — plus a clean 400 instead of a crash on bad
+  encoding. The accepted file format is unchanged (matches `/export`'s own
+  output: blank lines, `#` comments, glob `*` patterns, `regex:` prefix).
+  Covered by `tests/test_exclusions_import.py`.
+- **`app/api/frontend.py`** (an unwired, dead `serve_frontend` SPA handler)
+  built `os.path.join(WEB_DIR, full_path)` straight from the raw URL path
+  with no traversal sanitization — a real path-traversal *read* risk if it
+  were ever mounted. It was leftover boilerplate (its own docstring says
+  "Next.js"; this project is Vite/React) superseded by `app/main.py`'s
+  already-active `SPAStaticFiles` mount, which subclasses Starlette's real
+  `StaticFiles` and gets its built-in traversal protection for free. Deleted
+  rather than fixed-and-kept — there's no future scenario where the older,
+  less-safe SPA handler would be preferable to the one already mounted; a
+  future frontend-serving change belongs in the existing `main.py` mount.
+- No other upload/write surfaces found: no file-upload UI anywhere in the
+  frontend, `/api/v1/scans/submit` takes structured JSON (size/count capped)
+  not raw file bytes, baseline snapshots use server-generated filenames
+  (timestamp + UUID, sanitized hostname) and live outside any web-served
+  directory, and the host agent only ever writes to its own local,
+  agent-controlled paths.
+
 ## 2026-09-09: Light theme actually themes the whole app, RT correlation "reject" bug, publish preview
 
 - **Light/dark toggle only ever re-themed the sidebar/header.** Root cause was

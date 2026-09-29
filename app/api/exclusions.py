@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from typing import List, Dict, Tuple, Set, Optional, Optional, List
 from datetime import datetime
+import os
 import uuid
 
 from app.core.database import get_db
@@ -496,6 +497,40 @@ async def toggle_exclusion(
 # Bulk Import/Export
 # ============================================================================
 
+# Security hardening (2026-09): this is the only file-upload endpoint in the
+# app. It never wrote the uploaded bytes to disk (parsed in-memory into DB
+# rows), so it was never exposed to the "uploaded web shell becomes
+# reachable" class of vulnerability -- but it had no allow-list, no size
+# cap, and an unhandled UnicodeDecodeError on any non-UTF-8 upload (a 500,
+# not a controlled rejection). The checks below close those gaps without
+# changing the accepted file format, which matches /export's own output:
+# plain text, blank lines, '#' comments, glob '*' patterns, 'regex:' prefix.
+_ALLOWED_IMPORT_EXTENSIONS = {"", ".txt"}
+_ALLOWED_IMPORT_CONTENT_TYPES = {"text/plain", "application/octet-stream", ""}
+_MAX_IMPORT_SIZE_BYTES = 2 * 1024 * 1024  # generous for a plain-text pattern list
+
+
+def validate_import_upload(filename: Optional[str], content_type: Optional[str], content: bytes) -> None:
+    """
+    Raises HTTPException if `content` isn't an acceptable exclusion list
+    upload. Pulled out of import_exclusions() so it's unit-testable without
+    a DB session or a real UploadFile.
+    """
+    ext = os.path.splitext(filename or "")[1].lower()
+    if ext not in _ALLOWED_IMPORT_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Only .txt (or extensionless) exclusion list files are accepted")
+
+    normalized_content_type = (content_type or "").split(";")[0].strip().lower()
+    if normalized_content_type not in _ALLOWED_IMPORT_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported content type: {normalized_content_type or 'unknown'}")
+
+    if len(content) > _MAX_IMPORT_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="Exclusion list file too large (max 2 MB)")
+
+    if b"\x00" in content:
+        raise HTTPException(status_code=400, detail="File does not look like a plain-text exclusion list (binary content detected)")
+
+
 @router.post("/import")
 async def import_exclusions(
     file: UploadFile = File(...),
@@ -505,16 +540,21 @@ async def import_exclusions(
     current_user: User = Depends(get_current_user)
 ):
     """Import exclusions from text file"""
-    
+
     if scope not in ['global', 'agent']:
         raise HTTPException(status_code=400, detail="scope must be 'global' or 'agent'")
-    
+
     if scope == 'agent' and not agent_id:
         raise HTTPException(status_code=400, detail="agent_id required for agent-specific import")
-    
+
     content = await file.read()
-    lines = content.decode('utf-8').splitlines()
-    
+    validate_import_upload(file.filename, file.content_type, content)
+
+    try:
+        lines = content.decode('utf-8').splitlines()
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File must be UTF-8 encoded plain text")
+
     imported = 0
     skipped = 0
     errors = []
