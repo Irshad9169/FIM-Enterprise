@@ -569,13 +569,27 @@ class TicketLinkerService:
         }
         return cookies or None
 
+    # The cookie that actually gets a request into Phantom -- sso_auth alone
+    # (auth.int.untd.com) is not enough, confirmed during the original
+    # SSO/Phantom handoff debugging. Checking only "is the cookie dict
+    # non-empty" is wrong: sso_auth is written with expires=0, which
+    # _load_cmr_cookies deliberately never filters out (it's that cookie's
+    # own "no fixed expiry" convention) -- so once phantom_sessionid alone
+    # expires, the dict still has sso_auth in it and reads as non-empty,
+    # even though the one cookie Phantom actually needs is gone. Confirmed
+    # live (2026-10-05): this let has_valid_cmr_session() report "valid"
+    # with a 10+ day stale session, so Correlate All skipped the login
+    # prompt entirely and silently fetched zero CMRs.
+    _REQUIRED_CMR_COOKIE = "phantom_sessionid"
+
     @staticmethod
     def has_valid_cmr_session() -> bool:
         """Public check for whether settings.cmr_cookie_jar_path currently
         holds an unexpired Phantom session -- used by the on-demand CMR
         login flow (app/services/cmr_session_manager.py) to decide whether
         Correlate All needs to prompt for credentials at all."""
-        return bool(TicketLinkerService._load_cmr_cookies())
+        cookies = TicketLinkerService._load_cmr_cookies()
+        return bool(cookies) and TicketLinkerService._REQUIRED_CMR_COOKIE in cookies
 
     # Matches get_RT_CMRs's own "Server(s) Affected:" resolution: a token
     # is treated as a logical/short host-group name (not a real FQDN) if it
@@ -732,6 +746,18 @@ class TicketLinkerService:
         if not cookies:
             logger.info(
                 "fetch_recent_implemented_cmrs: no valid CMR session cookie -- skipping"
+            )
+            return []
+        if TicketLinkerService._REQUIRED_CMR_COOKIE not in cookies:
+            # The SSO cookie (sso_auth) can outlive the Phantom-specific one
+            # (phantom_sessionid expires separately, and sooner) -- without
+            # the latter, requests to Phantom come back 200 OK but with no
+            # real CMR data and no recognizable SSO-login-page redirect
+            # either, so this would otherwise fail completely silently.
+            logger.info(
+                "fetch_recent_implemented_cmrs: CMR cookie jar has no "
+                f"{TicketLinkerService._REQUIRED_CMR_COOKIE} -- session has "
+                "expired, needs a fresh CMR login -- skipping"
             )
             return []
 

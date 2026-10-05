@@ -233,6 +233,25 @@ def test_has_valid_cmr_session_false_when_no_cookies():
         assert TicketLinkerService.has_valid_cmr_session() is False
 
 
+def test_has_valid_cmr_session_false_when_only_sso_cookie_survives():
+    # Regression for a real bug: sso_auth is written with expires=0, which
+    # _load_cmr_cookies deliberately never filters out (that cookie's own
+    # "no fixed expiry" convention) -- so once phantom_sessionid (the
+    # cookie that actually gets a request into Phantom) expires on its
+    # own, the dict still has sso_auth in it and used to read as "valid"
+    # via a bare bool(cookies) check, even though Phantom access was
+    # actually dead. Confirmed live: this skipped the re-login prompt and
+    # silently fetched zero CMRs for over a week.
+    with patch.object(TicketLinkerService, "_load_cmr_cookies", return_value={"sso_auth": "x"}):
+        assert TicketLinkerService.has_valid_cmr_session() is False
+
+
+async def test_fetch_recent_implemented_cmrs_skips_when_only_sso_cookie_survives():
+    with patch.object(TicketLinkerService, "_load_cmr_cookies", return_value={"sso_auth": "x"}):
+        results = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=5)
+    assert results == []
+
+
 # ── _extract_field ──────────────────────────────────────────────────────────
 # Regression coverage for a real bug: a real Phantom viewrequest page packs
 # several "Label: value" pairs onto the same rendered block with no line
