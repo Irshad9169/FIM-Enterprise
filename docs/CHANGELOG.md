@@ -4,6 +4,100 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-10-05: CMR session staleness masked by a surviving SSO cookie; reports list had no bound at all
+
+Two independent live-debugging rounds with the user, same day.
+
+- **CMR widget silently went empty again, no errors anywhere.** The Phantom
+  session cookie (`phantom_sessionid`) had expired over a week earlier and
+  was correctly filtered out by `_load_cmr_cookies()`'s manual expiry check
+  — but `sso_auth` is deliberately written with `expires=0` (that cookie's
+  own "no fixed expiry" convention, needed since the original SSO/Phantom
+  handoff work) and is never filtered, so the cookie dict stayed non-empty.
+  `has_valid_cmr_session()` only ever checked `bool(cookies)`, so it
+  reported the stale session as valid, Correlate All skipped the re-login
+  prompt, and the resulting Phantom request came back 200 OK with no real
+  data and no recognizable SSO-login-page redirect either — a completely
+  silent failure, no log trace at all. Fixed: both `has_valid_cmr_session()`
+  and `fetch_recent_implemented_cmrs()` now specifically require
+  `phantom_sessionid` in the loaded cookie dict, not just any cookie, and
+  the latter logs clearly when it bails for this reason.
+- **Confirming that fix surfaced a second issue: the widget took ~90
+  seconds to load.** Direct cost of the concurrency throttle added
+  2026-09-23 (below) — correctness over speed was the explicit trade-off
+  made there. Since the realistic repeat cost is the same analyst
+  reloading the Reports page within a few minutes rather than the first
+  cold load, added a 180-second in-process cache
+  (`TicketLinkerService._cmr_cache`, keyed by `days_back`) for successful
+  results (including a legitimate empty list) without touching the
+  concurrency throttle itself. A missing/expired session is deliberately
+  never cached, so a fresh CMR login takes effect immediately rather than
+  being masked for up to 180s.
+- **Separately, `GET /api/v1/reports` had no limit or date filtering at
+  all** — the frontend already sent `?limit=50`, but FastAPI silently
+  ignores unrecognized query params, so every report row ever created was
+  always returned and rendered. This is a daily-report system (one new row
+  per day, indefinitely), so that's unbounded growth with no cap. Now
+  defaults to the last 60 days when no range is given, accepts explicit
+  `start_date`/`end_date` to reach further back, and caps `limit` at 200.
+  Frontend got a small "Older reports: [from] to [to] [Clear]" filter row.
+
+## 2026-09-18 — 2026-09-23: CMR (Phantom) on-demand login built, debugged live end-to-end, then two post-ship bugs fixed
+
+The long-standing assumption was "Phantom has no service-account/API option,
+only interactive SSO, so CMR fetching is stuck relying on an
+externally-maintained cookie file." The real Boris source
+(`authenticate.cgi`, `SSOAuth.pm`, `get_RT_CMRs`) reframed this: Boris uses
+no service account either — a real person's raw username+password against
+`auth.int.untd.com`'s `type=login` mode (distinct from the interactive
+browser-redirect SSO used elsewhere), success detected by string-matching
+`"Success. Loading..."`, then one visit to Phantom's front door to receive a
+Phantom-specific session cookie. That's genuinely scriptable.
+
+- Built `app/services/cmr_session_manager.py`: on-demand, prompted only when
+  Correlate All has no valid session, never stores the credential. Rejected
+  an initial scheduled/stored-credential design after direct pushback
+  ("Boris doesn't use a service account... why are you making things
+  harder?") — the mechanism never required one, only the first draft's
+  comments overstated it.
+- **Live debugging, fully root-caused via real diagnostics at each step:**
+  SSO silently hangs (no response, no error) given FIM's own `origin_id` —
+  switched to the legacy collector's known-working origin
+  (`USTickets`/`US Tickets System`). The identical request then hung via
+  `httpx` but succeeded in ~1s via real `curl` even after matching
+  User-Agent — consistent with TLS client fingerprinting — switched to
+  shelling out to real `curl` for both SSO hops. The cookie jar then only
+  ever gained `sso_auth`, never a Phantom session cookie, because `curl`
+  was never passed `-L`; added it. A live Phantom-side 504 at the very last
+  redirect hop (reproduced via curl AND a real browser) confirmed the
+  handshake itself was correct and the failure was external.
+- **`correlate_all_agents` was calling Phantom `N × (1 + 3M)` times per
+  click** (once per host, each call independently re-fetching and
+  re-processing the entire CMR list) — found directly from the user's own
+  hypothesis ("Phantom should be fetched for CMRs only once"). Split out a
+  pure `_match_cmrs_to_hostname()` and made the fetch happen once per run.
+  This likely explains some of the earlier "Phantom outage" symptom too.
+- **Owner/Status/Start Time rendered as empty badges once CMRs finally
+  appeared.** A real Phantom page packs several "Label: value" pairs onto
+  one rendered text block with no separator (`"Status: Implemented Owner:
+  'Alan Finney' ImplementorOwner: ..."`), so the original
+  `line.startswith("Owner:")`-style checks never matched, and the guessed
+  `"Implementation Start"` label never appears at all (the real one is
+  `"Start Time:"`). Replaced with `_extract_field()`, a regex extractor
+  that searches the full text and stops at the next known label — verified
+  against real captured page text.
+- **Fixing that then made it look like nothing improved**, because
+  `fetch_recent_implemented_cmrs` fired `_fetch_cmr_detail` for every
+  recent CMR at once via `asyncio.gather` — with ~30 CMRs, each opening its
+  own client for 3 sequential requests, that's up to 90 near-simultaneous
+  requests under one session cookie. Every single one timed out together,
+  twice, in the same second, before ever reaching the just-fixed parsing
+  code. Throttled via a semaphore (`CMR_DETAIL_CONCURRENCY = 3`) — the
+  same class of "too much concurrent traffic against one session" problem
+  as the per-host over-fetch above, just surfacing in the per-CMR fan-out
+  instead. This also retroactively supports the earlier "Phantom outage"
+  having been self-inflicted traffic all along, not an unrelated event.
+
 ## 2026-09-29: File-upload security review — hardened the one upload endpoint, removed a dead unsafe SPA handler
 
 Prompted by an internal threat-intel note describing an incident elsewhere: an

@@ -211,6 +211,27 @@ JIRA_EMAIL=
 JIRA_API_TOKEN=
 ```
 
+CMR (Phantom) fetching needs three more settings, all documented with the same
+depth in `.env.example` — see that file for the full story. Phantom has no
+service-account/API option, only its own web UI behind company SSO, so CMR
+data is fetched using whatever session is currently sitting in a cookie jar
+file, populated on demand: when an analyst clicks Correlate All on the
+Report Detail page with no valid session, they're prompted for their own SSO
+username/password right then (never stored), which logs in via the same
+`type=login` mechanism the legacy `get_RT_CMRs`/`authenticate.cgi` collector
+uses — not FIM's own interactive browser-redirect SSO login.
+```bash
+# Leave CMR_COOKIE_JAR_PATH empty to skip CMR fetching entirely -- RT
+# tickets on the Reports page still work fine without it.
+CMR_COOKIE_JAR_PATH=/opt/fim/config/phantom_cookies.txt
+# These are the legacy collector's own proven-working SSO origin values --
+# don't change them to FIM's own identity (confirmed live: the SSO server
+# silently hangs, no response at all, on an origin_id it doesn't recognize).
+CMR_SSO_ORIGIN_NAME=US Tickets System
+CMR_SSO_ORIGIN_ID=USTickets
+CMR_SSO_ORIGIN_URL=http://tickets.int.untd.com
+```
+
 ~~⚠️ `.env` alone is not enough~~ — fixed 2026-08-20: `SECRET_KEY`, `ALGORITHM`
 (previously misread as the nonexistent `JWT_ALGORITHM` — that naming mismatch is
 also fixed), `ACCESS_TOKEN_EXPIRE_MINUTES`, `REPORT_AUTO_GENERATE`,
