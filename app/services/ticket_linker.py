@@ -17,6 +17,7 @@ import subprocess
 import json
 import base64
 import http.cookiejar
+import time
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Tuple, Set, Optional, Optional, List, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +51,17 @@ RT_CACHE_TTL_HOURS = 1
 # surfacing here instead. Throttled via a semaphore to a small number of
 # concurrent detail fetches so Phantom sees a steady trickle, not a burst.
 CMR_DETAIL_CONCURRENCY = 3
+
+# A cold fetch_recent_implemented_cmrs call -- 1 search + 3 sequential
+# requests per CMR, CMR_DETAIL_CONCURRENCY at a time -- takes real time
+# (confirmed live: ~90s for one Reports-page load). The main repeat cost is
+# the same analyst reloading/revisiting the Reports page within a few
+# minutes, not the first cold load -- a short in-process cache avoids
+# re-crawling Phantom for that case without touching the concurrency
+# throttle above, so a genuine cache miss still only ever sees the same
+# gentle trickle. Keyed by days_back since the widget (5) and
+# correlate_all_agents (30) ask for different windows.
+CMR_CACHE_TTL_SECONDS = 180
 
 
 async def _run_hostlist(*args: str) -> List[str]:
@@ -727,6 +739,10 @@ class TicketLinkerService:
             logger.error(f"_fetch_cmr_detail({cmr_id}): {type(e).__name__}: {e}", exc_info=True)
         return record
 
+    # days_back -> (time.monotonic() at fetch, result). Deliberately in-process
+    # only (no DB/Redis) -- see CMR_CACHE_TTL_SECONDS's own comment for why.
+    _cmr_cache: Dict[int, Tuple[float, List[Dict]]] = {}
+
     @staticmethod
     async def fetch_recent_implemented_cmrs(days_back: int = 5) -> List[Dict]:
         """
@@ -740,8 +756,15 @@ class TicketLinkerService:
         settings.cmr_cookie_jar_path, an externally-maintained cookie jar
         (see get_RT_CMRs) -- NOT a credential FIM owns. Returns []
         silently (not an error) if that jar is unconfigured, unreadable,
-        or its session has expired.
+        or its session has expired. Successful results (including a
+        legitimate empty list) are cached for CMR_CACHE_TTL_SECONDS; a
+        missing/expired session is deliberately never cached, so a fresh
+        CMR login takes effect on the very next call, not after the TTL.
         """
+        cached = TicketLinkerService._cmr_cache.get(days_back)
+        if cached and (time.monotonic() - cached[0]) < CMR_CACHE_TTL_SECONDS:
+            return cached[1]
+
         cookies = TicketLinkerService._load_cmr_cookies()
         if not cookies:
             logger.info(
@@ -795,6 +818,7 @@ class TicketLinkerService:
             return []
 
         if not cmr_ids:
+            TicketLinkerService._cmr_cache[days_back] = (time.monotonic(), [])
             return []
 
         semaphore = asyncio.Semaphore(CMR_DETAIL_CONCURRENCY)
@@ -803,7 +827,9 @@ class TicketLinkerService:
             async with semaphore:
                 return await TicketLinkerService._fetch_cmr_detail(cmr_id, cookies)
 
-        return list(await asyncio.gather(*(_fetch_throttled(cmr_id) for cmr_id in cmr_ids)))
+        result = list(await asyncio.gather(*(_fetch_throttled(cmr_id) for cmr_id in cmr_ids)))
+        TicketLinkerService._cmr_cache[days_back] = (time.monotonic(), result)
+        return result
 
     # ── report_tickets helpers ────────────────────────────────────────────────
 

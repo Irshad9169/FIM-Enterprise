@@ -247,6 +247,12 @@ def test_has_valid_cmr_session_false_when_only_sso_cookie_survives():
 
 
 async def test_fetch_recent_implemented_cmrs_skips_when_only_sso_cookie_survives():
+    # TicketLinkerService._cmr_cache is a class-level dict shared across the
+    # whole test session -- reset it so this test can't see a result left
+    # behind by another test that hit the real fetch path at the same
+    # days_back, and so this test's own (uncached, by design) early-return
+    # can't poison a later test either.
+    TicketLinkerService._cmr_cache = {}
     with patch.object(TicketLinkerService, "_load_cmr_cookies", return_value={"sso_auth": "x"}):
         results = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=5)
     assert results == []
@@ -324,6 +330,7 @@ def test_extract_field_returns_empty_when_label_absent():
 # the same second. Must stay throttled to CMR_DETAIL_CONCURRENCY at a time.
 
 async def test_fetch_recent_implemented_cmrs_throttles_concurrent_detail_fetches():
+    TicketLinkerService._cmr_cache = {}  # see the earlier cache test's comment
     cmr_ids = [str(100000 + i) for i in range(10)]
     search_html = " ".join(f"#{cid}" for cid in cmr_ids)
 
@@ -362,3 +369,52 @@ async def test_fetch_recent_implemented_cmrs_throttles_concurrent_detail_fetches
     assert len(results) == 10
     assert peak <= tl_module.CMR_DETAIL_CONCURRENCY
     assert peak > 1  # still concurrent, just bounded -- not serialized to 1
+
+
+# ── fetch_recent_implemented_cmrs result cache ───────────────────────────────
+# A cold fetch is slow (confirmed live: ~90s for one Reports-page load, the
+# throttle's direct trade-off) -- the real-world repeat cost is the same
+# analyst reloading the page within a few minutes, not the first load, so a
+# short cache avoids re-crawling Phantom for that case.
+
+async def test_fetch_recent_implemented_cmrs_caches_within_ttl():
+    TicketLinkerService._cmr_cache = {}
+    search_calls = 0
+
+    class FakeResponse:
+        status_code = 200
+        text = "#100001"
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **kw):
+            nonlocal search_calls
+            search_calls += 1
+            return FakeResponse()
+
+    with patch.object(TicketLinkerService, "_load_cmr_cookies", return_value={"phantom_sessionid": "x"}), \
+         patch.object(TicketLinkerService, "_looks_like_sso_login_page", return_value=False), \
+         patch.object(tl_module, "httpx") as mock_httpx, \
+         patch.object(TicketLinkerService, "_fetch_cmr_detail", return_value={"ticket_id": "100001"}):
+        mock_httpx.AsyncClient.return_value = FakeClient()
+        first = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=5)
+        second = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=5)
+
+    assert first == second == [{"ticket_id": "100001"}]
+    assert search_calls == 1  # second call served from cache, no new Phantom hit
+
+
+async def test_fetch_recent_implemented_cmrs_does_not_cache_missing_session():
+    # A freshly re-established CMR login must take effect on the very next
+    # call -- caching the "no session" failure would otherwise mask that
+    # for up to CMR_CACHE_TTL_SECONDS.
+    TicketLinkerService._cmr_cache = {}
+    with patch.object(TicketLinkerService, "_load_cmr_cookies", return_value=None):
+        first = await TicketLinkerService.fetch_recent_implemented_cmrs(days_back=5)
+    assert first == []
+    assert 5 not in TicketLinkerService._cmr_cache
