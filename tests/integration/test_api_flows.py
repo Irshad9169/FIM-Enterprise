@@ -16,7 +16,7 @@ which is legitimate since that function has its own dedicated unit
 tests in tests/test_security.py.
 """
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 import pytest
 from jose import jwt as jose_jwt
@@ -24,6 +24,7 @@ from sqlalchemy import text, select
 
 from app.core.security import create_access_token, get_password_hash, SECRET_KEY, ALGORITHM
 from app.models.models import Agent, Baseline, User, Alert
+from app.models.daily_report import DailyReport
 
 pytestmark = pytest.mark.integration
 
@@ -513,3 +514,62 @@ async def test_closed_deletion_alert_does_not_rebounce_while_still_deleted(clien
     # 'file_deleted'), so it must alert again, not be deduped.
     resp4 = await submit_files([])
     assert resp4.json()["change_detection"]["alerts_created"] == 1
+
+
+# ── GET /api/v1/reports date window ──────────────────────────────────────────
+# Regression guard for a real bug: list_reports() had no limit/date
+# filtering at all -- the frontend already sent ?limit=50, but FastAPI
+# silently ignores unrecognized query params, so every single report row
+# ever created was always returned and rendered. This is a daily-report
+# system (one new row per day, indefinitely), so that's unbounded growth
+# with no cap.
+
+async def test_list_reports_defaults_to_last_two_months(client, db_session):
+    recent = DailyReport(id=uuid.uuid4(), report_date=date.today() - timedelta(days=10), status="pending")
+    old    = DailyReport(id=uuid.uuid4(), report_date=date.today() - timedelta(days=100), status="pending")
+    db_session.add_all([recent, old])
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/reports")
+
+    assert resp.status_code == 200
+    ids = {r["id"] for r in resp.json()}
+    assert str(recent.id) in ids
+    assert str(old.id) not in ids
+
+
+async def test_list_reports_explicit_date_range_reaches_older_reports(client, db_session):
+    old_date = date.today() - timedelta(days=100)
+    old = DailyReport(id=uuid.uuid4(), report_date=old_date, status="pending")
+    db_session.add(old)
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/v1/reports",
+        params={
+            "start_date": (old_date - timedelta(days=5)).isoformat(),
+            "end_date":   (old_date + timedelta(days=5)).isoformat(),
+        },
+    )
+
+    assert resp.status_code == 200
+    ids = {r["id"] for r in resp.json()}
+    assert str(old.id) in ids
+
+
+async def test_list_reports_rejects_malformed_date(client, db_session):
+    resp = await client.get("/api/v1/reports", params={"start_date": "not-a-date"})
+    assert resp.status_code == 400
+
+
+async def test_list_reports_limit_is_capped(client, db_session):
+    for i in range(5):
+        db_session.add(DailyReport(
+            id=uuid.uuid4(), report_date=date.today() - timedelta(days=i), status="pending",
+        ))
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/reports", params={"limit": 2})
+
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2

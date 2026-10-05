@@ -54,8 +54,12 @@ export const deleteBaseline = (id: string) =>
 export const fetchScans = () => apiCall("/api/v1/scans");
 
 // ── Reports — core ───────────────────────────────────────────────────────────
-export const fetchReports = (limit = 30) =>
-  apiCall(`/api/v1/reports?limit=${limit}`);
+export const fetchReports = (limit = 30, startDate?: string, endDate?: string) => {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (startDate) params.set("start_date", startDate);
+  if (endDate)   params.set("end_date", endDate);
+  return apiCall(`/api/v1/reports?${params.toString()}`);
+};
 
 export const generateReport = (reportDate: string) =>
   apiCall("/api/v1/reports/generate", {

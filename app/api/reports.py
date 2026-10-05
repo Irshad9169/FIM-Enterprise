@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import List, Dict, Tuple, Set, Optional, List, Optional
 import uuid
 import json
@@ -149,11 +149,49 @@ async def _build_report_agents(report_id: uuid.UUID, db: AsyncSession) -> List[R
 # List & Generate
 # ─────────────────────────────────────────────────────────────────────────────
 
+# This is a daily-report system (one new row per day, indefinitely) -- an
+# unfiltered query here keeps growing forever. Default to the last 2 months
+# so the common case (reviewing recent reports) stays bounded without any
+# client action; start_date/end_date let an analyst reach further back
+# explicitly. limit is a defense-in-depth cap, not the primary bound.
+REPORTS_DEFAULT_WINDOW_DAYS = 60
+REPORTS_MAX_LIMIT = 200
+
+
 @router.get("", response_model=List[DailyReportResponse])
-async def list_reports(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(DailyReport).order_by(DailyReport.report_date.desc())
-    )
+async def list_reports(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    # asyncpg (this project's driver) is strict about bound-parameter types
+    # -- a raw query-param string compared against a Date column can fail
+    # at the DB layer instead of being implicitly coerced, so parse to a
+    # real date up front (also turns a malformed date into a clean 400
+    # instead of a confusing 500).
+    parsed_start = parsed_end = None
+    try:
+        if start_date:
+            parsed_start = date.fromisoformat(start_date)
+        if end_date:
+            parsed_end = date.fromisoformat(end_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start_date/end_date must be YYYY-MM-DD")
+
+    query = select(DailyReport)
+    if parsed_start or parsed_end:
+        if parsed_start:
+            query = query.where(DailyReport.report_date >= parsed_start)
+        if parsed_end:
+            query = query.where(DailyReport.report_date <= parsed_end)
+    else:
+        query = query.where(
+            DailyReport.report_date >= date.today() - timedelta(days=REPORTS_DEFAULT_WINDOW_DAYS)
+        )
+    query = query.order_by(DailyReport.report_date.desc()).limit(min(max(limit, 1), REPORTS_MAX_LIMIT))
+
+    result = await db.execute(query)
     rows = result.scalars().all()
     return [
         DailyReportResponse(

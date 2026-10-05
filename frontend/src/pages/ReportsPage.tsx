@@ -27,10 +27,12 @@ export default function ReportsPage() {
   const [selectedDate, setSelectedDate] = useState("");
   const [generating,   setGenerating]   = useState(false);
   const [genError,     setGenError]     = useState("");
+  const [filterStart,  setFilterStart]  = useState(""); // empty = default last-2-months window
+  const [filterEnd,    setFilterEnd]    = useState("");
 
   const { data, isLoading, refetch } = useQuery<DailyReport[]>({
-    queryKey: ["reports"],
-    queryFn:  () => fetchReports(50),
+    queryKey: ["reports", filterStart, filterEnd],
+    queryFn:  () => fetchReports(50, filterStart || undefined, filterEnd || undefined),
   });
 
   const { data: recentActivity, isLoading: activityLoading, refetch: refetchActivity } = useQuery<RecentActivity>({
@@ -125,10 +127,37 @@ export default function ReportsPage() {
 
       {/* Table */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="px-5 py-3 border-b border-border">
+        <div className="px-5 py-3 border-b border-border flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-foreground/90">
             {reports.length} report{reports.length !== 1 ? "s" : ""}
+            {!filterStart && !filterEnd && (
+              <span className="text-muted-foreground font-normal"> (last 2 months)</span>
+            )}
           </h2>
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-muted-foreground">Older reports:</span>
+            <input
+              type="date"
+              value={filterStart}
+              onChange={e => setFilterStart(e.target.value)}
+              className="bg-background border border-input rounded px-2 py-1 text-foreground/90 outline-none [&::-webkit-calendar-picker-indicator]:invert"
+            />
+            <span className="text-muted-foreground">to</span>
+            <input
+              type="date"
+              value={filterEnd}
+              onChange={e => setFilterEnd(e.target.value)}
+              className="bg-background border border-input rounded px-2 py-1 text-foreground/90 outline-none [&::-webkit-calendar-picker-indicator]:invert"
+            />
+            {(filterStart || filterEnd) && (
+              <button
+                onClick={() => { setFilterStart(""); setFilterEnd(""); }}
+                className="text-muted-foreground hover:text-foreground/90 underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {reports.length === 0 ? (
