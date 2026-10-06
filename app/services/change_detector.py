@@ -316,25 +316,9 @@ class ChangeDetector:
 
             # Check if duplicated
             if change['type'] == 'deleted':
-                # TEMPORARY diagnostic (2026-10-06): a file can intermittently
-                # re-alert as deleted despite its real on-disk state never
-                # changing since the first alert (confirmed live for
-                # test05.hyd.int.untd.com:/etc/ssh/authkeys/*) -- most scans
-                # correctly dedupe, some don't, with no code-level difference
-                # found by inspection. Logging the exact dedup lookup result
-                # whenever a deletion alert is about to be (re-)created, to
-                # catch the next occurrence with hard evidence instead of
-                # more speculation. Remove once root-caused.
-                seen_type = latest_alert_type_by_path.get(path)
-                if seen_type == 'file_deleted':
+                if latest_alert_type_by_path.get(path) == 'file_deleted':
                     skipped_duplicates += 1
                     continue
-                logger.warning(
-                    f"DEDUP-DIAG: about to create file_deleted alert for "
-                    f"agent={scan.agent_id} path={path!r} -- "
-                    f"latest_alert_type_by_path saw {seen_type!r} "
-                    f"(dict size={len(latest_alert_type_by_path)})"
-                )
             else:
                 current_hash = (change.get('current_state') or {}).get('hash')
                 if (path, alert_type, current_hash) in seen_states:
