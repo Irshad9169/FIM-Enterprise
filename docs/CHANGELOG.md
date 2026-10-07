@@ -73,6 +73,28 @@ writes on the same session should commit frequently (keep transactions short) an
 on a per-item basis in its exception handler — never assume a caught exception leaves the
 session usable for the next iteration.
 
+**Immediately surfaced a second, pre-existing bug once the above stopped masking it:**
+`correlate_report` (`app/api/reports.py`) still 500'd after the fix above, now with
+`sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called` at
+`resource_id=r.id` in its post-correlation `AuditService.log(...)` call. Root cause:
+`correlate_all_agents()` commits (now several times, but the old code's single final commit
+had the same effect), and `AsyncSession`'s default `expire_on_commit=True` expires every
+attribute of `r` (the `DailyReport` ORM object held by the caller) after any commit on that
+session. The later plain attribute read `r.id` then tries to lazy-reload the expired
+attribute — but that reload needs the async greenlet context that only exists inside an
+awaited SQLAlchemy call, not a bare attribute access, so it crashes instead. This was very
+likely the actual cause of the original, never-fully-diagnosed "Correlate All: Internal
+Server Error" report from weeks earlier — it just needed the run to reach the audit-log line
+without erroring first, which rarely happened until the cascading-failure fix above stopped
+hiding it. Fixed by capturing `r.id` into a local variable (`report_uuid`) immediately after
+fetching the report, before any commit can expire it, and using that local variable
+everywhere `r.id` was previously read after the correlation call.
+
+**How to apply:** after any `await db.commit()`, treat every attribute of ORM objects already
+held from before that commit as unsafe to read directly (`expire_on_commit=True` is the
+default) — capture the specific scalar values you still need into plain local variables
+*before* the commit, rather than reading them off the ORM object afterward.
+
 ## 2026-10-05: CMR session staleness masked by a surviving SSO cookie; reports list had no bound at all
 
 Two independent live-debugging rounds with the user, same day.

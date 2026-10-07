@@ -427,6 +427,13 @@ async def correlate_report(
     if not agent_list:
         raise HTTPException(400, "Report has no agents to correlate")
 
+    # Captured before correlate_all_agents() commits -- that expires every
+    # attribute on `r` (AsyncSession's default expire_on_commit=True), and
+    # accessing r.id afterward as a plain attribute read (not inside an
+    # awaited call) tries to lazy-reload it outside the greenlet context
+    # SQLAlchemy's async engine needs, raising MissingGreenlet.
+    report_uuid = r.id
+
     # Move status to in_review when correlation starts
     if r.status == "pending":
         r.status = "in_review"
@@ -434,13 +441,13 @@ async def correlate_report(
 
     sso_token = request.headers.get("Authorization", "").replace("Bearer ", "")
     summary = await TicketLinkerService.correlate_all_agents(
-        str(r.id), agent_list, sso_token, db
+        str(report_uuid), agent_list, sso_token, db
     )
 
     # Audit log: CORRELATE_REPORT
     await AuditService.log(
         db, current_user.id, current_user.username, "CORRELATE_REPORT",
-        resource_type="report", resource_id=r.id,
+        resource_type="report", resource_id=report_uuid,
         details={"agents": len(agent_list), "rt_found": summary.get("rt_found", 0), "cmr_found": summary.get("cmr_found", 0)},
         ip_address=_client_ip(request),
     )
