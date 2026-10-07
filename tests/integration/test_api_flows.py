@@ -17,11 +17,13 @@ tests in tests/test_security.py.
 """
 import uuid
 from datetime import datetime, timedelta, date
+from unittest.mock import patch
 
 import pytest
 from jose import jwt as jose_jwt
 from sqlalchemy import text, select
 
+from app.core.database import db_manager
 from app.core.security import create_access_token, get_password_hash, SECRET_KEY, ALGORITHM
 from app.models.models import Agent, Baseline, User, Alert
 from app.models.daily_report import DailyReport
@@ -633,4 +635,57 @@ async def test_bulk_alert_action_acknowledges_only_open_matching_alerts(client, 
     assert open_alert.status == "acknowledged"
     assert already_resolved.status == "resolved"  # untouched: wasn't 'open'
     assert untouched.status == "open"              # untouched: wasn't selected
-    assert len(resp.json()) == 2
+
+
+# ── POST /api/v1/reports/{id}/correlate — commit ordering ───────────────────
+# Regression guard for a real bug: correlate_report() only flush()ed (never
+# committed) its pending->in_review status change before calling
+# correlate_all_agents(), whose very first step is a slow, DB-free Phantom
+# call (fetch_recent_implemented_cmrs, up to ~90s on a cold cache). That left
+# the transaction find_report()'s own SELECT had already opened sitting idle
+# the whole time. Confirmed live: Postgres's idle_in_transaction_session_
+# timeout killed the connection during exactly that gap, which both lost the
+# uncommitted status change (wiped by the first per-host error's rollback)
+# and made whichever host is first in agent_list fail immediately on its
+# first query against the now-dead connection.
+
+async def test_correlate_commits_status_change_before_the_slow_cmr_fetch(client, db_session):
+    user = await _create_user(db_session, role="admin", username="corrcommituser")
+    headers = await _auth_headers(db_session, user)
+
+    report = DailyReport(
+        id=uuid.uuid4(), report_date=date.today(), status="pending",
+        agent_list=["some-host"],
+    )
+    db_session.add(report)
+    await db_session.commit()
+
+    seen_status = {}
+
+    async def fake_correlate_all_agents(report_id, agent_list, token, db):
+        # Independent session (NOT the request's own `db`) -- this only sees
+        # "in_review" if the status change was actually committed, not just
+        # flushed within the still-open request transaction.
+        check_session = db_manager.get_session()
+        try:
+            res = await check_session.execute(
+                select(DailyReport.status).where(DailyReport.id == uuid.UUID(report_id))
+            )
+            seen_status["value"] = res.scalar_one()
+        finally:
+            await check_session.close()
+        return {
+            "agents_processed": 0, "rt_found": 0, "cmr_found": 0, "jira_found": 0,
+            "errors": [], "unmatched_hosts": [],
+        }
+
+    with patch(
+        "app.api.reports.TicketLinkerService.correlate_all_agents",
+        side_effect=fake_correlate_all_agents,
+    ):
+        resp = await client.post(
+            f"/api/v1/reports/{report.id}/correlate", headers=headers,
+        )
+
+    assert resp.status_code == 200
+    assert seen_status["value"] == "in_review"

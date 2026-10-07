@@ -4,6 +4,57 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-10-07: a host silently vanished from a report, and its status got stuck on "pending"
+
+User: a report that should have had 4 agents showed "4 AGENTS" in the summary stat but only 3
+hosts in the actual review list, and the report's status badge stayed `PENDING` even though
+3/4 agents had already been submitted. Root cause confirmed via Postgres's own log:
+
+```
+2026-10-07 06:54:47 GMT ... FATAL: terminating connection due to idle-in-transaction timeout
+```
+
+firing about a minute before the first per-host failure in that correlate run.
+`correlate_report` (`app/api/reports.py`) only `db.flush()`ed its `pending -> in_review` status
+change, never committed it — and `find_report()`'s own `SELECT` just above it had already
+opened an implicit transaction regardless. `correlate_all_agents`'s very first step,
+`fetch_recent_implemented_cmrs(days_back=30)`, is a slow, DB-free Phantom call that can take up
+to ~90s on a cold cache (see the CMR concurrency-throttle entry above) — during that whole
+stretch, the session sat idle-in-transaction with zero DB activity, long enough to trip
+Postgres's 5-minute `idle_in_transaction_session_timeout`. By the time the per-host loop
+reached its first real query (for whichever host happens to be first in `agent_list`), the
+connection was already dead, and that host failed immediately while every host after it
+succeeded on a freshly-checked-out connection. Two visible symptoms, one cause: the failed
+host's rollback (from the earlier per-host fix) wiped the still-uncommitted status change,
+leaving `status` stuck on `pending`, and the failed host itself never got a `fim.report_agents`
+row at all — so it simply disappeared from the workflow instead of showing an error.
+
+This is a gap the earlier per-host-commit fix (same day) didn't cover: that fix closed the
+idle window *between* hosts inside the loop, but not the window *before* the loop even starts.
+
+Fixed: `correlate_report` now commits the status change (or a no-op commit if it was already
+past `pending`) unconditionally, right before calling `correlate_all_agents` — ending whatever
+transaction `find_report`'s `SELECT` opened, so there's no open transaction left idle during
+the slow CMR fetch. Also surfaced per-host failures to the user: `correlate_all_agents` returns
+200 even when some hosts fail (by design, so one bad host doesn't block the rest), but the
+frontend (`ReportDetailPage.tsx`) previously discarded `summary.errors` entirely — a failed
+host just vanished with no indication anything went wrong. It now shows which hostnames failed
+and prompts to re-run Correlate All. New integration test
+`test_correlate_commits_status_change_before_the_slow_cmr_fetch`
+(`tests/integration/test_api_flows.py`) verifies the commit lands durably (checked from an
+independent DB session) before the slow call runs.
+
+Also fixed in passing: a stray, incorrect assertion
+(`assert len(resp.json()) == 2`) left over in `test_bulk_alert_action_acknowledges_only_open_
+matching_alerts` from the SQL-injection fix earlier today — `resp.json()` is a 3-key dict, not
+a 2-element collection; this would have failed in CI. Removed.
+
+**How to apply:** before any slow, DB-free external call inside a request handler, make sure
+nothing upstream left an uncommitted transaction open — `flush()` is not enough, since it
+doesn't end the transaction; only `commit()` (or `rollback()`) does. Check this any time a new
+slow external integration (Phantom, RT, JIRA, or anything future) gets added before or between
+DB operations in the same request.
+
 ## 2026-10-07: every host in the test0N fleet false-matched to an unrelated CMR
 
 User: a report with 4 agents (test02/test04/test05/test06) all showed the exact same

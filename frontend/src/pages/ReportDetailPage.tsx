@@ -1181,7 +1181,18 @@ export default function ReportDetailPage() {
     if (!reportId) return;
     setCorrelating(true); setCorrError("");
     try {
-      await correlateReport(reportId);
+      const result = await correlateReport(reportId);
+      // correlate_all_agents catches per-host failures internally and still
+      // returns 200 -- without this, a host that failed (e.g. a transient
+      // DB/network blip) just silently has no report_agents row and
+      // disappears from the workflow with no indication anything went
+      // wrong, until someone notices the agent counts don't match.
+      const errors = result?.summary?.errors as Array<{ hostname: string; error: string }> | undefined;
+      if (errors && errors.length > 0) {
+        setCorrError(
+          `Correlation finished, but failed for: ${errors.map(e => e.hostname).join(", ")}. Click Correlate All again to retry those hosts.`
+        );
+      }
       qc.invalidateQueries({ queryKey: ["report", reportId] });
     } catch (e: any) {
       setCorrError(e.message || "Correlation failed");

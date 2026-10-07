@@ -434,10 +434,23 @@ async def correlate_report(
     # SQLAlchemy's async engine needs, raising MissingGreenlet.
     report_uuid = r.id
 
-    # Move status to in_review when correlation starts
+    # Move status to in_review when correlation starts. Committed
+    # unconditionally (not just flushed, and not skipped when status didn't
+    # need to change) right before correlate_all_agents's very first step --
+    # a slow, DB-free Phantom call (fetch_recent_implemented_cmrs, up to
+    # ~90s on a cold cache; see project_cmr_auto_login_built memory).
+    # find_report()'s own SELECT above already opened an implicit
+    # transaction, so without this commit, EVERY Correlate All run (not
+    # just the first one on a pending report) leaves that transaction open
+    # and idle for the whole CMR-fetch stretch. Confirmed live: Postgres's
+    # idle_in_transaction_session_timeout (5min here) killed the connection
+    # during exactly that gap, which both lost an uncommitted status change
+    # (wiped by the first per-host error's rollback) AND made whichever
+    # host is first in agent_list fail immediately on its first query
+    # against the now-dead connection.
     if r.status == "pending":
         r.status = "in_review"
-        await db.flush()
+    await db.commit()
 
     sso_token = request.headers.get("Authorization", "").replace("Bearer ", "")
     summary = await TicketLinkerService.correlate_all_agents(
