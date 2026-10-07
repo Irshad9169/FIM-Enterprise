@@ -98,6 +98,20 @@ async def _run_hostlist(*args: str) -> List[str]:
 
 _TRAILING_INSTANCE_NUM_RE = re.compile(r"-?\d+$")
 
+# Base/group names that must NEVER be used for the fuzzy fallback in
+# _host_matches, even though they clear its length threshold. Confirmed via
+# a real false-positive (2026-10-07): every host in a "test0N" environment
+# reduces to base name "test", a common English word that shows up
+# constantly in unrelated CMR text (e.g. a rollout plan's routine
+# "...sudo nginx -t && nginx -s reload" step literally said "4. Test and
+# reload configuration.") -- causing that CMR to word-match every single
+# test0N host identically regardless of actual relevance. Exact hostname
+# matching (short_host itself, e.g. "test05") is unaffected; only the
+# group-name fallback is suppressed for names that double as generic words.
+_GENERIC_BASE_NAME_BLOCKLIST = {
+    "test", "prod", "dev", "stage", "staging", "demo", "uat", "lab", "temp",
+}
+
 
 def _host_base_name(short_host: str) -> str:
     """
@@ -116,16 +130,18 @@ def _host_base_name(short_host: str) -> str:
 def _host_matches(short_host: str, text: str) -> bool:
     """
     Word-boundary-safe match against short_host itself, or its base/group
-    name if that's a distinct, non-trivial (>=4 char) string -- short
-    enough base names ("db", "web") are excluded since a plain substring
-    match on them would flag unrelated tickets/CMRs constantly.
+    name if that's a distinct, non-trivial (>=4 char) string not in
+    _GENERIC_BASE_NAME_BLOCKLIST -- short enough base names ("db", "web")
+    are excluded since a plain substring match on them would flag unrelated
+    tickets/CMRs constantly, and so are names that double as common English/
+    environment words ("test", "prod", ...) for the same reason.
     """
     if not text or not short_host:
         return False
     text_l = text.lower()
     candidates = {short_host.lower()}
     base = _host_base_name(short_host).lower()
-    if base != short_host.lower() and len(base) >= 4:
+    if base != short_host.lower() and len(base) >= 4 and base not in _GENERIC_BASE_NAME_BLOCKLIST:
         candidates.add(base)
     return any(re.search(rf"\b{re.escape(c)}\b", text_l) for c in candidates)
 

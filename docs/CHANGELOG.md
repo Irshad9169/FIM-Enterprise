@@ -4,6 +4,42 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-10-07: every host in the test0N fleet false-matched to an unrelated CMR
+
+User: a report with 4 agents (test02/test04/test05/test06) all showed the exact same
+correlated CMR (#293218), which was about an entirely unrelated server (`dvm00.corp.company.com`,
+an nginx CORS header change). Reproduced fresh after regenerating the report and re-running
+Correlate All, so this was live, current-code behavior, not stale data.
+
+Root-caused by replaying the exact extraction/matching logic against the real live CMR (first
+curl probe of the description/rollout-plan endpoints silently failed from a TLS cert error with
+no `-k`/`verify=False`, returning nothing and wrongly suggesting those fields were empty —
+redone correctly via a Python script using the same `httpx`/`verify=False` the backend uses).
+The real rollout plan's last step read: *"4. Test and reload configuration. sudo sh -c 'nginx
+-t && nginx -s reload'"* — a routine, totally unrelated use of the word "Test". `_host_matches`
+(`app/services/ticket_linker.py`) strips a hostname's trailing instance number to also try its
+"base/group name" as a fuzzy match (so a CMR mentioning the `web-prod` cluster still correlates
+to `web-prod-01`) — and `test02`/`test04`/`test05`/`test06` all reduce to base name **`test`**,
+a 4-character string that clears the existing `>=4` "non-trivial" length threshold but is also
+just a common English word that shows up constantly in CMR rollout/testing text. Every CMR
+mentioning "test" anywhere word-matched the entire fleet identically, and since
+`correlate_all_agents` takes `cmr_tickets[0]` as the "best" match, every host landed on
+whichever such CMR happened to be first in the shared per-run CMR list.
+
+Fixed: added `_GENERIC_BASE_NAME_BLOCKLIST` (`test`, `prod`, `dev`, `stage`, `staging`, `demo`,
+`uat`, `lab`, `temp`) — `_host_matches` no longer falls back to a base name that's in this set,
+even if it clears the length threshold. Exact hostname matching (`test05` itself, word-boundary
+safe) is unaffected and still works normally; only the riskier group-name fallback is
+suppressed for names that double as generic environment/English words. New regression test
+`test_host_matches_blocklists_generic_environment_base_names` in `tests/test_ticket_linker.py`,
+verified against the real CMR text.
+
+**How to apply:** any hostname whose digit-stripped base reduces to a common English word or
+generic environment term (test/dev/prod/stage/demo/...) should never be used for fuzzy
+group-name correlation — only add a new fleet/environment naming convention to this blocklist
+if it produces the same kind of base name collision; don't widen the length threshold instead,
+since that doesn't address generic-word collisions at any length.
+
 ## 2026-10-07: RT links opened the raw REST API, not the ticket page
 
 User: in the Reports page widget, CMR links opened correctly but RT links opened

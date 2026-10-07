@@ -42,6 +42,19 @@ def test_host_matches_does_not_use_short_base_names():
     assert _host_matches("db01", "DB is down for unrelated reasons") is False
 
 
+def test_host_matches_blocklists_generic_environment_base_names():
+    # Regression for a real false positive (2026-10-07): a "test0N" fleet's
+    # hosts all reduce to base name "test", a common English word that shows
+    # up constantly in unrelated CMR rollout-plan text -- e.g. a real CMR's
+    # routine "nginx -t && nginx -s reload" step literally said "4. Test and
+    # reload configuration.", which matched every test0N host identically
+    # even though the CMR was about an unrelated server (dvm00). The host's
+    # own exact name must still match normally.
+    unrelated_cmr_text = "1. Login to the server\n4. Test and reload configuration."
+    assert _host_matches("test05", unrelated_cmr_text) is False
+    assert _host_matches("test05", "changes applied to test05 directly") is True
+
+
 # ── search_cmr_by_hostname ───────────────────────────────────────────────────
 
 async def test_search_cmr_by_hostname_matches_servers_affected():
