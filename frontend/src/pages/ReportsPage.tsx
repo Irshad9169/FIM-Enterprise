@@ -266,7 +266,7 @@ export default function ReportsPage() {
           ) : (
             <div className="divide-y divide-border/70 max-h-96 overflow-y-auto">
               {recentActivity!.rt_tickets.map(t => (
-                <a key={t.ticket_id} href={t.url} target="_blank" rel="noopener noreferrer"
+                <a key={t.ticket_id} href={`https://tickets.int.untd.com/Ticket/Display.html?id=${t.ticket_id}`} target="_blank" rel="noopener noreferrer"
                   className="flex items-start gap-3 px-5 py-2.5 text-xs hover:bg-muted/40 transition-colors">
                   <span className="text-sky-400 font-mono font-bold shrink-0">#{t.ticket_id}</span>
                   <span className="text-foreground/90">{t.subject}</span>

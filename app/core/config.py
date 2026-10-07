@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     rt_lookup_url: str = "http://rtapi.int.untd.com/cgi-bin/rt.cgi"
     rt_update_url: str = "https://rtapi.int.untd.com/cgi-bin/rt.cgi"
     rt_email: str = "security@tickets.int.untd.com"
+    # Human-browsable ticket page, distinct from rt_lookup_url/rt_update_url
+    # (the REST API base) -- used only for the "url" field surfaced to users,
+    # never for an actual API call.
+    rt_display_url: str = "https://tickets.int.untd.com/Ticket/Display.html"
     cmr_url: str = "https://phantom.int.untd.com/bin/phantom"
 
     # JIRA is net-new (previously unimplemented). jira_url empty disables it.

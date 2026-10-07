@@ -437,6 +437,39 @@ async def test_fetch_recent_implemented_cmrs_caches_within_ttl():
     assert search_calls == 1  # second call served from cache, no new Phantom hit
 
 
+# ── RT ticket "url" field points at the human display page ──────────────────
+# Regression guard for a real bug: the "url" field surfaced to users was
+# built from RT_UPDATE_URL (the REST API base,
+# rtapi.int.untd.com/cgi-bin/rt.cgi) with a "/show" suffix -- that's an API
+# endpoint, not a browsable page, so clicking an RT ticket link opened a raw
+# API response instead of the real ticket page.
+
+async def test_search_rt_recent_production_tickets_links_to_human_display_page():
+    class FakeResponse:
+        status_code = 200
+        text = "598891: Something happened on test06\n"
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **kw):
+            return FakeResponse()
+
+    with patch.object(tl_module, "httpx") as mock_httpx:
+        mock_httpx.AsyncClient.return_value = FakeClient()
+        results = await TicketLinkerService.search_rt_recent_production_tickets("token", days_back=5)
+
+    assert results == [{
+        "ticket_id": "598891",
+        "subject": "Something happened on test06",
+        "url": "https://tickets.int.untd.com/Ticket/Display.html?id=598891",
+    }]
+
+
 async def test_fetch_recent_implemented_cmrs_does_not_cache_missing_session():
     # A freshly re-established CMR login must take effect on the very next
     # call -- caching the "no session" failure would otherwise mask that

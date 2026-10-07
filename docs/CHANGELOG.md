@@ -4,6 +4,31 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-10-07: RT links opened the raw REST API, not the ticket page
+
+User: in the Reports page widget, CMR links opened correctly but RT links opened
+`https://rtapi.int.untd.com/cgi-bin/rt.cgi/ticket/598891/show` instead of
+`https://tickets.int.untd.com/Ticket/Display.html?id=598891`. Root cause: every RT ticket
+dict built in `app/services/ticket_linker.py` (recent-activity widget, per-host RT search,
+its cache) stamped its `"url"` field from `RT_UPDATE_URL` — the RT REST API base
+(`rtapi.int.untd.com`) — with a `/ticket/{id}/show` suffix. That's an API endpoint returning
+plain text, not a browsable page; it happened to still "work" when opened directly only in
+the sense that the browser didn't error, but it was never the right URL. CMR's url field was
+already correct, built from a genuinely-browsable Phantom URL — that's why only RT was wrong.
+
+Fixed by adding a new `rt_display_url` setting (`app/core/config.py`, defaulting to
+`https://tickets.int.untd.com/Ticket/Display.html`), kept separate from `rt_lookup_url`/
+`rt_update_url` (the actual API endpoints, still used for real RT calls — confirmed via grep
+that the ticket dict's `"url"` field is never used for anything but display). All four
+RT-ticket-dict construction sites in `ticket_linker.py` now build `url` from
+`RT_DISPLAY_URL?id={id}` instead. New regression test
+`test_search_rt_recent_production_tickets_links_to_human_display_page` in
+`tests/test_ticket_linker.py`.
+
+**How to apply:** an RT ticket's "url" field anywhere in this codebase should always point at
+`rt_display_url`, never at `rt_lookup_url`/`rt_update_url` — those two are API endpoints for
+making requests, not pages for people to open in a browser.
+
 ## 2026-10-07: CMR badge wasn't a clickable link like RT's
 
 User: the correlated RT badge in the report view opens directly in a new tab, but the CMR

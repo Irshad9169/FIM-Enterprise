@@ -34,6 +34,7 @@ logger = logging.getLogger("ticket_linker")
 # values, so this is a no-op unless overridden.
 RT_LOOKUP_URL = settings.rt_lookup_url
 RT_UPDATE_URL = settings.rt_update_url
+RT_DISPLAY_URL = settings.rt_display_url
 RT_EMAIL      = settings.rt_email
 FIM_EMAIL_DOMAIN = "corp.untd.com"
 CMR_URL       = settings.cmr_url
@@ -160,7 +161,7 @@ class TicketLinkerService:
                 "subject":   row.subject,
                 "status":    row.status,
                 "queue":     row.queue,
-                "url":       f"{RT_UPDATE_URL}/ticket/{row.ticket_id}/show",
+                "url":       f"{RT_DISPLAY_URL}?id={row.ticket_id}",
             }
         return None
 
@@ -261,7 +262,7 @@ class TicketLinkerService:
                         "ticket_id": r.ticket_id,
                         "subject":   r.subject,
                         "status":    r.status,
-                        "url":       f"{RT_UPDATE_URL}/ticket/{r.ticket_id}/show",
+                        "url":       f"{RT_DISPLAY_URL}?id={r.ticket_id}",
                         "source":    "cache",
                     }
                     for r in cached
@@ -291,7 +292,7 @@ class TicketLinkerService:
                             "ticket_id": tid,
                             "subject":   subj,
                             "status":    "open",
-                            "url":       f"{RT_UPDATE_URL}/ticket/{tid}/show",
+                            "url":       f"{RT_DISPLAY_URL}?id={tid}",
                             "source":    "rt",
                         })
                         if db:
@@ -454,7 +455,7 @@ class TicketLinkerService:
                         results.append({
                             "ticket_id": tid,
                             "subject":   subj,
-                            "url":       f"{RT_UPDATE_URL}/ticket/{tid}/show",
+                            "url":       f"{RT_DISPLAY_URL}?id={tid}",
                         })
         except Exception as e:
             logger.error(f"search_rt_recent_production_tickets: {type(e).__name__}: {e}", exc_info=True)
