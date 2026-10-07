@@ -7,7 +7,7 @@ logger = logging.getLogger("sso_debug")
 class SSOManager:
     def __init__(self):
         self.OPENSSL_BIN = '/usr/bin/openssl'
-        self.SSO_SERVER_URL = 'https://auth.qa.int.untd.com/bin/sso'
+        self.SSO_SERVER_URL = 'https://auth.int.untd.com/bin/sso'
         self.PUBLIC_KEY_PATH = '/opt/fim/config/sso-public.pem'
         self.APP_ID = 'FIM_ENTERPRISE' 
 
