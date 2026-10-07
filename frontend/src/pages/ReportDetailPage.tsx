@@ -719,9 +719,9 @@ function AgentCard({ agent, report, defaultExpanded, viewMode = "classic", selec
               </a>
             )}
             {agent.correlated_cmr && (
-              <span className="text-xs bg-cyan-50 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/50 px-1.5 py-0.5 rounded font-mono">
+              <a href={`https://phantom.int.untd.com/bin/phantom?action=display&type=viewrequest&mode=prod&id=${agent.correlated_cmr}`} target="_blank" rel="noopener noreferrer" className="text-xs bg-cyan-50 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/50 px-1.5 py-0.5 rounded font-mono hover:text-cyan-800 dark:hover:text-cyan-200 hover:underline">
                 CMR#{agent.correlated_cmr}
-              </span>
+              </a>
             )}
 
             {agent.status !== "submitted" && agent.status !== "skipped" && (
@@ -866,7 +866,10 @@ function HostActionRow({ agent, report, selected = false, onToggleSelect }: {
           <a href={`https://tickets.int.untd.com/Ticket/Display.html?id=${effectiveRt}`} target="_blank" rel="noopener noreferrer"
             className="text-blue-300 font-mono hover:underline">RT#{effectiveRt}</a>
         )}
-        {agent.correlated_cmr && <span className="text-cyan-300 font-mono">CMR#{agent.correlated_cmr}</span>}
+        {agent.correlated_cmr && (
+          <a href={`https://phantom.int.untd.com/bin/phantom?action=display&type=viewrequest&mode=prod&id=${agent.correlated_cmr}`} target="_blank" rel="noopener noreferrer"
+            className="text-cyan-300 font-mono hover:underline">CMR#{agent.correlated_cmr}</a>
+        )}
 
         {agent.status !== "submitted" && agent.status !== "skipped" && (
           <div className="flex items-center gap-1 ml-auto">

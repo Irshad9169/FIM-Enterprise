@@ -4,6 +4,25 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-10-07: CMR badge wasn't a clickable link like RT's
+
+User: the correlated RT badge in the report view opens directly in a new tab, but the CMR
+badge required going elsewhere ("View in CMR") to open it in Phantom. Root cause: in
+`frontend/src/pages/ReportDetailPage.tsx`, the RT badge (two places: the agent header row and
+the compact grouped-view row) was already a real `<a href=...>` pointing at
+`tickets.int.untd.com`, but the CMR badge right next to it was a plain `<span>` with no link
+at all — the only way to actually view a CMR was through the separate `TicketChip` component
+(used in a different part of the UI) that happens to render its own "View in {label}" link
+from the stored `ticket.url`.
+
+Fixed: both CMR badges now link directly to Phantom, using the same URL pattern the backend
+already builds server-side for CMR tickets (`app/services/ticket_linker.py`:
+`{CMR_URL}?action=display&type=viewrequest&mode=prod&id={cmr_id}`, `CMR_URL` defaulting to
+`https://phantom.int.untd.com/bin/phantom`) — matching the RT badge's existing pattern of a
+hardcoded base URL + ticket id, rather than threading a URL field through
+`fim.report_agents` (which only stores the ticket id, not a URL, for its "best auto-match"
+columns).
+
 ## 2026-10-07: SQL injection in bulk alert actions, fleet agent migration
 
 - **`PATCH /api/v1/alerts/bulk` built its `WHERE id IN (...)` clause by
