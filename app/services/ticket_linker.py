@@ -931,9 +931,27 @@ class TicketLinkerService:
                 if jira_tickets: summary["jira_found"] += 1
                 if status == "pending": summary["unmatched_hosts"].append(hostname)
 
+                # Commit after every host rather than once at the end. Each
+                # host's RT/CMR/JIRA lookups can take a while (slow external
+                # calls), and this loop previously held ONE transaction open
+                # across the whole run -- long enough on multi-host reports to
+                # exceed Postgres's idle_in_transaction_session_timeout (5min
+                # here), which silently killed the connection mid-run and
+                # turned "Correlate All is slow" into "Internal Server Error".
+                await db.commit()
+
             except Exception as e:
                 logger.error(f"correlate_all_agents – {hostname}: {type(e).__name__}: {e}", exc_info=True)
                 summary["errors"].append({"hostname": hostname, "error": str(e)})
+                # Without this, a DB-level error (e.g. a dropped connection)
+                # leaves the session's transaction invalid, and every
+                # subsequent host's query fails too with PendingRollbackError
+                # -- turning one transient failure into a total outage for
+                # the rest of the run.
+                try:
+                    await db.rollback()
+                except Exception:
+                    logger.error("correlate_all_agents: rollback itself failed", exc_info=True)
 
         await db.execute(text("""
             UPDATE fim.reports

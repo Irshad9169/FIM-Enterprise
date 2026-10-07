@@ -170,6 +170,34 @@ async def test_correlate_all_agents_fetches_cmrs_once_not_per_host():
     assert fetch_calls == [30]  # exactly one call, preserving the 30-day window
 
 
+async def test_correlate_all_agents_rolls_back_and_continues_after_one_host_db_error():
+    # Regression guard: a DB-level error for one host (e.g. a dropped
+    # connection) used to leave the session's transaction invalid, so every
+    # later host failed too with PendingRollbackError -- one transient
+    # failure took down the whole run. Rolling back on error must let
+    # later hosts process normally.
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=SimpleNamespace(fetchall=lambda: [], fetchone=lambda: None))
+
+    async def fake_search_rt(hostname, token, db):
+        if hostname == "host2":
+            raise RuntimeError("connection is closed")
+        return []
+
+    with patch.object(TicketLinkerService, "fetch_recent_implemented_cmrs", return_value=[]), \
+         patch.object(TicketLinkerService, "search_rt_by_hostname", side_effect=fake_search_rt), \
+         patch.object(TicketLinkerService, "search_jira_by_hostname", return_value=[]), \
+         patch.object(TicketLinkerService, "_upsert_report_ticket", return_value=None), \
+         patch.object(TicketLinkerService, "_notify_unmatched_changes", return_value=None):
+        summary = await TicketLinkerService.correlate_all_agents(
+            "report-1", ["host1", "host2", "host3"], "token", db
+        )
+
+    assert summary["agents_processed"] == 2  # host1 and host3, not host2
+    assert summary["errors"] == [{"hostname": "host2", "error": "connection is closed"}]
+    db.rollback.assert_called_once()
+
+
 # ── _notify_unmatched_changes ────────────────────────────────────────────────
 
 async def test_notify_unmatched_changes_emails_admin_analyst_recipients():

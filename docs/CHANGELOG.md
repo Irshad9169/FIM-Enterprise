@@ -35,6 +35,44 @@ fast-forward, clean) and `fim-backend-test.service` (port 8803) restarted the sa
 confirmed clean startup with no errors and agent heartbeats (test02/test04/test05) flowing
 immediately after.
 
+## 2026-10-07: Correlate All — one dropped DB connection took down the whole run
+
+User: "Correlate All is taking time and I get API error." Live logs
+(`fim-backend-test`, test06) showed the real sequence: `search_rt_by_hostname` for
+`test04.hyd.int.untd.com` failed with `asyncpg.exceptions.InterfaceError: connection is
+closed`, then every host processed after it (`test02`, `test05`) immediately failed too with
+`PendingRollbackError: Can't reconnect until invalid transaction is rolled back`, and the
+final `db.commit()` failed the same way — surfacing to the browser as a plain 500.
+
+Two compounding bugs in `correlate_all_agents` (`app/services/ticket_linker.py`):
+
+1. The entire per-host loop ran inside **one transaction, committed only once at the very
+   end**, while making slow sequential external calls (Phantom CMR match, RT search, JIRA
+   search) for every host in between DB writes. Confirmed live:
+   `idle_in_transaction_session_timeout` on this Postgres instance is 5 minutes — easily
+   exceeded on a multi-host report given the CMR fetch alone can take ~1.5 minutes
+   (see [[project_cmr_auto_login_built]]'s concurrency-throttle trade-off). Postgres silently
+   killed the idle transaction's connection mid-run.
+2. The per-host `except Exception` handler logged the error and moved on, but never called
+   `db.rollback()`. Once one DB error invalidates a SQLAlchemy session's transaction, every
+   later query on that same session raises `PendingRollbackError` until it's rolled back —
+   so one transient connection drop cascaded into every subsequent host failing too, and the
+   final summary UPDATE + commit failing last, which is what the frontend actually saw as
+   "Internal Server Error."
+
+Fixed: commit after each host instead of once at the end (keeps the transaction short-lived,
+avoids the idle timeout entirely), and roll back the session in the except block before
+continuing to the next host (so a single transient failure stays contained to that one host
+instead of cascading). New regression test
+`test_correlate_all_agents_rolls_back_and_continues_after_one_host_db_error` in
+`tests/test_ticket_linker.py` simulates one host's DB call failing and asserts the other
+hosts still process normally and `db.rollback()` was called exactly once.
+
+**How to apply:** any long-running per-item loop that interleaves slow external I/O with DB
+writes on the same session should commit frequently (keep transactions short) and roll back
+on a per-item basis in its exception handler — never assume a caught exception leaves the
+session usable for the next iteration.
+
 ## 2026-10-05: CMR session staleness masked by a surviving SSO cookie; reports list had no bound at all
 
 Two independent live-debugging rounds with the user, same day.
