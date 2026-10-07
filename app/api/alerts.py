@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, text
+from sqlalchemy import select, desc, update, func
 from typing import List, Dict, Tuple, Set, Optional, Optional, List
 from datetime import datetime, timedelta
 
@@ -99,6 +99,8 @@ async def bulk_alert_action(
     current_user: User = Depends(get_current_user)
 ):
     """Bulk acknowledge, resolve, or mark alerts as false positive."""
+    import uuid as _uuid
+
     valid_actions = {"acknowledge": "acknowledged", "resolve": "resolved", "false_positive": "false_positive"}
     new_status = valid_actions.get(req.action)
     if not new_status:
@@ -107,19 +109,22 @@ async def bulk_alert_action(
     if not req.alert_ids:
         raise HTTPException(400, "No alert IDs provided")
 
-    # Update all matching alerts
-    placeholders = ",".join(f"'{aid}'" for aid in req.alert_ids)
-    result = await db.execute(text(f"""
-        UPDATE fim.alerts
-        SET status = :status, assigned_to = :uid,
-            resolution_notes = COALESCE(resolution_notes, '') || :note
-        WHERE id IN ({placeholders}) AND status = 'open'
-        RETURNING id
-    """), {
-        "status": new_status,
-        "uid": current_user.id,
-        "note": f"\nBulk {req.action} by {current_user.username} at {datetime.utcnow().isoformat()}"
-    })
+    try:
+        alert_uuids = [_uuid.UUID(aid) for aid in req.alert_ids]
+    except ValueError:
+        raise HTTPException(400, "Invalid alert ID")
+
+    note_suffix = f"\nBulk {req.action} by {current_user.username} at {datetime.utcnow().isoformat()}"
+    result = await db.execute(
+        update(Alert)
+        .where(Alert.id.in_(alert_uuids), Alert.status == "open")
+        .values(
+            status=new_status,
+            assigned_to=current_user.id,
+            resolution_notes=func.coalesce(Alert.resolution_notes, "") + note_suffix,
+        )
+        .returning(Alert.id)
+    )
     updated = result.fetchall()
     await db.commit()
 

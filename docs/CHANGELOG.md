@@ -4,6 +4,32 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-10-07: SQL injection in bulk alert actions, fleet agent migration
+
+- **`PATCH /api/v1/alerts/bulk` built its `WHERE id IN (...)` clause by
+  f-string-interpolating the raw `alert_ids` list straight into a `text()`
+  SQL string** (`",".join(f"'{aid}'" for aid in req.alert_ids)`), with no
+  validation that each id was even a UUID. Flagged during an unrelated
+  file-upload security review. Fixed by dropping the raw SQL entirely in
+  favor of a parameterized `sqlalchemy.update(Alert).where(Alert.id.in_(...))`
+  construct, after first parsing every id with `uuid.UUID(...)` and
+  returning a clean 400 on anything that isn't one (previously any
+  malformed id would have reached the database as part of the query text).
+  Covered by `test_bulk_alert_action_rejects_non_uuid_id` and
+  `test_bulk_alert_action_acknowledges_only_open_matching_alerts` in
+  `tests/integration/test_api_flows.py`.
+- **test04 and test05 migrated to test02's agent code/config**, reporting to
+  the `feature/upgrades` backend (`test06:8803`) instead of the stale `main`
+  backend (`test06:8000`) they'd been pointed at. Both reused their existing
+  server-side agent identity via hostname-keyed registration and
+  trust-on-first-contact API key bootstrapping — no data loss, no new
+  agent records. This was also the real root cause of a separate
+  "alerts keep repeating" report: `main`'s dedup logic only checks for a
+  currently-*open* duplicate, so acknowledging/resolving an alert always let
+  the next scan re-fire it; `feature/upgrades` fixed that months ago but the
+  fix never reached these two hosts because their agents were talking to the
+  wrong backend port the whole time.
+
 ## 2026-10-05: CMR session staleness masked by a surviving SSO cookie; reports list had no bound at all
 
 Two independent live-debugging rounds with the user, same day.

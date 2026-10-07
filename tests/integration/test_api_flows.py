@@ -572,4 +572,65 @@ async def test_list_reports_limit_is_capped(client, db_session):
     resp = await client.get("/api/v1/reports", params={"limit": 2})
 
     assert resp.status_code == 200
+
+
+# ── PATCH /api/v1/alerts/bulk ─────────────────────────────────────────────────
+# Regression guard for a real bug: bulk_alert_action() built its SQL IN (...)
+# clause via f-string interpolation of raw request body values
+# (f"'{aid}'" joined per id) instead of a bound parameter. Any value that
+# isn't a clean UUID should be rejected with a 400, not reach the database.
+
+async def test_bulk_alert_action_rejects_non_uuid_id(client, db_session):
+    user = await _create_user(db_session, role="admin", username="bulkuser1")
+    headers = await _auth_headers(db_session, user)
+
+    resp = await client.patch(
+        "/api/v1/alerts/bulk",
+        json={"alert_ids": ["' OR '1'='1"], "action": "acknowledge"},
+        headers=headers,
+    )
+
+    assert resp.status_code == 400
+
+
+async def test_bulk_alert_action_acknowledges_only_open_matching_alerts(client, db_session):
+    user = await _create_user(db_session, role="admin", username="bulkuser2")
+    headers = await _auth_headers(db_session, user)
+
+    agent = Agent(id=uuid.uuid4(), hostname="test-agent-bulk", status="online")
+    db_session.add(agent)
+    await db_session.commit()
+
+    open_alert = Alert(
+        id=uuid.uuid4(), agent_id=agent.id, alert_type="file_modified",
+        severity="high", file_path="/etc/passwd", status="open",
+    )
+    already_resolved = Alert(
+        id=uuid.uuid4(), agent_id=agent.id, alert_type="file_modified",
+        severity="high", file_path="/etc/shadow", status="resolved",
+    )
+    untouched = Alert(
+        id=uuid.uuid4(), agent_id=agent.id, alert_type="file_modified",
+        severity="low", file_path="/etc/hosts", status="open",
+    )
+    db_session.add_all([open_alert, already_resolved, untouched])
+    await db_session.commit()
+
+    resp = await client.patch(
+        "/api/v1/alerts/bulk",
+        json={"alert_ids": [str(open_alert.id), str(already_resolved.id)], "action": "acknowledge"},
+        headers=headers,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["updated"] == 1
+    assert body["new_status"] == "acknowledged"
+
+    await db_session.refresh(open_alert)
+    await db_session.refresh(already_resolved)
+    await db_session.refresh(untouched)
+    assert open_alert.status == "acknowledged"
+    assert already_resolved.status == "resolved"  # untouched: wasn't 'open'
+    assert untouched.status == "open"              # untouched: wasn't selected
     assert len(resp.json()) == 2
