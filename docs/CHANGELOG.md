@@ -30,6 +30,11 @@ direct observation; entries without a firm date are grouped by theme instead of 
   fix never reached these two hosts because their agents were talking to the
   wrong backend port the whole time.
 
+**Deployed:** pulled to `/opt/FIM-PROJ/FIM-Enterprise` on test06 (commit `b903430`,
+fast-forward, clean) and `fim-backend-test.service` (port 8803) restarted the same day;
+confirmed clean startup with no errors and agent heartbeats (test02/test04/test05) flowing
+immediately after.
+
 ## 2026-10-05: CMR session staleness masked by a surviving SSO cookie; reports list had no bound at all
 
 Two independent live-debugging rounds with the user, same day.
