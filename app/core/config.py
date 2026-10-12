@@ -29,7 +29,14 @@ class Settings(BaseSettings):
     # .env (a wildcard here would be pointless anyway once combined with
     # allow_credentials=True in app/main.py, which browsers reject outright).
     cors_origins: List[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"]
-    
+
+    # Agent registration allowlist. Empty (default) = any hostname may
+    # self-register on first contact, matching existing behavior. Set to
+    # restrict brand-new agent registration to a known set of hostnames —
+    # does not affect already-registered agents re-authenticating with
+    # their established key.
+    agent_hostname_allowlist: List[str] = []
+
     # SMTP (optional)
     smtp_host: str = ""
     smtp_port: int = 587

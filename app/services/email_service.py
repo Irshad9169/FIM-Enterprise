@@ -118,6 +118,30 @@ This is an automated notification from FIM Enterprise.
         return EmailService.send_email(recipients, subject, body)
 
     @staticmethod
+    def notify_agent_registered(hostname: str, ip_address: Optional[str], recipients: List[str]):
+        """Notify admins the first time a hostname registers as a new agent —
+        trust-on-first-contact means this is the only point a human can
+        catch an unexpected or rogue registration before it's accepted."""
+        subject = f"[FIM] New agent registered — {hostname}"
+        body = f"""New FIM Agent Registered
+========================
+
+Host      : {hostname}
+IP        : {ip_address or 'unknown'}
+Detected  : {datetime.now().strftime('%Y-%m-%d %H:%M IST')}
+
+This hostname has never registered before and was just accepted on
+trust-on-first-contact (its API key was not pre-issued or verified).
+If this wasn't an expected new host, investigate immediately.
+
+Dashboard: http://test06.hyd.int.untd.com/agents
+
+---
+This is an automated notification from FIM Enterprise.
+"""
+        return EmailService.send_email(recipients, subject, body)
+
+    @staticmethod
     def notify_unmatched_changes(report_date: str, hosts: List[str], recipients: List[str]):
         """
         Notify analysts that some hosts' changes in a report have no RT/CMR

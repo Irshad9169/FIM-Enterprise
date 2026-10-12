@@ -7,6 +7,7 @@ from typing import Optional, List
 from datetime import datetime
 import uuid
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user, SECRET_KEY, ALGORITHM, TOKEN_ISSUER
 from app.core.agent_auth import check_agent_key, hash_agent_key
@@ -124,6 +125,10 @@ async def register_agent(
         # already makes. Requires a key be presented at all, at least.
         if not provided_key:
             raise HTTPException(status_code=400, detail="X-API-Key header is required to register")
+        # Optional allowlist — empty (default) means any hostname may
+        # register, matching prior behavior.
+        if settings.agent_hostname_allowlist and request.hostname not in settings.agent_hostname_allowlist:
+            raise HTTPException(status_code=403, detail="Hostname is not on the approved agent allowlist")
         agent = Agent(
             id=uuid.uuid4(),
             hostname=request.hostname,
@@ -139,6 +144,31 @@ async def register_agent(
             api_key_hash=hash_agent_key(provided_key),
         )
         db.add(agent)
+
+        # First-ever registration is the one point a human can catch an
+        # unexpected or rogue agent before it's silently trusted — unlike
+        # every other agent-facing action in this file, this previously had
+        # no audit trail and no notification at all.
+        await AuditService.log(
+            db, None, "system", "AGENT_REGISTERED",
+            resource_type="agent", resource_id=agent.id,
+            details={"hostname": agent.hostname, "ip_address": agent.ip_address, "os_type": agent.os_type},
+            ip_address=_client_ip(http_request),
+        )
+        await db.commit()
+
+        try:
+            from app.services.email_service import EmailService
+            recipients_res = await db.execute(text(
+                "SELECT email FROM fim.users WHERE role IN ('admin', 'analyst') AND is_active = true"
+            ))
+            recipients = [row.email for row in recipients_res.fetchall() if row.email]
+            if recipients:
+                EmailService.notify_agent_registered(agent.hostname, agent.ip_address, recipients)
+        except Exception:
+            pass  # never let a notification failure affect registration
+
+        return {"agent_id": str(agent.id), "status": "registered"}
 
     await db.commit()
     return {"agent_id": str(agent.id), "status": "registered"}

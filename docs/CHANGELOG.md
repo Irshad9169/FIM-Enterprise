@@ -4,6 +4,37 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-10-12: new agent registrations were invisible — no audit entry, no notification
+
+User asked whether a brand-new agent registering for the first time is noticed anywhere, or
+tracked for security purposes. It wasn't: `register_agent`'s brand-new-hostname path
+(`app/api/agents.py`) is pure trust-on-first-contact — any caller that can reach
+`/api/v1/agents/register` and supplies *any* non-empty API key string is silently accepted as
+a new, permanently-trusted agent identity. Every other agent-facing action in that file
+(key rotation, pause/resume, config push) writes an `AuditService.log(...)` entry;
+registration never did. The agent binary-hash-mismatch path already emails admins on an
+*existing* agent going bad, but nothing watched for a brand-new one appearing at all.
+
+Fixed:
+- `register_agent`'s new-hostname branch now writes an `AGENT_REGISTERED` audit log entry
+  (hostname, IP, OS) before committing.
+- A best-effort email (`EmailService.notify_agent_registered`, `app/services/email_service.py`)
+  goes to all active admin/analyst users on every first-time registration — wrapped in
+  try/except so a notification failure never blocks the agent from registering, matching the
+  existing pattern used for the binary-hash-mismatch alert.
+- A new optional setting, `agent_hostname_allowlist` (`app/core/config.py`,
+  `AGENT_HOSTNAME_ALLOWLIST` env var), rejects registration for any hostname not on the list
+  when set. Empty by default — no behavior change unless explicitly configured.
+
+Covered by three new integration tests in `tests/integration/test_api_flows.py`: audit entry +
+notification fire for a genuinely new hostname, neither fires for a hostname that already has
+an agent record, and an unapproved hostname is rejected (403) once the allowlist is set.
+
+**How to apply:** any future agent-facing write path should ask the same question this one
+was missing — does a human find out about this, and is there a record if they need to look
+later? Silent trust-on-first-contact is a reasonable default for convenience, but it should
+never also be silent for security visibility.
+
 ## 2026-10-07: a host silently vanished from a report, and its status got stuck on "pending"
 
 User: a report that should have had 4 agents showed "4 AGENTS" in the summary stat but only 3

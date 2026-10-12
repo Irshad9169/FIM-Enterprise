@@ -25,7 +25,7 @@ from sqlalchemy import text, select
 
 from app.core.database import db_manager
 from app.core.security import create_access_token, get_password_hash, SECRET_KEY, ALGORITHM
-from app.models.models import Agent, Baseline, User, Alert
+from app.models.models import Agent, Baseline, User, Alert, AuditLog
 from app.models.daily_report import DailyReport
 
 pytestmark = pytest.mark.integration
@@ -689,3 +689,74 @@ async def test_correlate_commits_status_change_before_the_slow_cmr_fetch(client,
 
     assert resp.status_code == 200
     assert seen_status["value"] == "in_review"
+
+
+# ── POST /api/v1/agents/register — new-agent visibility ──────────────────────
+# Regression guard for a real gap: a brand-new hostname's first registration
+# previously had no audit trail and no notification at all -- the only
+# agent-facing action in this file with neither. Trust-on-first-contact means
+# this is the one point a human could catch an unexpected/rogue registration.
+
+async def test_register_agent_audits_and_notifies_on_new_hostname(client, db_session):
+    admin = await _create_user(db_session, role="admin", username="notifyadmin")
+
+    with patch("app.services.email_service.EmailService.notify_agent_registered") as mock_notify:
+        resp = await client.post(
+            "/api/v1/agents/register",
+            json={"hostname": "brand-new-host.example.com", "ip_address": "10.0.0.5"},
+            headers={"X-API-Key": "whatever-key-first-presented"},
+        )
+
+    assert resp.status_code == 200
+    agent_id = resp.json()["agent_id"]
+
+    result = await db_session.execute(
+        select(AuditLog).where(
+            AuditLog.action == "AGENT_REGISTERED",
+            AuditLog.resource_id == uuid.UUID(agent_id),
+        )
+    )
+    audit_row = result.scalar_one_or_none()
+    assert audit_row is not None
+    assert audit_row.details["hostname"] == "brand-new-host.example.com"
+
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args.args[0] == "brand-new-host.example.com"
+
+
+async def test_register_agent_existing_hostname_skips_audit_and_notify(client, db_session):
+    agent = Agent(id=uuid.uuid4(), hostname="already-known-host", status="online")
+    db_session.add(agent)
+    await db_session.commit()
+
+    with patch("app.services.email_service.EmailService.notify_agent_registered") as mock_notify:
+        resp = await client.post(
+            "/api/v1/agents/register",
+            json={"hostname": "already-known-host", "ip_address": "10.0.0.6"},
+            headers={"X-API-Key": "first-ever-key-for-this-host"},
+        )
+
+    assert resp.status_code == 200
+    mock_notify.assert_not_called()
+
+    result = await db_session.execute(
+        select(AuditLog).where(AuditLog.action == "AGENT_REGISTERED", AuditLog.resource_id == agent.id)
+    )
+    assert result.scalar_one_or_none() is None
+
+
+async def test_register_agent_rejects_hostname_not_on_allowlist(client, db_session):
+    from app.core.config import settings
+
+    original = settings.agent_hostname_allowlist
+    settings.agent_hostname_allowlist = ["approved-host-01"]
+    try:
+        resp = await client.post(
+            "/api/v1/agents/register",
+            json={"hostname": "not-on-the-list"},
+            headers={"X-API-Key": "some-key"},
+        )
+    finally:
+        settings.agent_hostname_allowlist = original
+
+    assert resp.status_code == 403

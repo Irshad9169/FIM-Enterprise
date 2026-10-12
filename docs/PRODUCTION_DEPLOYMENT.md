@@ -211,6 +211,14 @@ JIRA_EMAIL=
 JIRA_API_TOKEN=
 ```
 
+Optional — restrict which hostnames may self-register as a brand-new agent (does not
+affect already-registered agents re-authenticating with their established key). Empty by
+default, matching prior behavior — every new registration still fires an `AGENT_REGISTERED`
+audit entry and an admin/analyst email regardless of whether this is set:
+```bash
+AGENT_HOSTNAME_ALLOWLIST=["host01.example.com","host02.example.com"]
+```
+
 CMR (Phantom) fetching needs three more settings, all documented with the same
 depth in `.env.example` — see that file for the full story. Phantom has no
 service-account/API option, only its own web UI behind company SSO, so CMR
