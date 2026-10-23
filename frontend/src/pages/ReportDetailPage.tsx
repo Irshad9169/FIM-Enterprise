@@ -430,6 +430,11 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
   const [showPreview, setShowPreview] = useState(true);
 
   const notDone = report.report_agents.filter(a => a.status !== "submitted" && a.status !== "skipped");
+  // Correlate All is what matches each host's changes against real RT/CMR
+  // tickets so the analyst picks from relevant candidates instead of
+  // searching manually -- never overridable by "force", which only skips
+  // per-agent review, not the absence of correlation altogether.
+  const correlationNotRun = !report.correlation_run_at;
 
   const preview = useQuery<PublishPreview>({
     queryKey: ["publish-preview", report.id],
@@ -474,6 +479,18 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
                 <div className="text-muted-foreground">Agents  : <span className="text-foreground">{report.agents_submitted}/{report.agents_total} submitted</span></div>
                 <div className="text-muted-foreground">Status  : <span className="text-foreground">{report.status}</span></div>
               </div>
+
+              {correlationNotRun && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 rounded p-3 space-y-1">
+                  <div className="text-red-400 text-xs font-bold flex items-center gap-1">
+                    <AlertTriangle size={12} /> Correlate All has not been run for this report
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Run Correlate All first so each change can be matched to a real RT/CMR ticket
+                    instead of searching manually. Close this dialog and click Correlate All.
+                  </div>
+                </div>
+              )}
 
               {notDone.length > 0 && (
                 <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/40 rounded p-3 space-y-1">
@@ -529,7 +546,7 @@ function PublishModal({ report, onClose }: { report: DailyReportDetail; onClose:
           </div>
           <div className="px-6 py-4 border-t border-border flex justify-end gap-2 shrink-0">
             <button onClick={onClose} className="px-4 py-2 text-sm bg-muted text-foreground/90 rounded hover:bg-secondary/80">Cancel</button>
-            <button onClick={doPublish} disabled={busy || (notDone.length > 0 && !force)}
+            <button onClick={doPublish} disabled={busy || correlationNotRun || (notDone.length > 0 && !force)}
               className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-40 flex items-center gap-2">
               <Send size={14} />{busy ? "Publishing…" : "Publish"}
             </button>

@@ -26,7 +26,7 @@ from sqlalchemy import text, select
 from app.core.database import db_manager
 from app.core.security import create_access_token, get_password_hash, SECRET_KEY, ALGORITHM
 from app.models.models import Agent, Baseline, User, Alert, AuditLog
-from app.models.daily_report import DailyReport
+from app.models.daily_report import DailyReport, ReportAgent
 
 pytestmark = pytest.mark.integration
 
@@ -760,3 +760,76 @@ async def test_register_agent_rejects_hostname_not_on_allowlist(client, db_sessi
         settings.agent_hostname_allowlist = original
 
     assert resp.status_code == 403
+
+
+# ── POST /api/v1/reports/{id}/publish — correlation must have run ───────────
+# Correlate All is what matches each host's changes against real RT/CMR
+# tickets so the analyst picks from relevant candidates instead of searching
+# manually. publish_report's existing "not yet submitted" check only looks at
+# report_agents rows that already exist -- those rows are created solely by
+# Correlate All, so a report that never had it run has zero such rows and
+# that check silently finds nothing wrong. Guard against publishing with no
+# correlation having ever happened, independent of `force` (force only
+# overrides per-agent review, not the absence of correlation altogether).
+
+async def test_publish_report_blocked_when_correlation_never_ran(client, db_session):
+    user = await _create_user(db_session, role="admin", username="pubuser1")
+    headers = await _auth_headers(db_session, user)
+
+    report = DailyReport(
+        id=uuid.uuid4(), report_date=date.today(), status="pending",
+        agent_list=["host-a"], correlation_run_at=None,
+    )
+    db_session.add(report)
+    await db_session.commit()
+
+    resp = await client.post(f"/api/v1/reports/{report.id}/publish", json={}, headers=headers)
+
+    assert resp.status_code == 400
+    assert "Correlate All" in resp.json()["detail"]
+
+
+async def test_publish_report_force_does_not_bypass_missing_correlation(client, db_session):
+    user = await _create_user(db_session, role="admin", username="pubuser2")
+    headers = await _auth_headers(db_session, user)
+
+    report = DailyReport(
+        id=uuid.uuid4(), report_date=date.today(), status="pending",
+        agent_list=["host-a"], correlation_run_at=None,
+    )
+    db_session.add(report)
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/v1/reports/{report.id}/publish", json={"force": True}, headers=headers,
+    )
+
+    assert resp.status_code == 400
+    assert "Correlate All" in resp.json()["detail"]
+
+
+async def test_publish_report_proceeds_once_correlation_has_run(client, db_session):
+    user = await _create_user(db_session, role="admin", username="pubuser3")
+    headers = await _auth_headers(db_session, user)
+
+    report = DailyReport(
+        id=uuid.uuid4(), report_date=date.today(), status="in_review",
+        agent_list=["host-a"], correlation_run_at=datetime.utcnow(),
+    )
+    db_session.add(report)
+    await db_session.commit()
+
+    ra = ReportAgent(
+        id=uuid.uuid4(), report_id=report.id, agent_hostname="host-a", status="submitted",
+    )
+    db_session.add(ra)
+    await db_session.commit()
+
+    with patch(
+        "app.api.reports.TicketLinkerService.publish_report",
+        return_value={"success": True, "status_to_set": "submitted", "ticket_id": "123456"},
+    ):
+        resp = await client.post(f"/api/v1/reports/{report.id}/publish", json={}, headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True

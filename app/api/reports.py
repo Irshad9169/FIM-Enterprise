@@ -768,6 +768,14 @@ async def publish_report(
     if not r:
         raise HTTPException(404, "Report not found")
 
+    # Correlate All is what matches each host's changes against RT/CMR so an
+    # analyst is choosing from real, relevant tickets instead of searching
+    # manually -- publishing before it has ever run would skip that entirely.
+    # Checked unconditionally (even with force=True, which only overrides
+    # per-agent review, not the absence of correlation altogether).
+    if r.correlation_run_at is None:
+        raise HTTPException(400, "Correlate All has not been run for this report yet")
+
     ra_res = await db.execute(
         select(ReportAgent).where(ReportAgent.report_id == r.id)
     )

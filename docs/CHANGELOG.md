@@ -4,6 +4,29 @@ Real changes only — what actually happened and why, not a commit-message dump.
 Dates below are grounded in migration filenames (`app/db/migrations/versions/`) and
 direct observation; entries without a firm date are grouped by theme instead of guessed.
 
+## 2026-10-23: a report could be published without Correlate All ever having run
+
+User asked whether a report can only be submitted if Correlate All actually ran. It couldn't
+be guaranteed: `publish_report` (`app/api/reports.py`) already blocked publish when any
+`fim.report_agents` row wasn't `submitted`/`skipped` — but those rows are created *only* by
+Correlate All, never at report generation. If Correlate All had never run at all, there were
+zero such rows, so the "not yet submitted" check found nothing wrong and let publish proceed
+silently, with no RT/CMR matches ever offered to the analyst. The frontend's warning banner
+(`ReportDetailPage.tsx`'s `notDone`) had the identical blind spot, so the Publish button showed
+no warning either.
+
+Fixed: `reports.correlation_run_at` (already set by `correlate_all_agents` on completion,
+`ticket_linker.py`) is now checked explicitly — publish is refused with a 400 if it's still
+null, **independent of `force`** (force only overrides per-agent review, not the absence of
+correlation altogether). Frontend shows a dedicated red banner and disables Publish the same
+way, separate from the existing yellow "not yet submitted" warning. 3 new integration tests in
+`tests/integration/test_api_flows.py`.
+
+**How to apply:** correlation exists specifically so an analyst picks from real, matched
+RT/CMR tickets instead of searching manually — any future path that can reach `/publish`
+(or an equivalent "finalize" action) should check `correlation_run_at`, not just per-agent
+submission status, since the latter is silently satisfied by having nothing to check at all.
+
 ## 2026-10-12: new agent registrations were invisible — no audit entry, no notification
 
 User asked whether a brand-new agent registering for the first time is noticed anywhere, or
